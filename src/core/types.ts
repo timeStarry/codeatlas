@@ -139,6 +139,7 @@ export interface AnnotationDirective {
   path: string;
   startLine?: number;
   endLine?: number;
+  targetNodeId?: string;
   kind: 'constraint' | 'question' | 'rework';
   note: string;
 }

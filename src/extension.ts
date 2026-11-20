@@ -2,11 +2,17 @@ import * as vscode from 'vscode';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 import * as crypto from 'node:crypto';
-import { getDiffStats, getGitContext, readFileAtRef } from './core/git.js';
+import {
+  getDiffStats,
+  getFileDiff,
+  getGitContext,
+  listTrackedFiles,
+  readFileAtRef,
+} from './core/git.js';
 import { loadAtlasManifest } from './core/manifest.js';
 import { verifyBriefing } from './core/verifier.js';
 import { formatDirectivesForAgent } from './core/directives.js';
-import { buildAtlasGraph } from './core/graph.js';
+import { buildAtlasGraph, CanvasViewMode } from './core/graph.js';
 import {
   AnnotationDirective,
   BriefingReport,
@@ -17,22 +23,27 @@ import { getCanvasHtml } from './webview/canvasHtml.js';
 
 const DIRECTIVES_STORAGE_KEY = 'codeatlas.directives.v1';
 
+interface DiscoveredBriefing {
+  label: string;
+  path: string;
+}
+
 class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'codeatlas.cockpit';
 
   private view?: vscode.WebviewView;
   private canvasPanel?: vscode.WebviewPanel;
   private lastVerification?: BriefingVerificationResult;
-  private baseRef = 'HEAD~1';
+  private activeBriefingPath = '';
+  private baseRef = '';
+  private viewMode: CanvasViewMode = 'hybrid';
+  private didAutoDiscover = false;
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
-    webviewView.webview.options = {
-      enableScripts: true,
-    };
-
+    webviewView.webview.options = { enableScripts: true };
     const nonce = crypto.randomBytes(16).toString('hex');
     webviewView.webview.html = getCockpitHtml(nonce);
     this.bindWebviewMessages(webviewView.webview);
@@ -77,11 +88,32 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
         case 'openCanvas':
           this.openCanvas();
           break;
+        case 'setMode':
+          if (msg.mode === 'atlas' || msg.mode === 'briefing' || msg.mode === 'hybrid') {
+            this.viewMode = msg.mode;
+            await this.pushState();
+          }
+          break;
+        case 'setBaseRef':
+          if (typeof msg.baseRef === 'string' && msg.baseRef) {
+            this.baseRef = msg.baseRef;
+            await this.pushState();
+          }
+          break;
+        case 'selectBriefing':
+          if (typeof msg.path === 'string' && msg.path) {
+            await this.verifyBriefingFile(msg.path);
+          }
+          break;
         case 'refresh':
-          if (typeof msg.baseRef === 'string') {
+          if (typeof msg.baseRef === 'string' && msg.baseRef) {
             this.baseRef = msg.baseRef;
           }
-          await this.pushState();
+          if (this.activeBriefingPath) {
+            await this.verifyBriefingFile(this.activeBriefingPath, true);
+          } else {
+            await this.pushState();
+          }
           break;
         case 'pickBriefing':
           await this.pickAndVerifyBriefing();
@@ -91,6 +123,9 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
           break;
         case 'requestSnippet':
           await this.sendCodeSnippet(webview, msg);
+          break;
+        case 'requestDiff':
+          await this.sendFileDiff(webview, msg);
           break;
         case 'addDirective':
           await this.addDirective(msg);
@@ -120,16 +155,109 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
     );
   }
 
+  private async isValidBriefingFile(filePath: string): Promise<boolean> {
+    try {
+      const raw = await fs.readFile(filePath, 'utf-8');
+      const parsed = JSON.parse(raw) as Partial<BriefingReport>;
+      return parsed?.schemaVersion === '0.1' && Array.isArray(parsed?.claims);
+    } catch {
+      return false;
+    }
+  }
+
+  private async discoverBriefings(repoRoot: string): Promise<DiscoveredBriefing[]> {
+    const candidates: DiscoveredBriefing[] = [];
+    const dirs = [
+      path.join(repoRoot, '.codeatlas', 'briefings'),
+      path.join(repoRoot, 'examples'),
+    ];
+    for (const dir of dirs) {
+      try {
+        const entries = await fs.readdir(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.isFile() && entry.name.endsWith('.json')) {
+            const fullPath = path.join(dir, entry.name);
+            if (await this.isValidBriefingFile(fullPath)) {
+              const rel = path.relative(repoRoot, fullPath).replace(/\\/g, '/');
+              candidates.push({ label: rel, path: fullPath });
+            }
+          }
+        }
+      } catch {
+        // directory may not exist
+      }
+    }
+    const rootBriefing = path.join(repoRoot, 'briefing.json');
+    if (await this.isValidBriefingFile(rootBriefing)) {
+      candidates.unshift({ label: 'briefing.json', path: rootBriefing });
+    }
+    return candidates;
+  }
+
+  private async verifyBriefingFile(filePath: string, silent = false): Promise<void> {
+    const workspaceRoot = this.getWorkspaceRoot();
+    if (!workspaceRoot) return;
+    try {
+      const raw = await fs.readFile(filePath, 'utf-8');
+      const briefing = JSON.parse(raw) as BriefingReport;
+      if (!briefing || !Array.isArray(briefing.claims)) {
+        throw new Error('JSON does not match CodeAtlas Briefing v0.1 schema (missing claims array).');
+      }
+      const gitCtx = await getGitContext(workspaceRoot);
+      this.lastVerification = await verifyBriefing(gitCtx.repoRoot, briefing, filePath);
+      this.activeBriefingPath = filePath;
+      await this.pushState();
+      if (!silent) {
+        vscode.window.showInformationMessage(
+          `CodeAtlas verified "${briefing.title}": ${this.lastVerification.overallBadge.toUpperCase()}`
+        );
+      }
+    } catch (err) {
+      if (!silent) {
+        vscode.window.showErrorMessage(
+          `CodeAtlas failed to verify briefing: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+    }
+  }
+
   private async sendCodeSnippet(
     webview: vscode.Webview,
-    msg: { nodeId: string; path: string; startLine?: number; endLine?: number }
+    msg: {
+      nodeId: string;
+      path: string;
+      startLine?: number;
+      endLine?: number;
+      fromBriefing?: boolean;
+    }
   ): Promise<void> {
     const workspaceRoot = this.getWorkspaceRoot();
-    if (!workspaceRoot || !msg.path) return;
+    if (!workspaceRoot || !msg.path) {
+      await webview.postMessage({
+        type: 'snippet',
+        payload: { nodeId: msg.nodeId, lines: [], error: 'No workspace or file path.' },
+      });
+      return;
+    }
     try {
       const gitCtx = await getGitContext(workspaceRoot);
-      const content = await readFileAtRef(gitCtx.repoRoot, msg.path, 'WORKTREE');
-      if (content === undefined) return;
+      const targetRef =
+        msg.fromBriefing && this.lastVerification?.targetRefClaimed
+          ? this.lastVerification.targetRefClaimed
+          : 'WORKTREE';
+      const content = await readFileAtRef(gitCtx.repoRoot, msg.path, targetRef);
+      if (content === undefined) {
+        await webview.postMessage({
+          type: 'snippet',
+          payload: {
+            nodeId: msg.nodeId,
+            lines: [],
+            refUsed: targetRef,
+            error: `File "${msg.path}" not found at ref "${targetRef}".`,
+          },
+        });
+        return;
+      }
       const allLines = content.split(/\r?\n/);
       const start = Math.max(1, (msg.startLine ?? 1) - 4);
       const end = Math.min(allLines.length, (msg.endLine ?? msg.startLine ?? 1) + 8);
@@ -146,10 +274,45 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
       }
       await webview.postMessage({
         type: 'snippet',
-        payload: { nodeId: msg.nodeId, lines },
+        payload: { nodeId: msg.nodeId, lines, refUsed: targetRef },
+      });
+    } catch (err) {
+      await webview.postMessage({
+        type: 'snippet',
+        payload: {
+          nodeId: msg.nodeId,
+          lines: [],
+          error: err instanceof Error ? err.message : String(err),
+        },
+      });
+    }
+  }
+
+  private async sendFileDiff(
+    webview: vscode.Webview,
+    msg: { nodeId: string; path: string }
+  ): Promise<void> {
+    const workspaceRoot = this.getWorkspaceRoot();
+    if (!workspaceRoot || !msg.path) {
+      await webview.postMessage({
+        type: 'fileDiff',
+        payload: { nodeId: msg.nodeId, diff: '' },
+      });
+      return;
+    }
+    try {
+      const gitCtx = await getGitContext(workspaceRoot);
+      const effectiveBase = this.baseRef || gitCtx.recentRefs[0] || 'HEAD';
+      const diff = await getFileDiff(gitCtx.repoRoot, msg.path, effectiveBase);
+      await webview.postMessage({
+        type: 'fileDiff',
+        payload: { nodeId: msg.nodeId, diff },
       });
     } catch {
-      // ignore unreadable snippets
+      await webview.postMessage({
+        type: 'fileDiff',
+        payload: { nodeId: msg.nodeId, diff: '' },
+      });
     }
   }
 
@@ -167,22 +330,7 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
       openLabel: 'Verify Briefing',
     });
     if (!picked || picked.length === 0) return;
-
-    const filePath = picked[0].fsPath;
-    try {
-      const raw = await fs.readFile(filePath, 'utf-8');
-      const briefing = JSON.parse(raw) as BriefingReport;
-      const gitCtx = await getGitContext(workspaceRoot);
-      this.lastVerification = await verifyBriefing(gitCtx.repoRoot, briefing, filePath);
-      await this.pushState();
-      vscode.window.showInformationMessage(
-        `CodeAtlas verified "${briefing.title}": ${this.lastVerification.overallBadge.toUpperCase()}`
-      );
-    } catch (err) {
-      vscode.window.showErrorMessage(
-        `CodeAtlas failed to verify briefing: ${err instanceof Error ? err.message : String(err)}`
-      );
-    }
+    await this.verifyBriefingFile(picked[0].fsPath);
   }
 
   private async openWorkspaceFile(relPath: string, line = 1): Promise<void> {
@@ -212,6 +360,7 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
     kind: 'constraint' | 'question' | 'rework';
     path: string;
     startLine?: number;
+    targetNodeId?: string;
     note: string;
   }): Promise<void> {
     const workspaceRoot = this.getWorkspaceRoot();
@@ -232,6 +381,7 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
       ref,
       path: msg.path,
       startLine: msg.startLine,
+      targetNodeId: msg.targetNodeId,
       kind: msg.kind,
       note: msg.note,
     });
@@ -255,7 +405,7 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
         repoRoot = gitCtx.repoRoot;
         targetRef = gitCtx.headSha || 'WORKTREE';
       } catch {
-        // fallback to workspaceRoot
+        // fallback
       }
     }
     const md = formatDirectivesForAgent(repoRoot, targetRef, this.getDirectives());
@@ -263,35 +413,60 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
     vscode.window.showInformationMessage('CodeAtlas directives copied to clipboard as Markdown.');
   }
 
+  private postEmptyOrErrorState(errorMsg?: string): void {
+    const directives = this.getDirectives();
+    this.view?.webview.postMessage({
+      type: 'state',
+      payload: {
+        git: null,
+        baseRef: this.baseRef || 'HEAD',
+        diffStats: [],
+        manifest: null,
+        verification: this.lastVerification ?? null,
+        directives,
+        error: errorMsg,
+      },
+    });
+    this.canvasPanel?.webview.postMessage({
+      type: 'canvasState',
+      payload: {
+        git: null,
+        baseRef: this.baseRef || 'HEAD',
+        graph: { mode: this.viewMode, nodes: [], edges: [], summary: {} },
+        availableBriefings: [],
+        activeBriefingPath: '',
+        error: errorMsg,
+      },
+    });
+  }
+
   public async pushState(): Promise<void> {
     const workspaceRoot = this.getWorkspaceRoot();
-    const directives = this.getDirectives();
-
     if (!workspaceRoot) {
-      this.view?.webview.postMessage({
-        type: 'state',
-        payload: {
-          git: null,
-          baseRef: this.baseRef,
-          diffStats: [],
-          manifest: null,
-          verification: this.lastVerification ?? null,
-          directives,
-        },
-      });
-      this.canvasPanel?.webview.postMessage({
-        type: 'canvasState',
-        payload: { git: null, graph: { nodes: [], edges: [] } },
-      });
+      this.postEmptyOrErrorState('Open a folder containing a Git repository.');
       return;
     }
 
     try {
       const git = await getGitContext(workspaceRoot);
-      const [diffStats, manifest] = await Promise.all([
+      if (!this.baseRef || !git.recentRefs.includes(this.baseRef)) {
+        this.baseRef = git.recentRefs[0] || 'HEAD';
+      }
+
+      const availableBriefings = await this.discoverBriefings(git.repoRoot);
+      if (!this.didAutoDiscover && !this.lastVerification && availableBriefings.length > 0) {
+        this.didAutoDiscover = true;
+        await this.verifyBriefingFile(availableBriefings[0].path, true);
+        return;
+      }
+
+      const [diffStats, manifest, trackedFiles] = await Promise.all([
         getDiffStats(git.repoRoot, this.baseRef),
         loadAtlasManifest(git.repoRoot),
+        listTrackedFiles(git.repoRoot),
       ]);
+
+      const directives = this.getDirectives();
 
       this.view?.webview.postMessage({
         type: 'state',
@@ -310,26 +485,27 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
           git,
           manifest,
           diffStats,
+          trackedFiles,
           verification: this.lastVerification,
           directives,
+          mode: this.viewMode,
+          baseRef: this.baseRef,
         });
         this.canvasPanel.webview.postMessage({
           type: 'canvasState',
-          payload: { git, graph },
+          payload: {
+            git,
+            baseRef: this.baseRef,
+            graph,
+            availableBriefings,
+            activeBriefingPath: this.activeBriefingPath,
+          },
         });
       }
-    } catch {
-      this.view?.webview.postMessage({
-        type: 'state',
-        payload: {
-          git: null,
-          baseRef: this.baseRef,
-          diffStats: [],
-          manifest: null,
-          verification: this.lastVerification ?? null,
-          directives,
-        },
-      });
+    } catch (err) {
+      this.postEmptyOrErrorState(
+        err instanceof Error ? err.message : 'Workspace is not a Git repository.'
+      );
     }
   }
 }

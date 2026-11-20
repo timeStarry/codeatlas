@@ -114,6 +114,13 @@ export async function listWorktrees(repoRoot: string): Promise<WorktreeInfo[]> {
 }
 
 export async function listRecentRefs(repoRoot: string): Promise<string[]> {
+  const result: string[] = [];
+  if (await resolveRef(repoRoot, 'HEAD~1')) {
+    result.push('HEAD~1');
+  }
+  if (await resolveRef(repoRoot, 'HEAD')) {
+    result.push('HEAD');
+  }
   try {
     const out = await runGit(repoRoot, [
       'for-each-ref',
@@ -123,13 +130,24 @@ export async function listRecentRefs(repoRoot: string): Promise<string[]> {
       'refs/heads',
       'refs/tags',
     ]);
-    const refs = out
-      .split(/\r?\n/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    return ['HEAD~1', ...refs];
+    for (const s of out.split(/\r?\n/).map((x) => x.trim()).filter(Boolean)) {
+      if (!result.includes(s)) result.push(s);
+    }
   } catch {
-    return ['HEAD~1'];
+    // ignore
+  }
+  return result.length > 0 ? result : ['HEAD'];
+}
+
+export async function listTrackedFiles(repoRoot: string): Promise<string[]> {
+  try {
+    const out = await runGit(repoRoot, ['ls-files']);
+    return out
+      .split(/\r?\n/)
+      .map((s) => s.trim().replace(/\\/g, '/'))
+      .filter(Boolean);
+  } catch {
+    return [];
   }
 }
 
@@ -147,6 +165,7 @@ export async function getDiffStats(
     rangeArgs.push(baseRef);
   }
 
+  const stats: DiffFileStat[] = [];
   try {
     const [numstatOut, nameStatusOut] = await Promise.all([
       runGit(repoRoot, ['diff', '--numstat', ...rangeArgs]),
@@ -163,7 +182,6 @@ export async function getDiffStats(
       }
     }
 
-    const stats: DiffFileStat[] = [];
     for (const line of numstatOut.split(/\r?\n/)) {
       if (!line.trim()) continue;
       const parts = line.split('\t');
@@ -179,10 +197,31 @@ export async function getDiffStats(
         });
       }
     }
-    return stats;
   } catch {
-    return [];
+    // diff may fail on unborn repo with 0 commits; continue to untracked scan
   }
+
+  // Include untracked files when comparing against working tree
+  if (!targetRef || targetRef === 'WORKTREE') {
+    try {
+      const untrackedOut = await runGit(repoRoot, [
+        'ls-files',
+        '--others',
+        '--exclude-standard',
+      ]);
+      const seen = new Set(stats.map((s) => s.path));
+      for (const line of untrackedOut.split(/\r?\n/)) {
+        const p = line.trim().replace(/\\/g, '/');
+        if (p && !seen.has(p)) {
+          stats.push({ path: p, status: '?', additions: 0, deletions: 0 });
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return stats;
 }
 
 export async function readFileAtRef(
@@ -205,5 +244,26 @@ export async function readFileAtRef(
     return await runGit(repoRoot, ['show', `${ref}:${posixPath}`]);
   } catch {
     return undefined;
+  }
+}
+
+export async function getFileDiff(
+  repoRoot: string,
+  relPath: string,
+  baseRef?: string,
+  targetRef?: string
+): Promise<string> {
+  const posixPath = relPath.replace(/\\/g, '/').replace(/^\.\//, '');
+  const args = ['diff', '--unified=3'];
+  if (baseRef && targetRef && targetRef !== 'WORKTREE') {
+    args.push(baseRef, targetRef);
+  } else if (baseRef) {
+    args.push(baseRef);
+  }
+  args.push('--', posixPath);
+  try {
+    return await runGit(repoRoot, args);
+  } catch {
+    return '';
   }
 }

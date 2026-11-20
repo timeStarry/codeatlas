@@ -221,3 +221,67 @@ test('buildAtlasGraph generates domain, claim, evidence, blocking fork, and dire
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
+
+test('verifyBriefing fails overallBadge as mismatch when a blocking condition anchor is hallucinated', async () => {
+  const { dir, headSha } = await createTempRepo();
+  try {
+    const briefing: BriefingReport = {
+      schemaVersion: '0.1',
+      title: 'Valid claim but hallucinated blocking fork',
+      targetRef: headSha,
+      summary: 'Tests that blocking condition mismatch cannot hide behind VERIFIED overallBadge.',
+      blockingConditions: [
+        {
+          id: 'B1',
+          condition: 'ghostGuard',
+          outcome: 'Blocks execution',
+          anchor: { path: 'src/sync.ts', startLine: 1, endLine: 3, symbol: 'nonExistentGuard' },
+        },
+      ],
+      claims: [
+        {
+          id: 'C1',
+          title: 'Valid claim',
+          statement: 'syncDoc exists.',
+          claimType: 'fact',
+          anchors: [{ path: 'src/sync.ts', startLine: 1, endLine: 4, symbol: 'syncDoc' }],
+        },
+      ],
+    };
+
+    const res = await verifyBriefing(dir, briefing);
+    assert.equal(res.blockingConditions[0].badge, 'mismatch');
+    assert.equal(res.overallBadge, 'mismatch');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('verifyBriefing flags expectChanged as mismatch when baseRef is specified and diff is empty', async () => {
+  const { dir, headSha } = await createTempRepo();
+  try {
+    const briefing: BriefingReport = {
+      schemaVersion: '0.1',
+      title: 'Empty diff false change claim',
+      baseRef: headSha,
+      targetRef: headSha,
+      summary: 'Claims file changed when baseRef === targetRef.',
+      claims: [
+        {
+          id: 'C1',
+          title: 'Untouched file claimed changed',
+          statement: 'sync.ts was modified.',
+          claimType: 'fact',
+          expectChanged: true,
+          anchors: [{ path: 'src/sync.ts', startLine: 1, endLine: 4, symbol: 'syncDoc' }],
+        },
+      ],
+    };
+
+    const res = await verifyBriefing(dir, briefing);
+    assert.equal(res.overallBadge, 'mismatch');
+    assert.equal(res.claims[0].anchors[0].changedInDiff, false);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});

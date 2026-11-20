@@ -20,6 +20,7 @@ async function verifyAnchor(
   targetRef: string,
   isStale: boolean,
   changedFiles: Set<string>,
+  hasBaseRef: boolean,
   expectChanged: boolean
 ): Promise<AnchorVerification> {
   const notes: string[] = [];
@@ -84,9 +85,13 @@ async function verifyAnchor(
 
   let changedInDiff: boolean | undefined;
   if (expectChanged) {
-    changedInDiff = changedFiles.has(posixPath);
-    if (!changedInDiff) {
-      notes.push(`Claimed as changed, but "${posixPath}" is not in git diff.`);
+    if (hasBaseRef) {
+      changedInDiff = changedFiles.has(posixPath);
+      if (!changedInDiff) {
+        notes.push(`Claimed as changed, but "${posixPath}" is not in git diff.`);
+      }
+    } else {
+      notes.push('Cannot deterministically verify expectChanged (no baseRef specified).');
     }
   }
 
@@ -179,6 +184,7 @@ export async function verifyBriefing(
           briefing.targetRef,
           isStale,
           changedFiles,
+          Boolean(briefing.baseRef),
           Boolean(claim.expectChanged)
         )
       );
@@ -215,6 +221,7 @@ export async function verifyBriefing(
       briefing.targetRef,
       isStale,
       changedFiles,
+      Boolean(briefing.baseRef),
       false
     );
     blockingResults.push({
@@ -235,10 +242,13 @@ export async function verifyBriefing(
     summaryCounts[c.badge] += 1;
   }
 
+  const blockingMismatch = blockingResults.some((b) => b.badge === 'mismatch');
+  const blockingStale = blockingResults.some((b) => b.badge === 'stale');
+
   let overallBadge: VerificationBadge = 'verified';
-  if (targetMissing || summaryCounts.mismatch > 0) {
+  if (targetMissing || summaryCounts.mismatch > 0 || blockingMismatch) {
     overallBadge = 'mismatch';
-  } else if (isStale || summaryCounts.stale > 0) {
+  } else if (isStale || summaryCounts.stale > 0 || blockingStale) {
     overallBadge = 'stale';
   } else if (summaryCounts.unverified > 0) {
     overallBadge = 'unverified';
