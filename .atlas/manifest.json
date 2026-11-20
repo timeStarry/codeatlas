@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "0.1",
+  "domains": [
+    {
+      "id": "core-verification",
+      "name": "Core Git & Deterministic Verification",
+      "description": "Git snapshot resolution, diff stats, and deterministic claim/anchor verification.",
+      "paths": ["src/core"],
+      "entrypoints": [
+        { "path": "src/core/verifier.ts", "startLine": 1, "symbol": "verifyBriefing" },
+        { "path": "src/core/git.ts", "startLine": 1, "symbol": "getGitContext" }
+      ]
+    },
+    {
+      "id": "vscode-host",
+      "name": "VS Code Cockpit Host",
+      "description": "VS Code extension activation, webview bridge, source navigation, and local directive storage.",
+      "paths": ["src/extension.ts", "src/webview"],
+      "entrypoints": [
+        { "path": "src/extension.ts", "startLine": 1, "symbol": "activate" }
+      ]
+    },
+    {
+      "id": "cli-gate-b",
+      "name": "Gate B Verification CLI",
+      "description": "Standalone CLI for running deterministic briefing verification experiments without IDE UI.",
+      "paths": ["src/cli", "schemas"]
+    }
+  ],
+  "guardrails": [
+    "Never present unverified or inferred claims as verified facts.",
+    "Do not load remote CDN scripts inside the VS Code Webview.",
+    "Keep high-frequency caches and annotations out of Git; only commit lightweight .atlas/manifest.json."
+  ]
+}

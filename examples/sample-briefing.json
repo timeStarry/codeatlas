@@ -1,0 +1,94 @@
+{
+  "schemaVersion": "0.1",
+  "title": "CodeAtlas v0.1 Initial Cockpit & Deterministic Verifier",
+  "author": "antigravity",
+  "targetRef": "WORKTREE",
+  "compareMode": "worktree",
+  "summary": "Initial validation build implementing the VS Code Cockpit extension, Git reader, deterministic briefing verifier, and Gate B CLI.",
+  "blockingConditions": [
+    {
+      "id": "B1",
+      "condition": "Claimed line range exceeds actual file line count or symbol is missing",
+      "outcome": "Anchor and claim are marked MISMATCH rather than VERIFIED",
+      "anchor": {
+        "path": "src/core/verifier.ts",
+        "startLine": 41,
+        "endLine": 55,
+        "symbol": "lineRangeValid"
+      }
+    },
+    {
+      "id": "B2",
+      "condition": "Briefing targetRef differs from current Git HEAD",
+      "outcome": "Evidence is flagged as STALE so stale reviews cannot be mistaken for current state",
+      "anchor": {
+        "path": "src/core/verifier.ts",
+        "startLine": 128,
+        "endLine": 140,
+        "symbol": "isStale"
+      }
+    }
+  ],
+  "claims": [
+    {
+      "id": "C1",
+      "title": "Deterministic briefing verifier entry",
+      "statement": "verifyBriefing resolves targetRef, checks staleness against HEAD, and validates every claim anchor against Git/worktree files.",
+      "claimType": "fact",
+      "anchors": [
+        {
+          "path": "src/core/verifier.ts",
+          "startLine": 118,
+          "endLine": 145,
+          "symbol": "verifyBriefing"
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "title": "VS Code Cockpit registers activity bar webview and commands",
+      "statement": "Extension activation registers codeatlas.cockpit webview provider plus openCockpit and verifyBriefing commands.",
+      "claimType": "fact",
+      "anchors": [
+        {
+          "path": "src/extension.ts",
+          "startLine": 215,
+          "endLine": 240,
+          "symbol": "activate"
+        }
+      ]
+    },
+    {
+      "id": "C3",
+      "title": "Directives export format",
+      "statement": "Annotations are serialized into a Git-ref-bound Markdown directive document for Agent rework.",
+      "claimType": "fact",
+      "anchors": [
+        {
+          "path": "src/core/directives.ts",
+          "startLine": 3,
+          "endLine": 20,
+          "symbol": "formatDirectivesForAgent"
+        }
+      ]
+    }
+  ],
+  "verificationSignals": [
+    {
+      "kind": "unit-test",
+      "status": "passed",
+      "command": "npm test",
+      "description": "Verified valid anchors, hallucinated symbols/line ranges, and stale ref detection against temporary Git repos."
+    },
+    {
+      "kind": "typecheck",
+      "status": "passed",
+      "command": "npm run typecheck",
+      "description": "Strict TypeScript compilation passes with zero errors."
+    }
+  ],
+  "blindSpots": [
+    "Symbol matching currently uses line-window text checks rather than full AST/LSP resolution.",
+    "Interactive VS Code Extension Development Host UI behavior requires manual verification in VS Code."
+  ]
+}

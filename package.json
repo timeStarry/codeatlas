@@ -1,0 +1,69 @@
+{
+  "name": "codeatlas",
+  "displayName": "CodeAtlas",
+  "description": "Git-anchored deterministic verification and system understanding cockpit for human-agent software engineering.",
+  "version": "0.1.0",
+  "publisher": "timeStarry",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/timeStarry/codeatlas.git"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Visualization",
+    "SCM Providers",
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:codeatlas.cockpit",
+    "onCommand:codeatlas.openCockpit",
+    "onCommand:codeatlas.verifyBriefing"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codeatlas",
+          "title": "CodeAtlas",
+          "icon": "media/codeatlas-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "codeatlas": [
+        {
+          "type": "webview",
+          "id": "codeatlas.cockpit",
+          "name": "Cockpit"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "codeatlas.openCockpit",
+        "title": "CodeAtlas: Open Cockpit"
+      },
+      {
+        "command": "codeatlas.verifyBriefing",
+        "title": "CodeAtlas: Verify Agent Briefing JSON"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "node esbuild.mjs --test && node --test dist-test/verifier.test.js",
+    "verify-briefing": "node dist/verify-briefing.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.3"
+  }
+}

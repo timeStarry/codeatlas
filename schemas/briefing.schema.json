@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/timeStarry/codeatlas/schemas/briefing.schema.json",
+  "title": "CodeAtlas Agent Briefing v0.1",
+  "description": "Contract schema for Agent-submitted causal change briefings verified deterministically by CodeAtlas.",
+  "type": "object",
+  "required": ["schemaVersion", "title", "targetRef", "summary", "claims"],
+  "properties": {
+    "schemaVersion": {
+      "const": "0.1"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "author": {
+      "type": "string",
+      "description": "Agent name/model or human curator identifier"
+    },
+    "baseRef": {
+      "type": "string",
+      "description": "Base git commit SHA or ref for diff comparison"
+    },
+    "targetRef": {
+      "type": "string",
+      "description": "Target git commit SHA, ref, or 'WORKTREE'"
+    },
+    "compareMode": {
+      "type": "string",
+      "enum": ["direct-diff", "merge-base", "worktree"],
+      "default": "direct-diff"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "blockingConditions": {
+      "type": "array",
+      "description": "Explicit guardrails, early exits, conflict branches, or conditions that prevent default execution.",
+      "items": {
+        "type": "object",
+        "required": ["id", "condition", "outcome"],
+        "properties": {
+          "id": { "type": "string" },
+          "condition": { "type": "string" },
+          "outcome": { "type": "string" },
+          "anchor": { "$ref": "#/$defs/evidenceAnchor" }
+        }
+      }
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "statement", "claimType", "anchors"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "statement": { "type": "string" },
+          "claimType": {
+            "type": "string",
+            "enum": ["fact", "inference", "unknown"]
+          },
+          "expectChanged": {
+            "type": "boolean",
+            "default": false
+          },
+          "anchors": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/evidenceAnchor" }
+          }
+        }
+      }
+    },
+    "verificationSignals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "status", "description"],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["unit-test", "integration-test", "typecheck", "lint", "manual", "other"]
+          },
+          "status": {
+            "type": "string",
+            "enum": ["passed", "failed", "not-run", "unknown"]
+          },
+          "command": { "type": "string" },
+          "description": { "type": "string" },
+          "evidencePath": { "type": "string" }
+        }
+      }
+    },
+    "blindSpots": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "evidenceAnchor": {
+      "type": "object",
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string", "description": "Repository-relative POSIX path" },
+        "startLine": { "type": "integer", "minimum": 1 },
+        "endLine": { "type": "integer", "minimum": 1 },
+        "symbol": { "type": "string" },
+        "excerpt": { "type": "string" }
+      }
+    }
+  }
+}
