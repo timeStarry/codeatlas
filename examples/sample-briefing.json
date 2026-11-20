@@ -52,8 +52,8 @@
       "anchors": [
         {
           "path": "src/extension.ts",
-          "startLine": 215,
-          "endLine": 240,
+          "startLine": 337,
+          "endLine": 358,
           "symbol": "activate"
         }
       ]

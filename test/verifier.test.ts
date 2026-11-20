@@ -6,6 +6,7 @@ import * as fs from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { verifyBriefing } from '../src/core/verifier.js';
+import { buildAtlasGraph } from '../src/core/graph.js';
 import { BriefingReport } from '../src/core/types.js';
 
 const execFileAsync = promisify(execFile);
@@ -149,6 +150,73 @@ test('verifyBriefing marks older targetRef as stale and keeps inference unverifi
     assert.equal(res.overallBadge, 'stale');
     assert.equal(res.claims[0].badge, 'stale');
     assert.equal(res.claims[1].badge, 'stale');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('buildAtlasGraph generates domain, claim, evidence, blocking fork, and directive nodes', async () => {
+  const { dir, baseSha, headSha } = await createTempRepo();
+  try {
+    const briefing: BriefingReport = {
+      schemaVersion: '0.1',
+      title: 'Sync guard',
+      baseRef: baseSha,
+      targetRef: headSha,
+      summary: 'Guards dirty docs.',
+      blockingConditions: [
+        {
+          id: 'B1',
+          condition: 'dirty === true',
+          outcome: 'conflict',
+          anchor: { path: 'src/sync.ts', startLine: 2, endLine: 4, symbol: 'if (dirty)' },
+        },
+      ],
+      claims: [
+        {
+          id: 'C1',
+          title: 'Dirty branch',
+          statement: 'Handles dirty branch.',
+          claimType: 'fact',
+          anchors: [{ path: 'src/sync.ts', startLine: 1, endLine: 4, symbol: 'syncDoc' }],
+        },
+      ],
+    };
+
+    const verification = await verifyBriefing(dir, briefing);
+    const graph = buildAtlasGraph({
+      git: {
+        repoRoot: dir,
+        headSha,
+        shortSha: headSha.slice(0, 8),
+        branch: 'main',
+        dirtyCount: 0,
+        worktrees: [],
+        recentRefs: ['HEAD~1'],
+      },
+      diffStats: [{ path: 'src/sync.ts', status: 'M', additions: 3, deletions: 0 }],
+      verification,
+      directives: [
+        {
+          id: 'd1',
+          createdAt: new Date().toISOString(),
+          ref: headSha.slice(0, 8),
+          path: 'src/sync.ts',
+          startLine: 2,
+          kind: 'rework',
+          note: 'Add telemetry on conflict',
+        },
+      ],
+    });
+
+    assert.ok(graph.nodes.some((n) => n.kind === 'root'));
+    assert.ok(graph.nodes.some((n) => n.kind === 'domain'));
+    assert.ok(graph.nodes.some((n) => n.kind === 'claim'));
+    assert.ok(graph.nodes.some((n) => n.kind === 'evidence'));
+    assert.ok(graph.nodes.some((n) => n.kind === 'blocking'));
+    assert.ok(graph.nodes.some((n) => n.kind === 'directive'));
+    assert.ok(graph.edges.some((e) => e.kind === 'blocking'));
+    assert.ok(graph.edges.some((e) => e.kind === 'directive'));
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
   }

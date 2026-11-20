@@ -190,8 +190,9 @@ export function getCockpitHtml(nonce: string): string {
       <div class="meta" id="gitMeta">Loading Git context...</div>
     </div>
     <div class="actions">
+      <button id="btnOpenCanvas">Open Canvas</button>
+      <button class="secondary" id="btnLoadBriefing">Verify Briefing</button>
       <button class="secondary" id="btnRefresh">Refresh</button>
-      <button id="btnLoadBriefing">Verify Briefing JSON</button>
     </div>
   </div>
 
@@ -245,6 +246,10 @@ export function getCockpitHtml(nonce: string): string {
 
     document.querySelectorAll('.tab').forEach(el => {
       el.addEventListener('click', () => switchTab(el.dataset.tab));
+    });
+
+    document.getElementById('btnOpenCanvas').addEventListener('click', () => {
+      vscode.postMessage({ type: 'openCanvas' });
     });
 
     document.getElementById('btnRefresh').addEventListener('click', () => {

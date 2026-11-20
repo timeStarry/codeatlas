@@ -2,16 +2,18 @@ import * as vscode from 'vscode';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 import * as crypto from 'node:crypto';
-import { getDiffStats, getGitContext } from './core/git.js';
+import { getDiffStats, getGitContext, readFileAtRef } from './core/git.js';
 import { loadAtlasManifest } from './core/manifest.js';
 import { verifyBriefing } from './core/verifier.js';
 import { formatDirectivesForAgent } from './core/directives.js';
+import { buildAtlasGraph } from './core/graph.js';
 import {
   AnnotationDirective,
   BriefingReport,
   BriefingVerificationResult,
 } from './core/types.js';
 import { getCockpitHtml } from './webview/html.js';
+import { getCanvasHtml } from './webview/canvasHtml.js';
 
 const DIRECTIVES_STORAGE_KEY = 'codeatlas.directives.v1';
 
@@ -19,6 +21,7 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'codeatlas.cockpit';
 
   private view?: vscode.WebviewView;
+  private canvasPanel?: vscode.WebviewPanel;
   private lastVerification?: BriefingVerificationResult;
   private baseRef = 'HEAD~1';
 
@@ -32,11 +35,47 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
 
     const nonce = crypto.randomBytes(16).toString('hex');
     webviewView.webview.html = getCockpitHtml(nonce);
+    this.bindWebviewMessages(webviewView.webview);
+  }
 
-    webviewView.webview.onDidReceiveMessage(async (msg) => {
+  public openCanvas(): void {
+    if (this.canvasPanel) {
+      this.canvasPanel.reveal(vscode.ViewColumn.One);
+      void this.pushState();
+      return;
+    }
+
+    const panel = vscode.window.createWebviewPanel(
+      'codeatlas.canvas',
+      'CodeAtlas Canvas',
+      vscode.ViewColumn.One,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+      }
+    );
+
+    const nonce = crypto.randomBytes(16).toString('hex');
+    panel.webview.html = getCanvasHtml(nonce);
+    this.canvasPanel = panel;
+
+    panel.onDidDispose(() => {
+      if (this.canvasPanel === panel) {
+        this.canvasPanel = undefined;
+      }
+    });
+
+    this.bindWebviewMessages(panel.webview);
+  }
+
+  private bindWebviewMessages(webview: vscode.Webview): void {
+    webview.onDidReceiveMessage(async (msg) => {
       switch (msg.type) {
         case 'ready':
           await this.pushState();
+          break;
+        case 'openCanvas':
+          this.openCanvas();
           break;
         case 'refresh':
           if (typeof msg.baseRef === 'string') {
@@ -49,6 +88,9 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
           break;
         case 'openFile':
           await this.openWorkspaceFile(msg.path, msg.line);
+          break;
+        case 'requestSnippet':
+          await this.sendCodeSnippet(webview, msg);
           break;
         case 'addDirective':
           await this.addDirective(msg);
@@ -76,6 +118,39 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
       DIRECTIVES_STORAGE_KEY,
       []
     );
+  }
+
+  private async sendCodeSnippet(
+    webview: vscode.Webview,
+    msg: { nodeId: string; path: string; startLine?: number; endLine?: number }
+  ): Promise<void> {
+    const workspaceRoot = this.getWorkspaceRoot();
+    if (!workspaceRoot || !msg.path) return;
+    try {
+      const gitCtx = await getGitContext(workspaceRoot);
+      const content = await readFileAtRef(gitCtx.repoRoot, msg.path, 'WORKTREE');
+      if (content === undefined) return;
+      const allLines = content.split(/\r?\n/);
+      const start = Math.max(1, (msg.startLine ?? 1) - 4);
+      const end = Math.min(allLines.length, (msg.endLine ?? msg.startLine ?? 1) + 8);
+      const hlStart = msg.startLine ?? 1;
+      const hlEnd = msg.endLine ?? hlStart;
+
+      const lines = [];
+      for (let i = start; i <= end; i++) {
+        lines.push({
+          num: i,
+          text: allLines[i - 1] ?? '',
+          highlight: i >= hlStart && i <= hlEnd,
+        });
+      }
+      await webview.postMessage({
+        type: 'snippet',
+        payload: { nodeId: msg.nodeId, lines },
+      });
+    } catch {
+      // ignore unreadable snippets
+    }
   }
 
   public async pickAndVerifyBriefing(): Promise<void> {
@@ -118,7 +193,10 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
       const gitCtx = await getGitContext(workspaceRoot);
       const fullPath = path.join(gitCtx.repoRoot, relPath);
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(fullPath));
-      const editor = await vscode.window.showTextDocument(doc, { preview: false });
+      const editor = await vscode.window.showTextDocument(doc, {
+        viewColumn: this.canvasPanel ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active,
+        preview: false,
+      });
       const targetLine = Math.max(0, Math.min(line - 1, doc.lineCount - 1));
       const range = new vscode.Range(targetLine, 0, targetLine, 0);
       editor.selection = new vscode.Selection(range.start, range.end);
@@ -186,10 +264,11 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
   }
 
   public async pushState(): Promise<void> {
-    if (!this.view) return;
     const workspaceRoot = this.getWorkspaceRoot();
+    const directives = this.getDirectives();
+
     if (!workspaceRoot) {
-      this.view.webview.postMessage({
+      this.view?.webview.postMessage({
         type: 'state',
         payload: {
           git: null,
@@ -197,8 +276,12 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
           diffStats: [],
           manifest: null,
           verification: this.lastVerification ?? null,
-          directives: this.getDirectives(),
+          directives,
         },
+      });
+      this.canvasPanel?.webview.postMessage({
+        type: 'canvasState',
+        payload: { git: null, graph: { nodes: [], edges: [] } },
       });
       return;
     }
@@ -209,7 +292,8 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
         getDiffStats(git.repoRoot, this.baseRef),
         loadAtlasManifest(git.repoRoot),
       ]);
-      this.view.webview.postMessage({
+
+      this.view?.webview.postMessage({
         type: 'state',
         payload: {
           git,
@@ -217,11 +301,25 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
           diffStats,
           manifest: manifest ?? null,
           verification: this.lastVerification ?? null,
-          directives: this.getDirectives(),
+          directives,
         },
       });
+
+      if (this.canvasPanel) {
+        const graph = buildAtlasGraph({
+          git,
+          manifest,
+          diffStats,
+          verification: this.lastVerification,
+          directives,
+        });
+        this.canvasPanel.webview.postMessage({
+          type: 'canvasState',
+          payload: { git, graph },
+        });
+      }
     } catch {
-      this.view.webview.postMessage({
+      this.view?.webview.postMessage({
         type: 'state',
         payload: {
           git: null,
@@ -229,7 +327,7 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
           diffStats: [],
           manifest: null,
           verification: this.lastVerification ?? null,
-          directives: this.getDirectives(),
+          directives,
         },
       });
     }
@@ -248,6 +346,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('codeatlas.openCockpit', async () => {
       await vscode.commands.executeCommand('workbench.view.extension.codeatlas');
       await provider.pushState();
+    }),
+    vscode.commands.registerCommand('codeatlas.openCanvas', () => {
+      provider.openCanvas();
     }),
     vscode.commands.registerCommand('codeatlas.verifyBriefing', async () => {
       await vscode.commands.executeCommand('workbench.view.extension.codeatlas');

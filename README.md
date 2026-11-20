@@ -41,5 +41,5 @@ npm run verify-briefing -- examples/sample-briefing.json
 
 1. Open `d:\Project\codeatlas` in VS Code.
 2. Press `F5` to launch the Extension Development Host.
-3. Click the **CodeAtlas** icon in the Activity Bar (or run `CodeAtlas: Open Cockpit`).
-4. Click **Verify Briefing JSON** and select `examples/sample-briefing.json`.
+3. Click the **CodeAtlas** icon in the Activity Bar and click **Open Canvas** (or run `CodeAtlas: Open Atlas Canvas` from the Command Palette) for the full-viewport interactive Mind-Map / Canvas.
+4. Click **Verify Briefing JSON** and select `examples/sample-briefing.json` to see live verified claims, blocking forks, inline code previews, and canvas directive nodes.

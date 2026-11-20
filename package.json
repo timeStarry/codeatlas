@@ -20,6 +20,7 @@
   "activationEvents": [
     "onView:codeatlas.cockpit",
     "onCommand:codeatlas.openCockpit",
+    "onCommand:codeatlas.openCanvas",
     "onCommand:codeatlas.verifyBriefing"
   ],
   "main": "./dist/extension.js",
@@ -46,6 +47,10 @@
       {
         "command": "codeatlas.openCockpit",
         "title": "CodeAtlas: Open Cockpit"
+      },
+      {
+        "command": "codeatlas.openCanvas",
+        "title": "CodeAtlas: Open Atlas Canvas"
       },
       {
         "command": "codeatlas.verifyBriefing",
