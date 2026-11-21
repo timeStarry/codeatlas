@@ -1,6 +1,10 @@
+import { getFileIconsClientJs } from './fileIcons.js';
+
 export function getCockpitHtml(nonce: string): string {
+  const fileIconsJs = getFileIconsClientJs();
+
   return /* html */ `<!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
@@ -8,75 +12,106 @@ export function getCockpitHtml(nonce: string): string {
   <title>CodeAtlas Cockpit</title>
   <style>
     :root {
-      --bg: var(--vscode-editor-background);
-      --fg: var(--vscode-editor-foreground);
-      --muted: var(--vscode-descriptionForeground);
-      --border: var(--vscode-panel-border, rgba(128,128,128,0.25));
-      --card: var(--vscode-sideBar-background, rgba(128,128,128,0.06));
+      --bg: var(--vscode-sideBar-background, var(--vscode-editor-background, #181a1f));
+      --fg: var(--vscode-sideBar-foreground, var(--vscode-editor-foreground, #dcdfe4));
+      --muted: var(--vscode-descriptionForeground, #8b949e);
+      --border: var(--vscode-panel-border, rgba(140,150,168,0.2));
+      --border-strong: rgba(140,150,168,0.34);
+      --card: var(--vscode-editor-background, rgba(135,145,160,0.06));
+      --surface-subtle: rgba(135,145,160,0.1);
       --accent: var(--vscode-textLink-foreground, #4da6ff);
-      --btn-bg: var(--vscode-button-background, #0e639c);
+      --btn-bg: var(--vscode-button-background, #1f6feb);
       --btn-fg: var(--vscode-button-foreground, #ffffff);
-      --btn-hover: var(--vscode-button-hoverBackground, #1177bb);
-      --input-bg: var(--vscode-input-background);
-      --input-fg: var(--vscode-input-foreground);
-      --input-border: var(--vscode-input-border, rgba(128,128,128,0.35));
+      --btn-hover: var(--vscode-button-hoverBackground, #388bfd);
+      --input-bg: var(--vscode-input-background, #252932);
+      --input-fg: var(--vscode-input-foreground, #dcdfe4);
+      --input-border: var(--vscode-input-border, rgba(140,150,168,0.3));
+      --mono: var(--vscode-editor-font-family, Consolas, monospace);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      padding: 12px;
-      font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, sans-serif);
-      font-size: var(--vscode-font-size, 13px);
+      padding: 10px 12px;
+      font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif);
+      font-size: 12.5px;
       color: var(--fg);
       background: var(--bg);
       line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+    }
+    .atlas-ico {
+      width: 15px;
+      height: 15px;
+      flex-shrink: 0;
+      display: inline-block;
+      vertical-align: middle;
     }
     .header {
       display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      justify-content: space-between;
+      flex-direction: column;
       gap: 8px;
       padding-bottom: 10px;
       border-bottom: 1px solid var(--border);
-      margin-bottom: 10px;
+      margin-bottom: 8px;
+    }
+    .title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
     }
     .title-group h2 {
       margin: 0;
-      font-size: 14px;
-      font-weight: 600;
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
     .meta {
       font-size: 11px;
       color: var(--muted);
-      margin-top: 2px;
-      font-family: var(--vscode-editor-font-family, monospace);
+      font-family: var(--mono);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .actions {
       display: flex;
-      gap: 6px;
+      gap: 5px;
       flex-wrap: wrap;
     }
     button {
       background: var(--btn-bg);
       color: var(--btn-fg);
-      border: none;
-      padding: 4px 10px;
-      border-radius: 3px;
+      border: 1px solid transparent;
+      height: 25px;
+      padding: 0 9px;
+      border-radius: 5px;
       cursor: pointer;
-      font-size: 12px;
+      font-size: 11.5px;
+      font-family: inherit;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
     }
-    button:hover { background: var(--btn-hover); }
+    button:hover:not(:disabled) { background: var(--btn-hover); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
     button.secondary {
       background: transparent;
-      color: var(--fg);
+      color: var(--muted);
       border: 1px solid var(--border);
     }
-    button.secondary:hover { background: rgba(128,128,128,0.12); }
+    button.secondary:hover:not(:disabled) {
+      color: var(--fg);
+      background: var(--surface-subtle);
+      border-color: var(--border-strong);
+    }
     .tabs {
       display: flex;
-      gap: 4px;
-      margin-bottom: 12px;
+      gap: 2px;
+      margin-bottom: 10px;
       border-bottom: 1px solid var(--border);
     }
     .tab {
@@ -85,9 +120,12 @@ export function getCockpitHtml(nonce: string): string {
       border: none;
       border-bottom: 2px solid transparent;
       border-radius: 0;
-      padding: 6px 10px;
+      height: 28px;
+      padding: 0 9px;
+      font-size: 11.5px;
       cursor: pointer;
     }
+    .tab:hover { color: var(--fg); background: transparent; }
     .tab.active {
       color: var(--fg);
       border-bottom-color: var(--accent);
@@ -96,43 +134,56 @@ export function getCockpitHtml(nonce: string): string {
     .card {
       background: var(--card);
       border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 10px;
-      margin-bottom: 10px;
+      border-radius: 7px;
+      padding: 9px 10px;
+      margin-bottom: 8px;
     }
     .card-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 8px;
-      margin-bottom: 6px;
+      margin-bottom: 5px;
     }
     .badge {
-      display: inline-block;
-      font-size: 10px;
+      display: inline-flex;
+      align-items: center;
+      font-size: 9.5px;
       font-weight: 600;
       padding: 1px 6px;
       border-radius: 999px;
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
+      flex-shrink: 0;
     }
-    .badge-verified { background: rgba(46, 160, 67, 0.2); color: #3fb950; }
-    .badge-mismatch { background: rgba(248, 81, 73, 0.2); color: #f85149; }
-    .badge-stale { background: rgba(210, 153, 34, 0.22); color: #d29922; }
-    .badge-unverified { background: rgba(139, 148, 158, 0.22); color: var(--muted); }
-    .badge-unknown { background: rgba(139, 148, 158, 0.18); color: var(--muted); }
+    .badge-verified { background: rgba(63, 185, 80, 0.16); color: #3fb950; }
+    .badge-mismatch { background: rgba(248, 81, 73, 0.18); color: #f85149; }
+    .badge-stale { background: rgba(210, 153, 34, 0.2); color: #d29922; }
+    .badge-unverified { background: var(--surface-subtle); color: var(--muted); }
+    .badge-unknown { background: var(--surface-subtle); color: var(--muted); }
+    .anchor-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      margin-top: 5px;
+      padding: 3px 5px;
+      border-radius: 5px;
+      background: var(--surface-subtle);
+    }
     .anchor-link {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      color: var(--accent);
+      color: var(--fg);
       cursor: pointer;
       text-decoration: none;
-      font-family: var(--vscode-editor-font-family, monospace);
-      font-size: 12px;
-      margin-top: 4px;
+      font-family: var(--mono);
+      font-size: 11px;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
-    .anchor-link:hover { text-decoration: underline; }
+    .anchor-link:hover { color: var(--accent); }
     .note {
       font-size: 11px;
       color: var(--muted);
@@ -140,10 +191,9 @@ export function getCockpitHtml(nonce: string): string {
     }
     .note.warn { color: #f85149; }
     .section-title {
-      font-size: 12px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.4px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
       color: var(--muted);
       margin: 12px 0 6px;
     }
@@ -158,41 +208,43 @@ export function getCockpitHtml(nonce: string): string {
       background: var(--input-bg);
       color: var(--input-fg);
       border: 1px solid var(--input-border);
-      border-radius: 3px;
-      padding: 4px 8px;
-      font-size: 12px;
+      border-radius: 5px;
+      padding: 4px 7px;
+      font-size: 11.5px;
       font-family: inherit;
     }
-    textarea { width: 100%; min-height: 60px; resize: vertical; }
+    textarea { width: 100%; min-height: 58px; resize: vertical; }
     .empty {
       color: var(--muted);
-      font-style: italic;
-      padding: 12px 0;
+      font-size: 11.5px;
+      padding: 10px 0;
     }
     .diff-item {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 4px 0;
+      gap: 6px;
+      padding: 5px 0;
       border-bottom: 1px solid var(--border);
-      font-family: var(--vscode-editor-font-family, monospace);
-      font-size: 12px;
+      font-family: var(--mono);
+      font-size: 11px;
     }
+    .diff-item:last-child { border-bottom: none; }
     .diff-add { color: #3fb950; }
     .diff-del { color: #f85149; }
     .analyze-pill {
-      padding: 6px 10px;
-      border-radius: 4px;
-      margin-bottom: 10px;
-      font-size: 12px;
+      padding: 6px 9px;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      font-size: 11.5px;
       font-weight: 600;
-      background: rgba(56, 139, 253, 0.16);
-      border: 1px solid rgba(88, 166, 255, 0.45);
+      background: rgba(56, 139, 253, 0.14);
+      border: 1px solid rgba(88, 166, 255, 0.38);
       color: var(--accent);
     }
     .analyze-pill.err {
-      background: rgba(248, 81, 73, 0.16);
-      border-color: rgba(248, 81, 73, 0.45);
+      background: rgba(248, 81, 73, 0.14);
+      border-color: rgba(248, 81, 73, 0.4);
       color: #f85149;
     }
     .hidden { display: none; }
@@ -200,15 +252,23 @@ export function getCockpitHtml(nonce: string): string {
 </head>
 <body>
   <div class="header">
-    <div class="title-group">
-      <h2>CodeAtlas 驾驶舱</h2>
-      <div class="meta" id="gitMeta">正在读取 Git 上下文...</div>
+    <div class="title-row">
+      <div class="title-group">
+        <h2>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style="color:var(--accent);" aria-hidden="true">
+            <path d="M8 1.6 13.8 4.9v6.2L8 14.4 2.2 11.1V4.9L8 1.6Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+            <circle cx="8" cy="8" r="2" fill="currentColor"/>
+          </svg>
+          CodeAtlas 驾驶舱
+        </h2>
+      </div>
+      <button class="secondary" id="btnRefresh" style="height:22px;padding:0 7px;font-size:11px;">↻ 刷新</button>
     </div>
+    <div class="meta" id="gitMeta">正在读取 Git 上下文...</div>
     <div class="actions">
       <button id="btnOpenCanvas">打开画布</button>
-      <button id="btnAnalyzeBranch">⚡ 分析分支</button>
-      <button class="secondary" id="btnLoadBriefing">核验简报</button>
-      <button class="secondary" id="btnRefresh">刷新</button>
+      <button class="secondary" id="btnAnalyzeBranch" style="color:var(--accent);border-color:rgba(77,166,255,0.4);">⚡ 分析分支</button>
+      <button class="secondary" id="btnLoadBriefing">加载 JSON</button>
     </div>
   </div>
 
@@ -217,7 +277,7 @@ export function getCockpitHtml(nonce: string): string {
   <div class="tabs">
     <button class="tab active" data-tab="briefing">因果简报</button>
     <button class="tab" data-tab="delta">变更与骨架</button>
-    <button class="tab" data-tab="directives">纠偏指令</button>
+    <button class="tab" data-tab="directives">纠偏批注</button>
   </div>
 
   <div id="tab-briefing"></div>
@@ -226,6 +286,16 @@ export function getCockpitHtml(nonce: string): string {
 
   <script nonce="${nonce}">
     const hostApi = window.__CODEATLAS_HOST__ || acquireVsCodeApi();
+    ${fileIconsJs}
+
+    const BADGE_ZH = {
+      verified: '✓ 已核验',
+      mismatch: '✕ 失配',
+      stale: '⟳ 过期',
+      unverified: '未核验',
+      unknown: '未知'
+    };
+
     let state = {
       git: null,
       baseRef: 'HEAD~1',
@@ -245,7 +315,7 @@ export function getCockpitHtml(nonce: string): string {
     }
 
     function badgeHtml(b) {
-      return '<span class="badge badge-' + esc(b) + '">' + esc(b) + '</span>';
+      return '<span class="badge badge-' + esc(b) + '">' + esc(BADGE_ZH[b] || b) + '</span>';
     }
 
     function openAnchor(path, line) {
@@ -287,10 +357,10 @@ export function getCockpitHtml(nonce: string): string {
       if (state.git) {
         metaEl.textContent =
           state.git.branch + ' @ ' + state.git.shortSha +
-          (state.git.dirtyCount > 0 ? ' · ' + state.git.dirtyCount + ' dirty' : ' · clean') +
-          ' · ' + state.git.worktrees.length + ' worktree(s)';
+          (state.git.dirtyCount > 0 ? ' · ' + state.git.dirtyCount + ' 处未提交' : ' · 工作区干净') +
+          ' · ' + state.git.worktrees.length + ' 个工作树';
       } else {
-        metaEl.textContent = 'No Git repository detected in workspace.';
+        metaEl.textContent = '当前工作区未检测到 Git 仓库';
       }
 
       renderBriefing();
@@ -304,8 +374,8 @@ export function getCockpitHtml(nonce: string): string {
       if (!v) {
         el.innerHTML =
           '<div class="card">' +
-            '<div class="card-header"><strong>No Briefing Loaded</strong>' + badgeHtml('unknown') + '</div>' +
-            '<p class="note">Click <strong>Verify Briefing JSON</strong> to load an Agent-submitted briefing (schema v0.1) and deterministically verify its code anchors, symbols, diff membership, and staleness against Git.</p>' +
+            '<div class="card-header"><strong>尚未加载简报</strong>' + badgeHtml('unknown') + '</div>' +
+            '<p class="note" style="margin:4px 0 0;">点击上方 <strong>⚡ 分析分支</strong> 自动生成确定性核验简报（Schema v0.2），或点击 <strong>打开画布</strong> 直接浏览项目架构底图。</p>' +
           '</div>';
         return;
       }
@@ -313,73 +383,75 @@ export function getCockpitHtml(nonce: string): string {
       let html =
         '<div class="card">' +
           '<div class="card-header"><strong>' + esc(v.briefingTitle) + '</strong>' + badgeHtml(v.overallBadge) + '</div>' +
-          '<div class="note">Target Ref: <code>' + esc(v.targetRefClaimed) + '</code> · Current HEAD: <code>' + esc((v.currentHeadSha || 'UNBORN').slice(0, 8)) + '</code>' +
-          (v.isStale ? ' <strong style="color:#d29922;">[STALE]</strong>' : '') + '</div>' +
-          '<div class="note">Verified: ' + v.summaryCounts.verified +
-            ' · Mismatch: ' + v.summaryCounts.mismatch +
-            ' · Stale: ' + v.summaryCounts.stale +
-            ' · Unverified: ' + v.summaryCounts.unverified +
-            ' · Unknown: ' + v.summaryCounts.unknown + '</div>' +
+          '<div class="note">目标快照: <code>' + esc(v.targetRefClaimed) + '</code> · 当前 HEAD: <code>' + esc((v.currentHeadSha || 'UNBORN').slice(0, 8)) + '</code>' +
+          (v.isStale ? ' <strong style="color:#d29922;">[已过期]</strong>' : '') + '</div>' +
+          '<div class="note">已核验 ' + v.summaryCounts.verified +
+            ' · 失配 ' + v.summaryCounts.mismatch +
+            ' · 过期 ' + v.summaryCounts.stale +
+            ' · 未核验 ' + v.summaryCounts.unverified + '</div>' +
         '</div>';
 
       if (v.blockingConditions && v.blockingConditions.length > 0) {
-        html += '<div class="section-title">Explicit Blocking Conditions</div>';
+        html += '<div class="section-title">显式阻断守卫 (' + v.blockingConditions.length + ')</div>';
         for (const b of v.blockingConditions) {
           const anc = b.item.anchor;
           html +=
             '<div class="card">' +
-              '<div class="card-header"><strong>' + esc(b.item.id) + ': ' + esc(b.item.condition) + '</strong>' + badgeHtml(b.badge) + '</div>' +
-              '<div>Outcome: ' + esc(b.item.outcome) + '</div>' +
-              (anc ? '<div><a class="anchor-link" data-path="' + esc(anc.path) + '" data-line="' + esc(anc.startLine || 1) + '">' +
-                esc(anc.path) + (anc.startLine ? ':' + anc.startLine : '') + (anc.symbol ? ' (' + esc(anc.symbol) + ')' : '') + '</a></div>' : '') +
+              '<div class="card-header"><strong>' + esc(b.item.id) + ' · ' + esc(b.item.condition) + '</strong>' + badgeHtml(b.badge) + '</div>' +
+              '<div style="font-size:12px;">→ ' + esc(b.item.outcome) + '</div>' +
+              (anc ? '<div class="anchor-row"><a class="anchor-link" data-path="' + esc(anc.path) + '" data-line="' + esc(anc.startLine || 1) + '">' +
+                getFileIconSvg(anc.path) +
+                '<span>' + esc(anc.path) + (anc.startLine ? ':' + anc.startLine : '') + (anc.symbol ? ' · ' + esc(anc.symbol) : '') + '</span></a></div>' : '') +
             '</div>';
         }
       }
 
-      html += '<div class="section-title">Claims &amp; Deterministic Evidence</div>';
+      html += '<div class="section-title">核心声明与代码锚点 (' + v.claims.length + ')</div>';
       for (const c of v.claims) {
         html +=
           '<div class="card">' +
             '<div class="card-header"><strong>' + esc(c.claim.id) + ' · ' + esc(c.claim.title) + '</strong>' + badgeHtml(c.badge) + '</div>' +
-            '<div>' + esc(c.claim.statement) + '</div>' +
-            '<div class="note">Type: ' + esc(c.claim.claimType) + '</div>';
+            '<div style="font-size:12px;">' + esc(c.claim.statement) + '</div>';
         for (const n of c.notes) {
           html += '<div class="note">' + esc(n) + '</div>';
         }
         for (const a of c.anchors) {
           const loc = a.anchor.path + (a.anchor.startLine ? ':' + a.anchor.startLine : '');
           html +=
-            '<div style="margin-top:6px;">' +
-              badgeHtml(a.badge) + ' ' +
+            '<div class="anchor-row">' +
               '<a class="anchor-link" data-path="' + esc(a.anchor.path) + '" data-line="' + esc(a.anchor.startLine || 1) + '">' +
-                esc(loc) + (a.anchor.symbol ? ' · ' + esc(a.anchor.symbol) : '') +
+                getFileIconSvg(a.anchor.path) +
+                '<span>' + esc(loc) + (a.anchor.symbol ? ' · ' + esc(a.anchor.symbol) : '') + '</span>' +
               '</a>' +
-              '<button class="secondary" style="margin-left:8px;padding:1px 6px;font-size:11px;" data-annotate-path="' + esc(a.anchor.path) + '" data-annotate-line="' + esc(a.anchor.startLine || 1) + '">+ Note</button>';
+              '<span style="display:inline-flex;align-items:center;gap:4px;flex-shrink:0;">' +
+                badgeHtml(a.badge) +
+                '<button class="secondary" style="height:20px;padding:0 6px;font-size:10.5px;" data-annotate-path="' + esc(a.anchor.path) + '" data-annotate-line="' + esc(a.anchor.startLine || 1) + '">+ 批注</button>' +
+              '</span>' +
+            '</div>';
           for (const an of a.notes) {
             html += '<div class="note warn">! ' + esc(an) + '</div>';
           }
-          html += '</div>';
         }
         html += '</div>';
       }
 
-      html += '<div class="section-title">Verification Signals</div>';
+      html += '<div class="section-title">验证信号</div>';
       if (!v.signals || v.signals.length === 0) {
-        html += '<div class="card"><div class="note">No verification signals attached (status: UNKNOWN).</div></div>';
+        html += '<div class="card"><div class="note">未附带测试或构建验证信号。</div></div>';
       } else {
         for (const s of v.signals) {
           const sb = s.status === 'passed' ? 'verified' : (s.status === 'failed' ? 'mismatch' : 'unknown');
           html +=
             '<div class="card">' +
               '<div class="card-header"><strong>' + esc(s.kind) + '</strong>' + badgeHtml(sb) + '</div>' +
-              '<div>' + esc(s.description) + '</div>' +
+              '<div style="font-size:12px;">' + esc(s.description) + '</div>' +
               (s.command ? '<div class="note"><code>' + esc(s.command) + '</code></div>' : '') +
             '</div>';
         }
       }
 
       if (v.blindSpots && v.blindSpots.length > 0) {
-        html += '<div class="section-title">Declared Blind Spots</div><div class="card"><ul style="margin:0;padding-left:18px;">';
+        html += '<div class="section-title">已声明盲区</div><div class="card"><ul style="margin:0;padding-left:18px;font-size:12px;">';
         for (const bs of v.blindSpots) {
           html += '<li>' + esc(bs) + '</li>';
         }
@@ -394,37 +466,43 @@ export function getCockpitHtml(nonce: string): string {
       const el = document.getElementById('tab-delta');
       const refs = state.git ? state.git.recentRefs : ['HEAD~1'];
       let options = refs.map(r =>
-        '<option value="' + esc(r) + '"' + (r === state.baseRef ? ' selected' : '') + '>' + esc(r) + '</option>'
+        '<option value="' + esc(r) + '"' + (r === state.baseRef ? ' selected' : '') + '>vs ' + esc(r) + '</option>'
       ).join('');
 
       let html =
         '<div class="row">' +
-          '<label for="baseRefSelect">Base Ref:</label>' +
+          '<label for="baseRefSelect" style="font-size:11.5px;color:var(--muted);">对比基准:</label>' +
           '<select id="baseRefSelect">' + options + '</select>' +
         '</div>';
 
       if (state.manifest && state.manifest.domains) {
-        html += '<div class="section-title">.atlas/manifest.json Semantic Skeleton</div>';
+        html += '<div class="section-title">架构骨架 (.atlas/manifest.json)</div>';
         for (const d of state.manifest.domains) {
           html +=
             '<div class="card">' +
-              '<strong>' + esc(d.name) + '</strong>' +
+              '<div style="display:flex;align-items:center;gap:6px;">' +
+                getNodeIconSvg({ kind: 'domain', title: d.name }, false) +
+                '<strong>' + esc(d.name) + '</strong>' +
+              '</div>' +
               '<div class="note">' + esc(d.description) + '</div>' +
-              '<div class="note">Paths: <code>' + esc(d.paths.join(', ')) + '</code></div>' +
+              '<div class="note">路径: <code>' + esc(d.paths.join(', ')) + '</code></div>' +
             '</div>';
         }
       }
 
-      html += '<div class="section-title">Git Diff vs ' + esc(state.baseRef) + ' (' + state.diffStats.length + ' files)</div>';
+      html += '<div class="section-title">变更文件 (' + state.diffStats.length + ')</div>';
       if (state.diffStats.length === 0) {
-        html += '<div class="empty">No diff detected against ' + esc(state.baseRef) + '.</div>';
+        html += '<div class="empty">当前相对 ' + esc(state.baseRef) + ' 无文件变更。</div>';
       } else {
         html += '<div class="card">';
         for (const f of state.diffStats) {
           html +=
             '<div class="diff-item">' +
-              '<a class="anchor-link" data-path="' + esc(f.path) + '" data-line="1">[' + esc(f.status) + '] ' + esc(f.path) + '</a>' +
-              '<span><span class="diff-add">+' + f.additions + '</span> <span class="diff-del">-' + f.deletions + '</span></span>' +
+              '<a class="anchor-link" data-path="' + esc(f.path) + '" data-line="1">' +
+                getFileIconSvg(f.path) +
+                '<span>' + esc(f.path) + '</span>' +
+              '</a>' +
+              '<span style="flex-shrink:0;"><span class="diff-add">+' + f.additions + '</span> <span class="diff-del">-' + f.deletions + '</span></span>' +
             '</div>';
         }
         html += '</div>';
@@ -447,35 +525,38 @@ export function getCockpitHtml(nonce: string): string {
         '<div class="card">' +
           '<div class="row">' +
             '<select id="dirKind">' +
-              '<option value="rework">Rework</option>' +
-              '<option value="constraint">Constraint</option>' +
-              '<option value="question">Question</option>' +
+              '<option value="rework">返工</option>' +
+              '<option value="constraint">约束红线</option>' +
+              '<option value="question">疑问</option>' +
             '</select>' +
-            '<input id="dirPath" placeholder="relative/path.ts" style="flex:1;" />' +
-            '<input id="dirLine" type="number" min="1" placeholder="Line" style="width:70px;" />' +
+            '<input id="dirPath" placeholder="relative/path.ts" style="flex:1;min-width:100px;" />' +
+            '<input id="dirLine" type="number" min="1" placeholder="行号" style="width:62px;" />' +
           '</div>' +
-          '<textarea id="dirNote" placeholder="Describe constraint, question, or rework instruction bound to this code anchor..."></textarea>' +
+          '<textarea id="dirNote" placeholder="描述绑定到该代码锚点的修改要求、架构红线或疑问..."></textarea>' +
           '<div class="row" style="margin-top:6px;margin-bottom:0;">' +
-            '<button id="btnAddDir">Add Directive</button>' +
-            '<button class="secondary" id="btnCopyDirs">Copy Markdown for Agent</button>' +
-            '<button class="secondary" id="btnClearDirs">Clear All</button>' +
+            '<button id="btnAddDir">+ 添加批注</button>' +
+            '<button class="secondary" id="btnCopyDirs">复制 Markdown</button>' +
+            '<button class="secondary" id="btnClearDirs">清空</button>' +
           '</div>' +
         '</div>';
 
-      html += '<div class="section-title">Recorded Directives (' + state.directives.length + ')</div>';
+      html += '<div class="section-title">待处理批注 (' + state.directives.length + ')</div>';
       if (state.directives.length === 0) {
-        html += '<div class="empty">No directives yet. Click "+ Note" on any verified evidence anchor or add one above.</div>';
+        html += '<div class="empty">暂无批注。可在简报锚点旁点击“+ 批注”或在画布节点中直接挂接。</div>';
       } else {
         for (const d of state.directives) {
           const loc = d.path + (d.startLine ? ':' + d.startLine : '');
           html +=
             '<div class="card">' +
               '<div class="card-header">' +
-                '<a class="anchor-link" data-path="' + esc(d.path) + '" data-line="' + esc(d.startLine || 1) + '">[' + esc(d.kind.toUpperCase()) + '] ' + esc(loc) + '</a>' +
-                '<button class="secondary" style="padding:1px 6px;font-size:11px;" data-del-dir="' + esc(d.id) + '">Remove</button>' +
+                '<a class="anchor-link" data-path="' + esc(d.path) + '" data-line="' + esc(d.startLine || 1) + '">' +
+                  getFileIconSvg(d.path) +
+                  '<span>[' + esc(d.kind.toUpperCase()) + '] ' + esc(loc) + '</span>' +
+                '</a>' +
+                '<button class="secondary" style="height:20px;padding:0 6px;font-size:10.5px;" data-del-dir="' + esc(d.id) + '">移除</button>' +
               '</div>' +
-              '<div>' + esc(d.note) + '</div>' +
-              '<div class="note">Ref: <code>' + esc(d.ref) + '</code></div>' +
+              '<div style="font-size:12px;">' + esc(d.note) + '</div>' +
+              '<div class="note">快照: <code>' + esc(d.ref) + '</code></div>' +
             '</div>';
         }
       }

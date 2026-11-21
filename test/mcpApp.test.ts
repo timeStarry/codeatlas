@@ -7,8 +7,12 @@ import { realpathSync } from 'node:fs';
 import { execFile, spawn, ChildProcessWithoutNullStreams } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as readline from 'node:readline';
+import * as vm from 'node:vm';
 import { getGitContext, getGitStateDir } from '../src/core/git.js';
 import { listDirectives } from '../src/core/store.js';
+import { getCanvasHtml } from '../src/webview/canvasHtml.js';
+import { getCockpitHtml } from '../src/webview/html.js';
+import { getFileIconsClientJs } from '../src/webview/fileIcons.js';
 
 const execFileAsync = promisify(execFile);
 const MCP_SERVER_SCRIPT = path.resolve(__dirname, '..', 'dist', 'mcp-server.js');
@@ -280,4 +284,54 @@ test('open_atlas({}) auto-detects repository when server cwd is a Git worktree',
     await client.close();
     await fs.rm(repoDir, { recursive: true, force: true });
   }
+});
+
+test('Canvas & Cockpit HTML scripts compile cleanly, omit decorative side-stripes, and render semantic SVG file icons', () => {
+  const mcpHtml = getCanvasHtml('', { host: 'mcp-app', initialWorktreePath: 'D:\\Project\\aster' });
+  const vscodeHtml = getCanvasHtml('testnonce123', { host: 'vscode' });
+  const cockpitHtml = getCockpitHtml('testnonce123');
+
+  // Ensure heavy decorative border stripes are gone
+  for (const banned of ['border-top: 3px', 'border-left: 4px', 'border-left: 5px']) {
+    assert.equal(mcpHtml.includes(banned), false, `Canvas CSS must not contain ${banned}`);
+  }
+
+  // Compile every inline <script> block with Node vm.Script to catch any syntax/escaping bugs
+  for (const [label, html] of [
+    ['mcpHtml', mcpHtml],
+    ['vscodeHtml', vscodeHtml],
+    ['cockpitHtml', cockpitHtml],
+  ] as const) {
+    const matches = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)];
+    assert.ok(matches.length >= 1, `${label} must contain inline script`);
+    for (const m of matches) {
+      assert.doesNotThrow(() => new vm.Script(m[1]), `${label} inline script must parse cleanly`);
+    }
+  }
+
+  // Verify Windows path placeholder preserves backslashes after JS parsing
+  assert.ok(
+    mcpHtml.includes("D:\\\\Project\\\\aster"),
+    'JS string literal must preserve escaped Windows backslashes'
+  );
+
+  // Execute fileIcons helper in isolated VM context and verify semantic SVG icons
+  const ctx: any = {};
+  vm.createContext(ctx);
+  vm.runInContext(getFileIconsClientJs(), ctx);
+
+  const rsSvg = ctx.getFileIconSvg('crates/aster-app/src/ipc.rs');
+  const cargoSvg = ctx.getFileIconSvg('crates/aster-app/Cargo.toml');
+  const tsxSvg = ctx.getFileIconSvg('packages/ui/src/App.tsx');
+  const testSvg = ctx.getFileIconSvg('crates/aster-cli/tests/cli_integration.rs');
+  const ciSvg = ctx.getFileIconSvg('.github/workflows/ci.yml');
+  const folderClosed = ctx.getNodeIconSvg({ kind: 'folder', filesExpanded: false }, false);
+  const folderOpen = ctx.getNodeIconSvg({ kind: 'folder', filesExpanded: true }, true);
+
+  assert.ok(rsSvg.includes('<svg') && rsSvg.includes('>RS<'));
+  assert.ok(cargoSvg.includes('<svg') && cargoSvg !== rsSvg);
+  assert.ok(tsxSvg.includes('<svg') && tsxSvg.includes('<ellipse'));
+  assert.ok(testSvg.includes('#3fb950'), 'Test files should render green test flask icon');
+  assert.ok(ciSvg.includes('#b392f0'), 'Workflow YAML should render pipeline icon');
+  assert.notEqual(folderClosed, folderOpen, 'Open and closed folders must have distinct icons');
 });

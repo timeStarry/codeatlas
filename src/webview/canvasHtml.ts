@@ -1,3 +1,5 @@
+import { getFileIconsClientJs } from './fileIcons.js';
+
 export interface CanvasHtmlOptions {
   host?: 'vscode' | 'mcp-app';
   inlineClientJs?: string;
@@ -24,6 +26,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     : '';
   const initialWorktreeAttr = escapeHtmlAttr(options?.initialWorktreePath ?? '');
   const bodyHostClass = isMcpApp ? 'host-mcp-app' : 'host-vscode';
+  const fileIconsJs = getFileIconsClientJs();
 
   return /* html */ `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -34,28 +37,31 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
   <title>CodeAtlas Canvas</title>
   <style>
     :root {
-      --bg: var(--vscode-editor-background, var(--color-background-primary, #181a1f));
-      --fg: var(--vscode-editor-foreground, var(--color-text-primary, #d8dee9));
+      --bg: var(--vscode-editor-background, var(--color-background-primary, #16181d));
+      --fg: var(--vscode-editor-foreground, var(--color-text-primary, #dcdfe4));
       --muted: var(--vscode-descriptionForeground, var(--color-text-secondary, #8b949e));
-      --panel: var(--vscode-sideBar-background, var(--color-background-secondary, #21242b));
-      --panel-2: var(--vscode-editorWidget-background, var(--color-background-tertiary, #262a33));
-      --border: var(--vscode-panel-border, var(--color-border-primary, rgba(140,150,165,0.26)));
+      --panel: var(--vscode-sideBar-background, var(--color-background-secondary, #1e2128));
+      --panel-2: var(--vscode-editorWidget-background, var(--color-background-tertiary, #232730));
+      --border: var(--vscode-panel-border, var(--color-border-primary, rgba(140,150,168,0.2)));
+      --border-strong: rgba(140,150,168,0.34);
       --accent: var(--vscode-textLink-foreground, var(--color-text-info, #4da6ff));
-      --btn-bg: var(--vscode-button-background, #0e639c);
+      --btn-bg: var(--vscode-button-background, #1f6feb);
       --btn-fg: var(--vscode-button-foreground, #ffffff);
-      --btn-hover: var(--vscode-button-hoverBackground, #1177bb);
-      --input-bg: var(--vscode-input-background, var(--color-background-tertiary, #2b2f38));
-      --input-fg: var(--vscode-input-foreground, var(--color-text-primary, #d8dee9));
-      --input-border: var(--vscode-input-border, var(--color-border-secondary, rgba(140,150,165,0.34)));
-      --mono: var(--vscode-editor-font-family, var(--font-mono, Consolas, monospace));
+      --btn-hover: var(--vscode-button-hoverBackground, #388bfd);
+      --input-bg: var(--vscode-input-background, var(--color-background-tertiary, #252932));
+      --input-fg: var(--vscode-input-foreground, var(--color-text-primary, #dcdfe4));
+      --input-border: var(--vscode-input-border, var(--color-border-secondary, rgba(140,150,168,0.28)));
+      --mono: var(--vscode-editor-font-family, var(--font-mono, "JetBrains Mono", Consolas, monospace));
       --green: var(--vscode-charts-green, var(--color-text-success, #3fb950));
       --red: var(--vscode-charts-red, var(--color-text-danger, #f85149));
       --amber: var(--vscode-charts-orange, var(--color-text-warning, #f0883e));
       --yellow: var(--vscode-charts-yellow, #d29922);
       --purple: var(--vscode-charts-purple, #a371f7);
-      --diff-add-bg: var(--vscode-diffEditor-insertedTextBackground, rgba(63,185,80,0.16));
-      --diff-del-bg: var(--vscode-diffEditor-removedTextBackground, rgba(248,81,73,0.16));
-      --surface-subtle: var(--vscode-textCodeBlock-background, rgba(128,128,128,0.12));
+      --cyan: #39c5cf;
+      --diff-add-bg: var(--vscode-diffEditor-insertedTextBackground, rgba(63,185,80,0.15));
+      --diff-del-bg: var(--vscode-diffEditor-removedTextBackground, rgba(248,81,73,0.15));
+      --surface-subtle: var(--vscode-textCodeBlock-background, rgba(135,145,160,0.1));
+      --surface-hover: rgba(135,145,160,0.16);
     }
     * { box-sizing: border-box; }
     html, body {
@@ -66,172 +72,470 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       overflow: hidden;
       background: var(--bg);
       color: var(--fg);
-      font-family: var(--vscode-font-family, var(--font-sans, -apple-system, BlinkMacSystemFont, "Microsoft YaHei", sans-serif));
-      font-size: 13px;
+      font-family: var(--vscode-font-family, var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif));
+      font-size: 12.5px;
       user-select: none;
+      -webkit-font-smoothing: antialiased;
     }
     body.host-mcp-app, body.host-mcp-app .app { min-height: 620px; }
     body.host-mcp-app .vscode-only { display: none !important; }
     body.no-analyze-cap .analyze-action { display: none !important; }
     .app { display: flex; flex-direction: column; width: 100%; height: 100%; }
 
+    .atlas-ico {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+      display: inline-block;
+      vertical-align: middle;
+    }
+
+    /* Unified Single-Row Top Toolbar */
     .toolbar {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 8px;
       padding: 6px 12px;
+      min-height: 42px;
       background: var(--panel);
       border-bottom: 1px solid var(--border);
-      z-index: 25;
+      z-index: 30;
       flex-shrink: 0;
       flex-wrap: wrap;
     }
-    .group { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-    .brand { font-weight: 700; font-size: 13px; letter-spacing: 0.2px; }
-    .git-pill, .arch-pill {
+    .tb-zone {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      flex-wrap: wrap;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: 0.1px;
+      padding-right: 4px;
+      white-space: nowrap;
+    }
+    .brand-mark {
+      width: 16px;
+      height: 16px;
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+    .tb-divider {
+      width: 1px;
+      height: 16px;
+      background: var(--border);
+      margin: 0 2px;
+      flex-shrink: 0;
+    }
+
+    /* Repo / Branch Pill + MCP Worktree Popover */
+    .repo-wrap { position: relative; display: inline-flex; align-items: center; }
+    .git-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
       font-family: var(--mono);
       font-size: 11px;
-      padding: 2px 8px;
-      border-radius: 999px;
+      height: 26px;
+      padding: 0 9px;
+      border-radius: 6px;
       background: var(--surface-subtle);
-      color: var(--muted);
+      border: 1px solid transparent;
+      color: var(--fg);
+      max-width: 220px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
-    .arch-pill {
-      font-family: inherit;
-      color: var(--accent);
-      background: rgba(77,166,255,0.12);
+    button.git-pill { cursor: pointer; }
+    button.git-pill:hover {
+      border-color: var(--border-strong);
+      background: var(--surface-hover);
+    }
+    .repo-popover {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      width: 340px;
+      max-width: 86vw;
+      background: var(--panel-2);
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      padding: 10px;
+      box-shadow: 0 10px 28px rgba(0,0,0,0.38);
+      z-index: 45;
+    }
+    .repo-popover.hidden { display: none; }
+    .repo-popover-label {
+      font-size: 11px;
       font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 6px;
     }
+    .worktree-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .worktree-input {
+      flex: 1;
+      min-width: 0;
+      font-family: var(--mono);
+      font-size: 11.5px;
+      height: 28px;
+      padding: 0 8px;
+    }
+
+    /* Segmented View Switcher */
     .segmented {
       display: inline-flex;
+      background: var(--surface-subtle);
       border: 1px solid var(--border);
-      border-radius: 5px;
-      overflow: hidden;
+      border-radius: 6px;
+      padding: 2px;
+      gap: 1px;
     }
     .segmented button {
       background: transparent;
       color: var(--muted);
       border: none;
-      border-radius: 0;
-      padding: 3px 9px;
+      border-radius: 4px;
+      height: 22px;
+      padding: 0 9px;
       font-size: 11.5px;
+      font-weight: 500;
     }
-    .segmented button + button { border-left: 1px solid var(--border); }
+    .segmented button:hover { color: var(--fg); background: transparent; }
     .segmented button.active {
-      background: rgba(77,166,255,0.18);
+      background: var(--panel-2);
       color: var(--fg);
       font-weight: 600;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.22);
     }
-    .search-wrap { position: relative; display: inline-flex; align-items: center; }
+
+    /* Search Input */
+    .search-wrap {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+    }
+    .search-ico {
+      position: absolute;
+      left: 7px;
+      width: 13px;
+      height: 13px;
+      color: var(--muted);
+      pointer-events: none;
+    }
+    #searchInput {
+      width: 156px;
+      height: 26px;
+      padding: 0 36px 0 25px;
+      border-radius: 6px;
+      font-size: 11.5px;
+      transition: width 0.16s ease, border-color 0.14s ease;
+    }
+    #searchInput:focus {
+      width: 204px;
+      outline: none;
+      border-color: var(--accent);
+    }
     .search-count {
       position: absolute;
-      right: 6px;
+      right: 7px;
       font-size: 10px;
       font-family: var(--mono);
       color: var(--muted);
       pointer-events: none;
     }
 
-    .subbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      padding: 5px 12px;
-      background: var(--bg);
-      border-bottom: 1px solid var(--border);
-      font-size: 11.5px;
-      z-index: 20;
-      flex-shrink: 0;
-    }
-    .breadcrumbs {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      overflow: hidden;
-      white-space: nowrap;
-      text-overflow: ellipsis;
-      color: var(--muted);
-      min-width: 120px;
-    }
-    .crumb { cursor: pointer; color: var(--fg); padding: 1px 5px; border-radius: 3px; }
-    .crumb:hover { background: var(--surface-subtle); color: var(--accent); }
-    .trust-chips { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
-    .chip {
-      font-size: 10.5px;
-      font-weight: 600;
-      padding: 2px 8px;
-      border-radius: 999px;
-      background: var(--surface-subtle);
-      color: var(--muted);
-      border: 1px solid transparent;
-      cursor: pointer;
-    }
-    .chip:hover { border-color: var(--accent); }
-    .chip.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-    .chip.ok { background: rgba(63,185,80,0.18); color: var(--green); }
-    .chip.err { background: rgba(248,81,73,0.2); color: var(--red); }
-    .chip.warn { background: rgba(240,136,62,0.2); color: var(--amber); }
-    .chip.dir { background: rgba(163,113,247,0.2); color: var(--purple); }
-
-    .stale-banner {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 5px 12px;
-      background: rgba(210,153,34,0.18);
-      border-bottom: 1px solid rgba(210,153,34,0.45);
-      color: var(--yellow);
-      font-size: 11.5px;
-      font-weight: 600;
-      flex-shrink: 0;
-    }
-    .stale-banner.hidden { display: none; }
-
+    /* Buttons & Inputs */
     button {
       background: var(--btn-bg);
       color: var(--btn-fg);
-      border: none;
-      padding: 4px 9px;
-      border-radius: 4px;
+      border: 1px solid transparent;
+      height: 26px;
+      padding: 0 10px;
+      border-radius: 6px;
       cursor: pointer;
-      font-size: 12px;
+      font-size: 11.5px;
+      font-family: inherit;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      white-space: nowrap;
+      transition: background 0.12s, border-color 0.12s, color 0.12s;
     }
-    button:hover { background: var(--btn-hover); }
+    button:hover:not(:disabled) { background: var(--btn-hover); }
     button:disabled { opacity: 0.45; cursor: not-allowed; }
     button.secondary {
       background: transparent;
-      color: var(--fg);
+      color: var(--muted);
       border: 1px solid var(--border);
     }
-    button.secondary:hover { background: var(--surface-subtle); }
+    button.secondary:hover:not(:disabled) {
+      color: var(--fg);
+      background: var(--surface-subtle);
+      border-color: var(--border-strong);
+    }
     button.secondary.active {
-      border-color: var(--accent);
+      border-color: rgba(77,166,255,0.55);
       color: var(--accent);
-      background: rgba(77,166,255,0.14);
+      background: rgba(77,166,255,0.12);
+      font-weight: 600;
+    }
+    button.icon-btn {
+      width: 26px;
+      padding: 0;
     }
     button.danger {
       background: transparent;
       color: var(--red);
       border: 1px solid rgba(248,81,73,0.45);
     }
-    button.danger:hover { background: rgba(248,81,73,0.15); }
+    button.danger:hover:not(:disabled) { background: rgba(248,81,73,0.14); }
     input, select, textarea {
       background: var(--input-bg);
       color: var(--input-fg);
       border: 1px solid var(--input-border);
-      border-radius: 4px;
-      padding: 3px 7px;
-      font-size: 12px;
+      border-radius: 6px;
+      height: 26px;
+      padding: 0 7px;
+      font-size: 11.5px;
       font-family: inherit;
     }
+    textarea { height: auto; padding: 6px 8px; }
+    select { cursor: pointer; }
+
+    /* Filter Pill Group */
+    .filter-group {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      background: transparent;
+    }
+    .filter-group button {
+      border: none;
+      border-radius: 0;
+      height: 24px;
+      padding: 0 8px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .filter-group button + button { border-left: 1px solid var(--border); }
+    .filter-group button:hover:not(:disabled) { color: var(--fg); background: var(--surface-subtle); }
+    .filter-group button.active {
+      background: rgba(77,166,255,0.15);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* Primary Analyze CTA */
+    .btn-analyze {
+      background: var(--btn-bg);
+      color: #ffffff;
+      font-weight: 600;
+      border: 1px solid rgba(121,192,255,0.32);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    }
+    .btn-analyze:hover:not(:disabled) { background: var(--btn-hover); }
+
+    /* Overflow More Menu */
+    .more-wrap { position: relative; display: inline-flex; }
+    .more-dot {
+      position: absolute;
+      top: 3px;
+      right: 3px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      pointer-events: none;
+    }
+    .more-dot.hidden { display: none; }
+    .more-menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      width: 256px;
+      background: var(--panel-2);
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      padding: 5px;
+      box-shadow: 0 10px 28px rgba(0,0,0,0.38);
+      z-index: 45;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .more-menu.hidden { display: none; }
+    .more-sec-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--muted);
+      padding: 5px 8px 2px;
+      letter-spacing: 0.3px;
+    }
+    .more-sep {
+      height: 1px;
+      background: var(--border);
+      margin: 3px 4px;
+    }
+    .more-menu button {
+      width: 100%;
+      height: auto;
+      min-height: 28px;
+      justify-content: flex-start;
+      text-align: left;
+      background: transparent;
+      color: var(--fg);
+      border: none;
+      padding: 5px 8px;
+      border-radius: 5px;
+      font-size: 11.5px;
+      white-space: normal;
+    }
+    .more-menu button:hover:not(:disabled) { background: var(--surface-hover); }
+    .menu-item-col { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; }
+    .agent-menu-desc {
+      font-size: 10px;
+      color: var(--muted);
+      line-height: 1.3;
+    }
+
+    /* Subbar: Breadcrumbs + Architecture Meta + Semantic Trust Chips */
+    .subbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 4px 12px;
+      min-height: 29px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      z-index: 20;
+      flex-shrink: 0;
+    }
+    .subbar-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .arch-pill {
+      font-size: 10.5px;
+      padding: 1px 7px;
+      border-radius: 4px;
+      background: var(--surface-subtle);
+      color: var(--muted);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .breadcrumbs {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      color: var(--muted);
+      min-width: 0;
+    }
+    .crumb {
+      cursor: pointer;
+      color: var(--fg);
+      padding: 1px 5px;
+      border-radius: 4px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .crumb:hover { background: var(--surface-subtle); color: var(--accent); }
+    .trust-chips { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+    .chip {
+      font-size: 10.5px;
+      font-weight: 600;
+      padding: 1px 8px;
+      border-radius: 999px;
+      background: var(--surface-subtle);
+      color: var(--muted);
+      border: 1px solid transparent;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .chip:hover { border-color: var(--border-strong); color: var(--fg); }
+    .chip.active { border-color: var(--accent); color: var(--accent); background: rgba(77,166,255,0.14); }
+    .chip.ok { background: rgba(63,185,80,0.14); color: var(--green); }
+    .chip.err { background: rgba(248,81,73,0.16); color: var(--red); }
+    .chip.warn { background: rgba(240,136,62,0.16); color: var(--amber); }
+    .chip.dir { background: rgba(163,113,247,0.16); color: var(--purple); }
+
+    /* Status Banners */
+    .stale-banner, .analyze-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 4px 12px;
+      font-size: 11.5px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .stale-banner {
+      background: rgba(210,153,34,0.14);
+      border-bottom: 1px solid rgba(210,153,34,0.38);
+      color: var(--yellow);
+    }
+    .analyze-banner {
+      background: rgba(56,139,253,0.14);
+      border-bottom: 1px solid rgba(88,166,255,0.36);
+      color: var(--accent);
+    }
+    .analyze-banner.is-error {
+      background: rgba(248,81,73,0.14);
+      border-bottom-color: rgba(248,81,73,0.4);
+      color: var(--red);
+    }
+    .stale-banner.hidden, .analyze-banner.hidden { display: none; }
+    .analyze-banner-main {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .analyze-spinner {
+      width: 12px;
+      height: 12px;
+      border: 2px solid rgba(88,166,255,0.28);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: atlas-spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+    .analyze-spinner.hidden { display: none; }
+    @keyframes atlas-spin { to { transform: rotate(360deg); } }
 
     .workspace { position: relative; flex: 1; display: flex; overflow: hidden; }
 
-    /* Left Branch Summary Drawer (Scenario C) */
+    /* Left Branch Summary Drawer */
     .summary-drawer {
-      width: 280px;
+      width: 276px;
       max-width: 34vw;
       background: var(--panel);
       border-right: 1px solid var(--border);
@@ -247,18 +551,14 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 9px 11px;
+      padding: 8px 11px;
       border-bottom: 1px solid var(--border);
       font-weight: 600;
-      font-size: 12.5px;
+      font-size: 12px;
     }
-    .drawer-body {
-      padding: 10px 11px;
-      overflow-y: auto;
-      flex: 1;
-    }
+    .drawer-body { padding: 10px 11px; overflow-y: auto; flex: 1; }
     .summary-sec {
-      font-size: 11px;
+      font-size: 10.5px;
       font-weight: 700;
       color: var(--muted);
       margin: 12px 0 6px;
@@ -284,13 +584,13 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       font-weight: 600;
     }
     .summary-item-sub {
-      font-size: 11px;
+      font-size: 10.5px;
       color: var(--muted);
       margin-top: 3px;
       font-family: var(--mono);
     }
     .commit-row {
-      font-size: 11.5px;
+      font-size: 11px;
       padding: 4px 0;
       border-bottom: 1px solid var(--border);
       display: flex;
@@ -304,13 +604,14 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       flex-shrink: 0;
     }
 
+    /* Infinite Canvas Stage & Subtle Dot Grid */
     .viewport {
       position: relative;
       flex: 1;
       overflow: hidden;
       cursor: grab;
-      background-image: radial-gradient(rgba(140,150,165,0.22) 1px, transparent 1px);
-      background-size: 24px 24px;
+      background-image: radial-gradient(rgba(140,150,168,0.16) 1px, transparent 1px);
+      background-size: 22px 22px;
     }
     .viewport.panning { cursor: grabbing; }
     .stage {
@@ -321,175 +622,359 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       width: 1px;
       height: 1px;
     }
+
+    /* Edges: Calm Orthogonal Tree Spine vs Semantic Causal Curves */
     svg.edges { position: absolute; top: 0; left: 0; overflow: visible; pointer-events: none; }
+    .edge-bus {
+      fill: none;
+      stroke: rgba(140,150,168,0.26);
+      stroke-width: 1.25;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .edge-bus.dimmed { opacity: 0.12; }
+    .edge-bus.focused {
+      stroke: var(--accent);
+      stroke-width: 1.85;
+      opacity: 0.92;
+    }
     .edge-path {
       fill: none;
-      stroke: rgba(139,148,158,0.45);
-      stroke-width: 1.8;
+      stroke: rgba(140,150,168,0.34);
+      stroke-width: 1.5;
       transition: opacity 0.14s, stroke-width 0.14s;
     }
-    .edge-path.flow { stroke: #4da6ff; stroke-width: 2.2; }
-    .edge-path.blocking { stroke: var(--amber); stroke-width: 2.3; stroke-dasharray: 6 4; }
-    .edge-path.impact { stroke: #39c5cf; stroke-width: 2.1; stroke-dasharray: 5 3; }
-    .edge-path.dep { stroke: #58a6ff; stroke-width: 2; stroke-dasharray: 4 4; }
-    .edge-path.directive { stroke: var(--purple); stroke-width: 2; stroke-dasharray: 3 3; }
-    .edge-path.dimmed { opacity: 0.12; }
-    .edge-path.focused { stroke-width: 2.8; opacity: 1; }
-    .edge-pill { fill: var(--panel); stroke: var(--border); stroke-width: 1; }
-    .edge-pill.blocking { stroke: var(--amber); }
-    .edge-pill.impact { stroke: #39c5cf; }
-    .edge-pill.dep { stroke: #58a6ff; }
-    .edge-pill.directive { stroke: var(--purple); }
-    .edge-pill.dimmed, .edge-label.dimmed { opacity: 0.14; }
-    .edge-label { fill: var(--muted); font-size: 9.5px; font-weight: 700; font-family: var(--mono); }
+    .edge-path.flow { stroke: rgba(77,166,255,0.68); stroke-width: 1.75; }
+    .edge-path.blocking { stroke: var(--amber); stroke-width: 1.85; stroke-dasharray: 5 3.5; }
+    .edge-path.impact { stroke: var(--cyan); stroke-width: 1.75; stroke-dasharray: 4 3; }
+    .edge-path.dep { stroke: #58a6ff; stroke-width: 1.75; stroke-dasharray: 4 3; }
+    .edge-path.directive { stroke: var(--purple); stroke-width: 1.75; stroke-dasharray: 3 3; }
+    .edge-path.dimmed { opacity: 0.1; }
+    .edge-path.focused { stroke-width: 2.3; opacity: 1; }
+    .edge-pill { fill: var(--panel); stroke: var(--border-strong); stroke-width: 1; }
+    .edge-pill.blocking { stroke: rgba(240,136,62,0.55); }
+    .edge-pill.impact { stroke: rgba(57,197,207,0.55); }
+    .edge-pill.dep { stroke: rgba(88,166,255,0.55); }
+    .edge-pill.directive { stroke: rgba(163,113,247,0.55); }
+    .edge-pill.dimmed, .edge-label.dimmed { opacity: 0.12; }
+    .edge-label { fill: var(--muted); font-size: 9px; font-weight: 600; font-family: var(--mono); }
     .edge-label.blocking { fill: var(--amber); }
-    .edge-label.impact { fill: #39c5cf; }
+    .edge-label.impact { fill: var(--cyan); }
     .edge-label.dep { fill: #58a6ff; }
     .edge-label.directive { fill: var(--purple); }
 
+    /* Nodes: Clean Zero-Stripe Architectural Hierarchy */
     .node {
       position: absolute;
-      width: 262px;
+      width: 268px;
       background: var(--panel);
-      border: 1.5px solid var(--border);
+      border: 1px solid var(--border);
       border-radius: 9px;
       padding: 10px 12px;
-      box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.18);
       cursor: pointer;
-      transition: box-shadow 0.12s, border-color 0.12s, opacity 0.14s;
+      transition: box-shadow 0.12s, border-color 0.12s, opacity 0.14s, background 0.12s;
     }
-    .node:hover { border-color: var(--accent); box-shadow: 0 6px 20px rgba(0,0,0,0.28); }
+    .node:hover {
+      border-color: rgba(88,166,255,0.5);
+      box-shadow: 0 5px 16px rgba(0,0,0,0.26);
+    }
     .node.selected {
       border-color: var(--accent);
-      box-shadow: 0 0 0 2px rgba(77,166,255,0.4), 0 8px 24px rgba(0,0,0,0.34);
+      box-shadow: 0 0 0 2px rgba(77,166,255,0.28), 0 8px 22px rgba(0,0,0,0.32);
     }
-    .node.dimmed { opacity: 0.16; }
+    .node.dimmed { opacity: 0.15; }
 
-    .node.kind-root { border: 2px solid var(--accent); background: linear-gradient(145deg, rgba(77,166,255,0.14), var(--panel)); }
-    .node.kind-domain { border-top: 3px solid var(--green); background: linear-gradient(180deg, rgba(63,185,80,0.08), var(--panel)); }
-    .node.kind-folder { border-left: 4px solid #79c0ff; background: linear-gradient(180deg, rgba(121,192,255,0.08), var(--panel)); }
-    .node.kind-entrypoint { border-left: 4px solid #58a6ff; }
-    .node.kind-file { border-left: 4px solid rgba(139,148,158,0.65); background: var(--panel-2); }
-    .node.is-summary { border-style: dashed; opacity: 0.88; }
-    .node.kind-claim { border-left: 4px solid #79c0ff; }
-    .node.kind-evidence { border-left: 4px solid var(--green); background: var(--panel-2); }
-    .node.kind-blocking {
-      border: 1.5px solid rgba(240,136,62,0.75);
-      border-left: 5px solid var(--amber);
-      background: linear-gradient(135deg, rgba(240,136,62,0.14), var(--panel));
+    /* Archetype A: Repository, Domain & Causal Cards */
+    .node.kind-root {
+      background: linear-gradient(155deg, rgba(77,166,255,0.09), var(--panel));
+      border-color: rgba(77,166,255,0.38);
     }
-    .node.kind-diff-file { border-left: 4px solid var(--yellow); }
+    .node.kind-domain.is-support { opacity: 0.88; }
+    .node.kind-blocking {
+      border-color: rgba(240,136,62,0.42);
+      background: linear-gradient(155deg, rgba(240,136,62,0.07), var(--panel));
+    }
     .node.kind-impact {
-      border: 1.5px solid rgba(57,197,207,0.65);
-      border-left: 5px solid #39c5cf;
-      background: linear-gradient(135deg, rgba(57,197,207,0.12), var(--panel));
+      border-color: rgba(57,197,207,0.4);
+      background: linear-gradient(155deg, rgba(57,197,207,0.06), var(--panel));
     }
     .node.kind-directive {
-      border: 1.5px dashed rgba(163,113,247,0.75);
-      border-left: 5px solid var(--purple);
-      background: linear-gradient(135deg, rgba(163,113,247,0.14), var(--panel));
+      border: 1px dashed rgba(163,113,247,0.62);
+      background: linear-gradient(155deg, rgba(163,113,247,0.08), var(--panel));
+    }
+    .node.has-mismatch {
+      border-color: rgba(248,81,73,0.68);
+      box-shadow: 0 0 0 1px rgba(248,81,73,0.22), 0 3px 12px rgba(0,0,0,0.22);
     }
 
-    .node-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-    .node-kind { font-size: 9.5px; letter-spacing: 0.3px; color: var(--muted); font-weight: 700; }
-    .layer-tag {
-      font-size: 9.5px;
-      padding: 1px 6px;
-      border-radius: 4px;
-      background: rgba(77,166,255,0.14);
-      color: var(--accent);
+    /* Archetype B & C: Compact Folder & IDE File Rows */
+    .node.node-compact {
+      width: 246px;
+      padding: 6px 10px;
+      border-radius: 7px;
+      background: var(--panel-2);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.14);
+    }
+    .node.node-compact:hover { background: var(--panel); }
+    .node.node-compact.is-summary {
+      border-style: dashed;
+      background: transparent;
+      opacity: 0.84;
+    }
+    .node.kind-diff-file {
+      border-color: rgba(210,153,34,0.36);
+    }
+
+    .card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .card-head-left {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+      flex: 1;
+    }
+    .node-title {
       font-weight: 600;
-      max-width: 150px;
+      font-size: 12.5px;
+      line-height: 1.3;
+      color: var(--fg);
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-    .node-title { font-weight: 600; font-size: 12.5px; margin-top: 4px; word-break: break-word; }
+    .kind-claim .node-title, .kind-blocking .node-title, .kind-directive .node-title {
+      white-space: normal;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+    .layer-tag {
+      font-size: 9.5px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: var(--surface-subtle);
+      color: var(--muted);
+      font-weight: 500;
+      max-width: 112px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
     .node-sub {
       font-family: var(--mono);
       font-size: 10.5px;
       color: var(--muted);
-      margin-top: 3px;
+      margin-top: 4px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
     .node-body {
       font-size: 11.5px;
+      line-height: 1.42;
       color: var(--muted);
       margin-top: 5px;
       display: -webkit-box;
-      -webkit-line-clamp: 3;
+      -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
     }
+    .kind-claim .node-body, .kind-directive .node-body { -webkit-line-clamp: 3; }
+
     .blocking-box {
       margin-top: 6px;
-      padding: 5px 7px;
+      padding: 5px 8px;
       border-radius: 5px;
       background: var(--surface-subtle);
       border-left: 2px solid var(--amber);
       font-size: 11px;
       line-height: 1.4;
     }
-    .blocking-if { color: var(--amber); font-weight: 700; }
+    .blocking-if { color: var(--amber); font-weight: 600; }
     .blocking-then { color: var(--fg); margin-top: 2px; }
 
     .node-footer {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-top: 7px;
+      margin-top: 8px;
+      padding-top: 6px;
+      border-top: 1px solid rgba(140,150,168,0.12);
       font-size: 10.5px;
       color: var(--muted);
       gap: 6px;
     }
-    .quick-btn {
-      font-size: 10.5px;
-      color: var(--accent);
-      background: transparent;
-      border: 1px solid rgba(77,166,255,0.45);
-      padding: 1px 6px;
-      border-radius: 3px;
+    .node-footer-meta {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
     }
-    .quick-btn:hover { background: rgba(77,166,255,0.15); }
-    .quick-jump { opacity: 0; transition: opacity 0.12s; }
-    .node:hover .quick-jump, .node.selected .quick-jump { opacity: 1; }
+    .node-footer-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .quick-btn {
+      height: 20px;
+      font-size: 10.5px;
+      color: var(--muted);
+      background: var(--surface-subtle);
+      border: 1px solid transparent;
+      padding: 0 7px;
+      border-radius: 4px;
+    }
+    .quick-btn:hover:not(:disabled) {
+      color: var(--fg);
+      background: var(--surface-hover);
+      border-color: var(--border-strong);
+    }
+    .quick-analyze {
+      color: var(--accent);
+      background: rgba(77,166,255,0.1);
+      opacity: 0;
+      transition: opacity 0.12s;
+    }
+    .node:hover .quick-analyze, .node.selected .quick-analyze { opacity: 1; }
+    .quick-analyze:hover:not(:disabled) {
+      background: rgba(77,166,255,0.22);
+      color: #ffffff;
+    }
+
+    /* Compact IDE File / Folder Row Internals */
+    .leaf-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .leaf-main {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    .leaf-title-row {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      min-width: 0;
+    }
+    .leaf-title {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--fg);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .kind-entrypoint .leaf-title, .kind-folder .leaf-title { font-weight: 600; }
+    .leaf-sub {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .leaf-right {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .micro-tag {
+      font-size: 9px;
+      font-weight: 600;
+      padding: 0 4px;
+      height: 15px;
+      line-height: 15px;
+      border-radius: 3px;
+      background: rgba(88,166,255,0.14);
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .leaf-diff {
+      font-family: var(--mono);
+      font-size: 10px;
+      display: inline-flex;
+      gap: 3px;
+    }
+    .leaf-open {
+      width: 20px;
+      height: 20px;
+      padding: 0;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--muted);
+      border: none;
+      opacity: 0;
+      transition: opacity 0.12s;
+    }
+    .node:hover .leaf-open, .node.selected .leaf-open { opacity: 1; }
+    .leaf-open:hover { background: var(--surface-hover); color: var(--fg); }
+
     .diff-add { color: var(--green); font-family: var(--mono); }
     .diff-del { color: var(--red); font-family: var(--mono); }
 
+    /* Port Collapse Pill */
     .collapse-btn {
       position: absolute;
-      right: -12px;
+      right: -10px;
       top: 50%;
       transform: translateY(-50%);
-      width: 24px;
-      height: 24px;
+      min-width: 20px;
+      height: 20px;
       border-radius: 999px;
-      border: 1.5px solid var(--border);
-      background: var(--panel);
-      color: var(--fg);
-      font-size: 10.5px;
+      border: 1px solid var(--border-strong);
+      background: var(--panel-2);
+      color: var(--muted);
+      font-size: 10px;
       font-weight: 700;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0;
+      padding: 0 5px;
       z-index: 6;
+      opacity: 0;
+      transition: opacity 0.12s, background 0.12s, color 0.12s;
+    }
+    .collapse-btn.is-collapsed, .node:hover .collapse-btn, .node.selected .collapse-btn {
+      opacity: 1;
+    }
+    .collapse-btn.is-collapsed {
+      background: var(--panel);
+      color: var(--accent);
+      border-color: rgba(77,166,255,0.45);
     }
     .collapse-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
 
     .badge {
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
       font-size: 9.5px;
-      font-weight: 700;
+      font-weight: 600;
       padding: 1px 6px;
       border-radius: 999px;
       flex-shrink: 0;
     }
-    .badge-verified { background: rgba(63,185,80,0.2); color: var(--green); }
-    .badge-mismatch { background: rgba(248,81,73,0.22); color: var(--red); }
-    .badge-stale { background: rgba(210,153,34,0.24); color: var(--yellow); }
+    .badge-verified { background: rgba(63,185,80,0.16); color: var(--green); }
+    .badge-mismatch { background: rgba(248,81,73,0.18); color: var(--red); }
+    .badge-stale { background: rgba(210,153,34,0.2); color: var(--yellow); }
     .badge-unverified { background: var(--surface-subtle); color: var(--muted); }
     .badge-unknown { background: var(--surface-subtle); color: var(--muted); }
 
@@ -507,15 +992,16 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       pointer-events: auto;
       max-width: 400px;
       background: var(--panel);
-      border: 1px solid var(--border);
+      border: 1px solid var(--border-strong);
       border-radius: 10px;
       padding: 18px 20px;
       text-align: center;
       box-shadow: 0 10px 30px rgba(0,0,0,0.3);
     }
 
+    /* Right Inspector */
     .inspector {
-      width: 390px;
+      width: 392px;
       max-width: 46vw;
       background: var(--panel);
       border-left: 1px solid var(--border);
@@ -532,8 +1018,15 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       align-items: center;
       justify-content: space-between;
       gap: 8px;
-      padding: 10px 12px;
+      padding: 9px 12px;
       border-bottom: 1px solid var(--border);
+    }
+    .insp-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+      flex: 1;
     }
     .inspector-tabs {
       display: flex;
@@ -547,11 +1040,36 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       border: none;
       border-bottom: 2px solid transparent;
       border-radius: 0;
-      padding: 6px 9px;
+      height: 30px;
+      padding: 0 10px;
       font-size: 11.5px;
     }
+    .insp-tab:hover:not(:disabled) { color: var(--fg); background: transparent; }
     .insp-tab.active { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
     .inspector-content { padding: 12px; overflow-y: auto; flex: 1; }
+    .insp-file-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      padding: 6px 8px;
+      border-radius: 6px;
+      background: var(--surface-subtle);
+      border: 1px solid var(--border);
+      margin: 8px 0;
+    }
+    .insp-file-path {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--fg);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .code-box {
       background: var(--bg);
       border: 1px solid var(--border);
@@ -564,28 +1082,36 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       line-height: 1.5;
     }
     .code-line { display: flex; gap: 10px; white-space: pre; }
-    .code-line.hl { background: rgba(77,166,255,0.16); margin: 0 -8px; padding: 0 8px; }
+    .code-line.hl { background: rgba(77,166,255,0.15); margin: 0 -8px; padding: 0 8px; }
     .code-line.diff-plus { background: var(--diff-add-bg); margin: 0 -8px; padding: 0 8px; }
     .code-line.diff-minus { background: var(--diff-del-bg); margin: 0 -8px; padding: 0 8px; }
     .code-line.diff-hunk { color: var(--accent); font-weight: 600; }
     .line-no { color: var(--muted); min-width: 30px; text-align: right; user-select: none; }
 
+    /* Bottom Floating Canvas Controls */
     .hud {
       position: absolute;
       bottom: 12px;
       left: 12px;
       display: flex;
-      gap: 5px;
+      gap: 3px;
       align-items: center;
       background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 7px;
-      padding: 4px 8px;
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      padding: 3px 6px;
       font-size: 11px;
       z-index: 12;
-      box-shadow: 0 4px 14px rgba(0,0,0,0.22);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.24);
     }
-    .hud-sep { width: 1px; height: 14px; background: var(--border); margin: 0 2px; }
+    .hud button.secondary {
+      border: none;
+      height: 22px;
+      padding: 0 7px;
+      font-size: 11px;
+      border-radius: 5px;
+    }
+    .hud-sep { width: 1px; height: 13px; background: var(--border); margin: 0 2px; }
     .legend-wrap {
       position: absolute;
       bottom: 12px;
@@ -597,198 +1123,125 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       gap: 6px;
     }
     .legend-popover {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 7px;
-      padding: 8px 10px;
+      background: var(--panel-2);
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      padding: 9px 11px;
       font-size: 11px;
       color: var(--muted);
-      box-shadow: 0 6px 18px rgba(0,0,0,0.28);
+      box-shadow: 0 8px 22px rgba(0,0,0,0.32);
       display: flex;
       flex-direction: column;
       gap: 5px;
     }
     .legend-popover.hidden { display: none; }
-    .agent-menu-wrap { position: relative; display: inline-block; }
-    .agent-menu {
-      position: absolute;
-      top: calc(100% + 6px);
-      right: 0;
-      width: 245px;
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 7px;
-      padding: 6px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.35);
-      z-index: 40;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .agent-menu.hidden { display: none; }
-    .agent-menu button {
-      text-align: left;
-      background: transparent;
-      color: var(--fg);
-      border: 1px solid transparent;
-      padding: 6px 8px;
-      font-size: 12px;
-      border-radius: 5px;
-    }
-    .agent-menu button:hover {
-      background: var(--surface-subtle);
-      border-color: var(--border);
-    }
-    .agent-menu-desc {
-      display: block;
-      font-size: 10.5px;
-      color: var(--muted);
-      margin-top: 2px;
-    }
     .dot {
       display: inline-block;
       width: 8px;
       height: 8px;
       border-radius: 50%;
-      margin-right: 5px;
+      margin-right: 6px;
       vertical-align: middle;
-    }
-    .worktree-bar {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-    }
-    .worktree-input {
-      width: 220px;
-      max-width: 36vw;
-      font-family: var(--mono);
-      font-size: 11.5px;
-      padding: 3px 7px;
-    }
-    .btn-analyze {
-      background: linear-gradient(135deg, #1f6feb, #0e639c);
-      color: #ffffff;
-      font-weight: 600;
-      border: 1px solid rgba(121,192,255,0.45);
-      box-shadow: 0 2px 8px rgba(31,111,235,0.25);
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-    }
-    .btn-analyze:hover:not(:disabled) {
-      background: linear-gradient(135deg, #388bfd, #1177bb);
-    }
-    .quick-analyze {
-      color: #58a6ff;
-      border-color: rgba(88,166,255,0.55);
-      background: rgba(56,139,253,0.1);
-      font-weight: 600;
-    }
-    .quick-analyze:hover:not(:disabled) {
-      background: rgba(56,139,253,0.22);
-      color: #ffffff;
-    }
-    .node-footer-actions {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      flex-shrink: 0;
-    }
-    .analyze-banner {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      padding: 5px 12px;
-      background: rgba(56,139,253,0.16);
-      border-bottom: 1px solid rgba(88,166,255,0.45);
-      color: var(--accent);
-      font-size: 11.5px;
-      font-weight: 600;
-      flex-shrink: 0;
-    }
-    .analyze-banner.is-error {
-      background: rgba(248,81,73,0.16);
-      border-bottom-color: rgba(248,81,73,0.45);
-      color: var(--red);
-    }
-    .analyze-banner.hidden { display: none; }
-    .analyze-banner-main {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .analyze-spinner {
-      width: 12px;
-      height: 12px;
-      border: 2px solid rgba(88,166,255,0.3);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: atlas-spin 0.8s linear infinite;
-      flex-shrink: 0;
-    }
-    .analyze-spinner.hidden { display: none; }
-    @keyframes atlas-spin {
-      to { transform: rotate(360deg); }
     }
   </style>
 </head>
 <body class="${bodyHostClass}">
   <div class="app">
     <div class="toolbar">
-      <div class="group">
-        <span class="brand">CodeAtlas</span>
-        ${isMcpApp ? `<div class="worktree-bar" id="worktreeBar">
-          <input id="worktreeInput" class="worktree-input" value="${initialWorktreeAttr}" placeholder="输入本地 Git 仓库路径 (如 D:\\Project\\aster)..." />
-          <button class="secondary" id="btnSetWorktree">切换仓库</button>
-        </div>` : ''}
-        <span class="git-pill" id="gitPill">加载中...</span>
-        <span class="arch-pill" id="archPill" style="display:none;"></span>
+      <!-- Left Zone: Brand + Repo/Branch + Diff Base -->
+      <div class="tb-zone">
+        <span class="brand">
+          <svg class="brand-mark" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M8 1.6 13.8 4.9v6.2L8 14.4 2.2 11.1V4.9L8 1.6Z" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round"/>
+            <circle cx="8" cy="8" r="2" fill="currentColor"/>
+          </svg>
+          CodeAtlas
+        </span>
+        ${isMcpApp ? `<div class="repo-wrap">
+          <button class="git-pill" id="btnRepoToggle" title="点击切换本地 Git 仓库路径">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="5" cy="4.5" r="1.7" stroke="currentColor" stroke-width="1.4"/><circle cx="5" cy="11.5" r="1.7" stroke="currentColor" stroke-width="1.4"/><circle cx="11.5" cy="7.5" r="1.7" stroke="currentColor" stroke-width="1.4"/><path d="M5 6.2v3.6M9.8 7.5H7.2A2.2 2.2 0 0 1 5 5.3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            <span id="gitPill">加载中...</span>
+            <span style="opacity:0.6;font-size:9px;">▾</span>
+          </button>
+          <div class="repo-popover hidden" id="repoPopover">
+            <div class="repo-popover-label" id="lblSwitchRepo">本地 Git 仓库路径</div>
+            <div class="worktree-bar" id="worktreeBar">
+              <input id="worktreeInput" class="worktree-input" value="${initialWorktreeAttr}" placeholder="输入本地 Git 仓库路径 (如 D:\\Project\\aster)..." />
+              <button id="btnSetWorktree">切换仓库</button>
+            </div>
+          </div>
+        </div>` : `<span class="git-pill" id="gitPill">加载中...</span>`}
+        <select id="baseRefSelect" style="max-width:112px;"></select>
+      </div>
+
+      <!-- Center Zone: View Mode + Briefing Picker + Search -->
+      <div class="tb-zone">
         <div class="segmented" id="modeControl">
           <button data-mode="atlas" id="mAtlas">全景底图</button>
-          <button data-mode="briefing" id="mBriefing">因果简报</button>
           <button data-mode="hybrid" id="mHybrid" class="active">融合视图</button>
+          <button data-mode="briefing" id="mBriefing">因果简报</button>
         </div>
-        <select id="briefingSelect" style="max-width:175px;"></select>
-        <select id="baseRefSelect" style="max-width:115px;"></select>
-        <button class="btn-analyze analyze-action" id="btnAnalyzeBranch">⚡ 分析分支</button>
-      </div>
-      <div class="group">
-        <button class="secondary" id="btnSummaryToggle">分支摘要</button>
-        <button class="secondary" id="btnPruneToggle">仅看变更: 关</button>
-        <button class="secondary vscode-only" id="btnRunImpact">分析影响面</button>
+        <select id="briefingSelect" style="max-width:168px;display:none;"></select>
         <div class="search-wrap">
-          <input id="searchInput" placeholder="搜索 (/)..." style="width:140px;padding-right:38px;" />
+          <svg class="search-ico" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <circle cx="7" cy="7" r="4.6" stroke="currentColor" stroke-width="1.4"/>
+            <path d="m10.5 10.5 3.2 3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          </svg>
+          <input id="searchInput" placeholder="搜索节点或文件 (/)..." />
           <span class="search-count" id="searchCount"></span>
         </div>
-        <button class="secondary" id="btnDeltaToggle">变更叠加: 关</button>
-        <button class="secondary" id="btnFocusToggle">聚焦: 关</button>
-        <button class="secondary" id="btnRefresh">刷新索引</button>
-        <button id="btnInitManifest" style="display:none;">保存骨架</button>
-        <div class="agent-menu-wrap vscode-only">
-          <button id="btnAgentMenu">接入 Agent ▾</button>
-          <div class="agent-menu hidden" id="agentMenu">
-            <button id="btnCopyMcpCfg">
-              <strong id="lblCopyMcp">1. 复制 MCP 配置 JSON</strong>
-              <span class="agent-menu-desc" id="descCopyMcp">自动填好当前仓库路径，粘贴到 Agent 配置</span>
+      </div>
+
+      <!-- Right Zone: Clean Filters + Primary CTA + Overflow Menu -->
+      <div class="tb-zone">
+        <button class="secondary" id="btnSummaryToggle">变更摘要</button>
+        <div class="filter-group">
+          <button id="btnPruneToggle" title="隐藏未变更的无关分支">仅看变更</button>
+          <button id="btnDeltaToggle" title="压暗未变更节点以突出 Diff">高亮Diff</button>
+          <button id="btnFocusToggle" title="仅高亮当前选中节点的上下游链路">聚焦</button>
+        </div>
+        <button class="btn-analyze analyze-action" id="btnAnalyzeBranch">⚡ 分析分支</button>
+        <button class="secondary icon-btn" id="btnRefresh" title="刷新索引">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M13.2 8a5.2 5.2 0 1 1-1.4-3.6M13.4 2.6v2.8h-2.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <div class="more-wrap">
+          <button class="secondary icon-btn" id="btnMoreMenu" title="更多工具与设置">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <circle cx="3.2" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.8" cy="8" r="1.3"/>
+            </svg>
+            <span class="more-dot hidden" id="moreMenuDot"></span>
+          </button>
+          <div class="more-menu hidden" id="moreMenu">
+            <button id="btnInitManifest" style="display:none;"></button>
+            <button class="vscode-only" id="btnRunImpact"></button>
+            <button class="vscode-only" id="btnVerifyBriefing"></button>
+            <button class="vscode-only" id="btnCopyDirs"></button>
+            <div class="more-sep vscode-only"></div>
+            <div class="more-sec-label vscode-only" id="lblAgentBridgeSec">Agent 协作接入</div>
+            <button class="vscode-only" id="btnCopyMcpCfg">
+              <span class="menu-item-col">
+                <strong id="lblCopyMcp">1. 复制 MCP 配置 JSON</strong>
+                <span class="agent-menu-desc" id="descCopyMcp">自动填好当前仓库路径，粘贴到 Agent 配置</span>
+              </span>
             </button>
-            <button id="btnCopyBranchPrompt">
-              <strong id="lblCopyBranch">2. 复制“分析当前分支” Prompt</strong>
-              <span class="agent-menu-desc" id="descCopyBranch">让 Agent 生成因果简报并自动回传画布</span>
+            <button class="vscode-only" id="btnCopyBranchPrompt">
+              <span class="menu-item-col">
+                <strong id="lblCopyBranch">2. 复制“分析当前分支” Prompt</strong>
+                <span class="agent-menu-desc" id="descCopyBranch">让 Agent 生成因果简报并自动回传画布</span>
+              </span>
             </button>
-            <button id="btnCopyManifestPrompt">
-              <strong id="lblCopyManifest">3. 复制“完善架构骨架” Prompt</strong>
-              <span class="agent-menu-desc" id="descCopyManifest">让 Agent 编写 .atlas/manifest.json 与红线</span>
+            <button class="vscode-only" id="btnCopyManifestPrompt">
+              <span class="menu-item-col">
+                <strong id="lblCopyManifest">3. 复制“完善架构骨架” Prompt</strong>
+                <span class="agent-menu-desc" id="descCopyManifest">让 Agent 编写 .atlas/manifest.json 与红线</span>
+              </span>
             </button>
+            <div class="more-sep"></div>
+            <button id="btnLangToggle"></button>
           </div>
         </div>
-        <button class="secondary vscode-only" id="btnCopyDirs">导出指令</button>
-        <button class="secondary vscode-only" id="btnVerifyBriefing">核验 JSON</button>
-        <button class="secondary" id="btnLangToggle" style="padding:3px 7px;font-size:11px;">EN</button>
       </div>
     </div>
 
@@ -797,16 +1250,19 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         <span class="analyze-spinner" id="analyzeSpinner"></span>
         <span id="analyzeBannerText"></span>
       </div>
-      <button class="secondary" id="btnDismissAnalyze" style="padding:1px 7px;font-size:11px;display:none;">✕</button>
+      <button class="secondary" id="btnDismissAnalyze" style="height:20px;padding:0 7px;font-size:11px;display:none;">✕</button>
     </div>
 
     <div class="stale-banner hidden" id="staleBanner">
       <span id="staleBannerText"></span>
-      <button class="secondary" id="btnReverifyStale" style="padding:2px 8px;font-size:11px;">立即重验</button>
+      <button class="secondary" id="btnReverifyStale" style="height:22px;padding:0 8px;font-size:11px;">立即重验</button>
     </div>
 
     <div class="subbar">
-      <div class="breadcrumbs" id="breadcrumbs"></div>
+      <div class="subbar-left">
+        <span class="arch-pill" id="archPill" style="display:none;"></span>
+        <div class="breadcrumbs" id="breadcrumbs"></div>
+      </div>
       <div class="trust-chips" id="trustChips"></div>
     </div>
 
@@ -814,7 +1270,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       <aside class="summary-drawer hidden" id="summaryDrawer">
         <div class="drawer-header">
           <span id="summaryDrawerTitle">分支变更摘要</span>
-          <button class="secondary" id="btnCloseSummary" style="padding:1px 7px;">✕</button>
+          <button class="secondary icon-btn" id="btnCloseSummary" style="width:22px;height:22px;">✕</button>
         </div>
         <div class="drawer-body" id="summaryBody"></div>
       </aside>
@@ -834,30 +1290,33 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         </div>
 
         <div class="hud">
-          <button class="secondary" id="btnZoomOut" style="padding:1px 7px;">−</button>
-          <span id="zoomLabel" style="min-width:38px;text-align:center;">100%</span>
-          <button class="secondary" id="btnZoomIn" style="padding:1px 7px;">+</button>
+          <button class="secondary" id="btnZoomOut">−</button>
+          <span id="zoomLabel" style="min-width:38px;text-align:center;font-family:var(--mono);font-size:10.5px;">100%</span>
+          <button class="secondary" id="btnZoomIn">+</button>
           <div class="hud-sep"></div>
-          <button class="secondary" id="btnFitView" style="padding:1px 7px;">适配</button>
-          <button class="secondary" id="btnAutoLayout" style="padding:1px 7px;">整理</button>
-          <button class="secondary" id="btnExpandAll" style="padding:1px 7px;">展开</button>
-          <button class="secondary" id="btnCollapseDomains" style="padding:1px 7px;">收拢</button>
-          <button class="secondary" id="btnIndexFiles" style="padding:1px 7px;display:none;">展开至文件层</button>
+          <button class="secondary" id="btnFitView">适配</button>
+          <button class="secondary" id="btnAutoLayout">整理</button>
+          <button class="secondary" id="btnExpandAll">展开</button>
+          <button class="secondary" id="btnCollapseDomains">收拢</button>
+          <button class="secondary" id="btnIndexFiles" style="display:none;">展开至文件层</button>
         </div>
 
         <div class="legend-wrap">
           <div class="legend-popover hidden" id="legendPopover"></div>
-          <button class="secondary" id="btnLegendToggle" style="padding:3px 9px;font-size:11px;">? 图例</button>
+          <button class="secondary" id="btnLegendToggle" style="height:24px;padding:0 9px;font-size:11px;">? 图例</button>
         </div>
       </div>
 
       <aside class="inspector hidden" id="inspector">
         <div class="inspector-header">
-          <strong id="inspTitle" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">节点精读</strong>
-          <div class="group" style="gap:4px;flex-shrink:0;">
-            <button class="btn-analyze analyze-action" id="btnInspAnalyzeQuick" style="padding:2px 8px;font-size:11px;display:none;">⚡ 立即分析</button>
-            <button class="secondary" id="btnInspFocus" style="padding:2px 7px;font-size:11px;">聚焦</button>
-            <button class="secondary" id="btnCloseInsp" style="padding:2px 7px;">✕</button>
+          <div class="insp-title-wrap">
+            <span id="inspIcon"></span>
+            <strong id="inspTitle" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">节点精读</strong>
+          </div>
+          <div class="tb-zone" style="gap:4px;flex-shrink:0;">
+            <button class="btn-analyze analyze-action" id="btnInspAnalyzeQuick" style="height:22px;padding:0 8px;font-size:11px;display:none;">⚡ 分析</button>
+            <button class="secondary" id="btnInspFocus" style="height:22px;padding:0 7px;font-size:11px;">聚焦</button>
+            <button class="secondary icon-btn" id="btnCloseInsp" style="width:22px;height:22px;">✕</button>
           </div>
         </div>
         <div class="inspector-tabs">
@@ -875,53 +1334,58 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     const hostApi = window.__CODEATLAS_HOST__ || acquireVsCodeApi();
     const isMcpAppHost = document.body.classList.contains('host-mcp-app');
 
+    ${fileIconsJs}
+
     const I18N = {
       zh: {
         atlas: '全景底图', briefing: '因果简报', hybrid: '融合视图',
+        switchRepoTitle: '本地 Git 仓库路径',
         loadRepoBtn: '切换仓库', worktreePh: '输入本地 Git 仓库路径 (如 D:\\\\Project\\\\aster)...',
-        mcpNoRepoDesc: '请在左上角输入本地 Git 仓库路径并点击「切换仓库」（如 D:\\\\Project\\\\aster）。',
-        analyzeBranchBtn: '⚡ 分析分支', analyzeNodeBtn: '⚡ 立即分析', analyzeQuickBtn: '⚡ 立即分析',
+        mcpNoRepoDesc: '请点击左上角仓库胶囊输入本地 Git 仓库路径（如 D:\\\\Project\\\\aster）。',
+        analyzeBranchBtn: '⚡ 分析分支', analyzeNodeBtn: '⚡ 深度分析此模块', analyzeQuickBtn: '⚡ 分析',
         analyzingPrefix: '⚡ 正在分析: ', analyzingDefault: '⚡ 正在分析并生成确定性核验简报...',
         analyzeErrorPrefix: '⚠ 分析失败: ',
-        summaryBtn: '分支摘要', pruneOn: '仅看变更: 开', pruneOff: '仅看变更: 关', impactBtn: '分析影响面',
-        searchPh: '搜索 (/)...', deltaOn: '变更叠加: 开', deltaOff: '变更叠加: 关',
-        focusOn: '聚焦: 开', focusOff: '聚焦: 关', refresh: '刷新索引', initManifest: '保存骨架', agentMenuBtn: '接入 Agent ▾', exportDir: '导出指令',
+        summaryBtn: '变更摘要', pruneBtn: '仅看变更', impactBtn: '分析 LSP 影响面',
+        searchPh: '搜索节点或文件 (/)...', deltaBtn: '高亮Diff',
+        focusBtn: '聚焦', refreshTip: '刷新仓库索引', initManifest: '保存架构骨架 (.atlas/manifest.json)',
+        agentSec: 'Agent 协作接入', exportDir: '导出画布批注 (Markdown)',
         copyMcp: '1. 复制 MCP 配置 JSON', copyMcpDesc: '自动填好当前仓库路径，粘贴到 Agent 配置',
         copyBranch: '2. 复制“分析当前分支” Prompt', copyBranchDesc: '让 Agent 生成因果简报并自动回传画布',
         copyManifest: '3. 复制“完善架构骨架” Prompt', copyManifestDesc: '让 Agent 编写 .atlas/manifest.json 与红线',
         copyNodePrompt: '复制 Agent 分析 Prompt',
-        verifyJson: '核验 JSON', reverify: '立即重验', langBtn: 'EN',
-        selectBriefing: '-- 选择简报 --', fit: '适配', tidy: '整理', expand: '展开', collapse: '收拢',
-        indexFiles: '展开至文件层', collapseFiles: '收起文件层', legendBtn: '? 图例',
-        summaryTitle: '分支变更摘要', tabCode: '源码', tabDiff: 'Diff', tabDir: '+ 批注', tabTrust: '可信度',
-        inspFocus: '聚焦', defaultCrumb: '点击节点精读源码 · 双击节点聚焦分支 · 点域卡片按需展开文件',
-        openBtn: '打开 ↗', expandDomainFiles: '展开文件', collapseDomainFiles: '收起文件',
+        verifyJson: '加载并核验简报 JSON...', reverify: '立即重验', langBtn: '切换语言: English',
+        selectBriefing: '-- 选择简报 --', fit: '适配', tidy: '整理', expand: '全展', collapse: '收拢',
+        indexFiles: '展开文件层', collapseFiles: '收起文件层', legendBtn: '? 图例',
+        summaryTitle: '分支变更摘要', tabCode: '源码与详情', tabDiff: 'Git Diff', tabDir: '+ 批注', tabTrust: '可信度',
+        inspFocus: '聚焦', defaultCrumb: '点击节点查看源码 · 双击聚焦链路 · 点模块按需展开文件',
+        openBtn: '打开 ↗', expandDomainFiles: '文件', collapseDomainFiles: '收起',
+        entryTag: '入口',
         kind: {
-          root: '仓库快照', domain: '职责域', folder: '子目录', entrypoint: '业务入口', file: '文件',
-          claim: '因果声明', evidence: '代码证据', blocking: '阻断分叉', 'diff-file': '变更文件', impact: '间接影响', directive: '纠偏批注'
+          root: '仓库快照', domain: '职责域', folder: '目录', entrypoint: '业务入口', file: '源码文件',
+          claim: '因果声明', evidence: '代码证据', blocking: '阻断守卫', 'diff-file': '变更文件', impact: '跨模块影响', directive: '人工批注'
         },
-        badge: { verified: '已核验', mismatch: '失配', stale: '过期', unverified: '未核验', unknown: '未知' },
+        badge: { verified: '✓ 已核验', mismatch: '✕ 失配', stale: '⟳ 过期', unverified: '未核验', unknown: '未知' },
         legendHtml:
-          '<div><i class="dot" style="background:var(--green);"></i>职责域 / 已核验代码证据</div>' +
-          '<div><i class="dot" style="background:#79c0ff;"></i>简报因果声明</div>' +
-          '<div><i class="dot" style="background:var(--amber);"></i>显式阻断分叉 (IF → 结果)</div>' +
-          '<div><i class="dot" style="background:var(--purple);"></i>画布纠偏批注节点</div>' +
-          '<div style="border-top:1px solid var(--border);padding-top:5px;margin-top:2px;font-family:var(--mono);font-size:10px;">/ 搜索 · F 适配 · 0 100% · D 变更叠加 · E/C 展开收拢 · Enter 跳源码 · Esc 返回</div>',
-        emptyBriefingTitle: '尚未加载简报',
-        emptyBriefingDesc: '请点击上方「⚡ 分析分支」一键生成核验简报，或选择已有简报。',
-        noGit: '未检测到 Git 仓库',
+          '<div><i class="dot" style="background:rgba(140,150,168,0.65);"></i>直角树干线：目录与模块静态归属层级</div>' +
+          '<div><i class="dot" style="background:#4da6ff;"></i>蓝色弧线：因果声明 / 模块依赖关系</div>' +
+          '<div><i class="dot" style="background:var(--amber);"></i>橙色虚线：显式阻断守卫 (IF → 拦截结果)</div>' +
+          '<div><i class="dot" style="background:var(--purple);"></i>紫色虚线框：人工纠偏与红线批注</div>' +
+          '<div style="border-top:1px solid var(--border);padding-top:5px;margin-top:2px;font-family:var(--mono);font-size:10px;">/ 搜索 · F 适配 · 0 100% · D 高亮Diff · E/C 展开收拢 · Enter 跳源码 · Esc 返回</div>',
+        emptyBriefingTitle: '尚未加载因果简报',
+        emptyBriefingDesc: '请点击顶部「⚡ 分析分支」生成确定性核验简报，或切换至融合视图浏览架构底图。',
+        noGit: '未加载仓库',
         summaryImpacted: '受影响职责域（点击定位并展开）',
         summaryNoDiff: '当前相对基准无文件改动。',
         summaryCommits: '本分支提交记录',
         summaryNoCommits: '相对基准无新增提交。',
         summaryClaims: '关联简报声明',
-        summaryPruneHint: '开启“仅看变更”可隐藏无关逻辑分支，只保留本次改动与关联影响。',
-        jumpEditor: '在编辑器中打开 (Enter)',
+        summaryPruneHint: '开启顶部“仅看变更”可剪枝未改动的无关模块。',
+        jumpEditor: '在编辑器打开 ↗',
         loadingSnippet: '正在读取真实源码...',
         loadingDiff: '正在加载 Git Diff...',
         noDiffForFile: '当前文件相对所选基准无变更：',
         notFileNode: '当前节点未绑定具体文件路径。',
-        dirHelp: '向当前节点直接挂接一条约束、疑问或返工指令：',
+        dirHelp: '向当前节点挂接一条架构约束、疑问或返工指令：',
         dirPathReq: '必须填写仓库相对路径。',
         dirPlaceholder: '必填：描述需要 Agent 修复、保留或核验的具体要求...',
         dirWireBtn: '+ 挂接到画布',
@@ -937,50 +1401,53 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       },
       en: {
         atlas: 'Atlas', briefing: 'Briefing', hybrid: 'Hybrid',
-        loadRepoBtn: 'Load Repo', worktreePh: 'Local Git repo path (e.g. D:\\\\Project\\\\aster)...',
-        mcpNoRepoDesc: 'Enter a local Git repository path in the top-left bar and click Load Repo.',
+        switchRepoTitle: 'Local Git Repository Path',
+        loadRepoBtn: 'Switch', worktreePh: 'Local Git repo path (e.g. D:\\\\Project\\\\aster)...',
+        mcpNoRepoDesc: 'Click the repository pill in the top-left corner and enter a local Git repo path.',
         analyzeBranchBtn: '⚡ Analyze Branch', analyzeNodeBtn: '⚡ Analyze Module', analyzeQuickBtn: '⚡ Analyze',
         analyzingPrefix: '⚡ Analyzing: ', analyzingDefault: '⚡ Analyzing & verifying briefing...',
         analyzeErrorPrefix: '⚠ Analysis failed: ',
-        summaryBtn: 'Branch Summary', pruneOn: 'Changed Only: ON', pruneOff: 'Changed Only: OFF', impactBtn: 'Impact',
-        searchPh: 'Search (/)...', deltaOn: 'Delta: ON', deltaOff: 'Delta: OFF',
-        focusOn: 'Focus: ON', focusOff: 'Focus: OFF', refresh: 'Re-Index', initManifest: 'Save Skeleton', agentMenuBtn: 'Connect Agent ▾', exportDir: 'Export',
+        summaryBtn: 'Summary', pruneBtn: 'Changed Only', impactBtn: 'Run LSP Impact Analysis',
+        searchPh: 'Search nodes or files (/)...', deltaBtn: 'Highlight Diff',
+        focusBtn: 'Focus', refreshTip: 'Refresh Repository Index', initManifest: 'Save Architecture Skeleton (.atlas/manifest.json)',
+        agentSec: 'Connect External Agent', exportDir: 'Export Directives (Markdown)',
         copyMcp: '1. Copy MCP Config JSON', copyMcpDesc: 'Pre-filled with current repo & dist/mcp-server.js',
         copyBranch: '2. Copy Branch Analysis Prompt', copyBranchDesc: 'Ask Agent to submit a verified briefing to Canvas',
         copyManifest: '3. Copy Manifest Authoring Prompt', copyManifestDesc: 'Ask Agent to write .atlas/manifest.json & guardrails',
         copyNodePrompt: 'Copy Agent Analysis Prompt',
-        verifyJson: 'Verify JSON', reverify: 'Re-verify', langBtn: '中',
+        verifyJson: 'Load & Verify Briefing JSON...', reverify: 'Re-verify', langBtn: 'Language: 中文',
         selectBriefing: '-- Briefing --', fit: 'Fit', tidy: 'Tidy', expand: 'Expand', collapse: 'Collapse',
-        indexFiles: 'Expand to Files', collapseFiles: 'Collapse Files', legendBtn: '? Legend',
-        summaryTitle: 'Branch Summary', tabCode: 'Code', tabDiff: 'Diff', tabDir: '+ Directive', tabTrust: 'Trust',
-        inspFocus: 'Focus', defaultCrumb: 'Click to inspect · Double-click to focus · Click Domain to lazy-expand files',
-        openBtn: 'Open ↗', expandDomainFiles: 'Files', collapseDomainFiles: 'Hide Files',
+        indexFiles: 'Show Files', collapseFiles: 'Hide Files', legendBtn: '? Legend',
+        summaryTitle: 'Branch Summary', tabCode: 'Code & Details', tabDiff: 'Git Diff', tabDir: '+ Directive', tabTrust: 'Trust',
+        inspFocus: 'Focus', defaultCrumb: 'Click to inspect · Double-click to focus · Expand modules on demand',
+        openBtn: 'Open ↗', expandDomainFiles: 'Files', collapseDomainFiles: 'Hide',
+        entryTag: 'ENTRY',
         kind: {
-          root: 'Repository', domain: 'Domain', folder: 'Folder', entrypoint: 'Entrypoint', file: 'File',
-          claim: 'Claim', evidence: 'Evidence', blocking: 'Blocking Fork', 'diff-file': 'Changed File', impact: 'Indirect Impact', directive: 'Directive'
+          root: 'Repository', domain: 'Domain', folder: 'Folder', entrypoint: 'Entrypoint', file: 'Source File',
+          claim: 'Causal Claim', evidence: 'Evidence', blocking: 'Guard / Block', 'diff-file': 'Changed File', impact: 'Cross-Impact', directive: 'Directive'
         },
-        badge: { verified: 'verified', mismatch: 'mismatch', stale: 'stale', unverified: 'unverified', unknown: 'unknown' },
+        badge: { verified: '✓ verified', mismatch: '✕ mismatch', stale: '⟳ stale', unverified: 'unverified', unknown: 'unknown' },
         legendHtml:
-          '<div><i class="dot" style="background:var(--green);"></i>Domain / Verified Evidence</div>' +
-          '<div><i class="dot" style="background:#79c0ff;"></i>Briefing Claim</div>' +
-          '<div><i class="dot" style="background:var(--amber);"></i>Explicit Blocking Fork (IF → Outcome)</div>' +
-          '<div><i class="dot" style="background:var(--purple);"></i>Wired Directive Node</div>' +
-          '<div style="border-top:1px solid var(--border);padding-top:5px;margin-top:2px;font-family:var(--mono);font-size:10px;">/ Search · F Fit · 0 100% · D Delta · E/C Expand/Collapse · Enter Jump · Esc Back</div>',
+          '<div><i class="dot" style="background:rgba(140,150,168,0.65);"></i>Orthogonal spine: structural containment</div>' +
+          '<div><i class="dot" style="background:#4da6ff;"></i>Blue arc: causal claims &amp; module dependencies</div>' +
+          '<div><i class="dot" style="background:var(--amber);"></i>Amber dashed: explicit blocking guard (IF → Outcome)</div>' +
+          '<div><i class="dot" style="background:var(--purple);"></i>Purple dashed: human directive node</div>' +
+          '<div style="border-top:1px solid var(--border);padding-top:5px;margin-top:2px;font-family:var(--mono);font-size:10px;">/ Search · F Fit · 0 100% · D Diff · E/C Expand/Collapse · Enter Open · Esc Back</div>',
         emptyBriefingTitle: 'No Briefing Loaded',
-        emptyBriefingDesc: 'Click ⚡ Analyze Branch above to generate a verified briefing, or select a discovered briefing.',
-        noGit: 'No Git repository',
+        emptyBriefingDesc: 'Click ⚡ Analyze Branch above to generate a verified briefing, or switch to Hybrid view.',
+        noGit: 'No Repo',
         summaryImpacted: 'Impacted Domains (click to focus)',
         summaryNoDiff: 'No changed files vs current base ref.',
         summaryCommits: 'Branch Commits',
         summaryNoCommits: 'No new commits relative to base ref.',
         summaryClaims: 'Briefing Claims',
-        summaryPruneHint: 'Toggle "Changed Only" to prune unrelated branches from the Canvas.',
-        jumpEditor: 'Jump to Editor (Enter)',
+        summaryPruneHint: 'Enable "Changed Only" in the top bar to prune untouched domains.',
+        jumpEditor: 'Open in Editor ↗',
         loadingSnippet: 'Loading source preview...',
         loadingDiff: 'Loading git diff...',
         noDiffForFile: 'No git diff changes for: ',
         notFileNode: 'This node is not bound to a specific file path.',
-        dirHelp: 'Wire a Constraint, Question, or Rework node directly to:',
+        dirHelp: 'Wire a Constraint, Question, or Rework directive to:',
         dirPathReq: 'File path is required.',
         dirPlaceholder: 'Required: describe what the Agent must fix, preserve, or verify...',
         dirWireBtn: '+ Wire to Canvas',
@@ -1022,6 +1489,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     let positions = new Map();
     let manualPositions = new Set();
     let measuredHeights = new Map();
+    let measuredWidths = new Map();
     let snippetCache = new Map();
     let diffCache = new Map();
     let edgeRaf = 0;
@@ -1029,9 +1497,11 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
 
     let cam = { x: 60, y: 60, scale: 1 };
 
-    const NODE_W = 262;
-    const X_GAP = 330;
-    const Y_PAD = 24;
+    const CARD_W = 268;
+    const COMPACT_W = 246;
+    const COL_GAP = 54;
+    const Y_GAP_CARD = 14;
+    const Y_GAP_COMPACT = 7;
 
     const viewport = document.getElementById('viewport');
     const stage = document.getElementById('stage');
@@ -1050,6 +1520,81 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
+    }
+
+    function isCompactNode(node) {
+      if (!node) return false;
+      return (
+        node.kind === 'file' ||
+        node.kind === 'diff-file' ||
+        node.kind === 'entrypoint' ||
+        node.kind === 'evidence' ||
+        node.kind === 'folder'
+      );
+    }
+
+    function getNodeWidth(id) {
+      if (measuredWidths.has(id)) return measuredWidths.get(id);
+      const n = nodeById.get(id);
+      return isCompactNode(n) ? COMPACT_W : CARD_W;
+    }
+
+    function getNodeHeight(id) {
+      if (measuredHeights.has(id)) return measuredHeights.get(id);
+      const n = nodeById.get(id);
+      return isCompactNode(n) ? 38 : 96;
+    }
+
+    function findAncestorDomainPrefix(node) {
+      let cur = node && node.parentId ? nodeById.get(node.parentId) : null;
+      while (cur) {
+        if (cur.kind === 'domain') {
+          if (cur.defaultDirectivePath && cur.defaultDirectivePath.indexOf('.') === -1) {
+            return cur.defaultDirectivePath.replace(/\\/+$/, '');
+          }
+          if (cur.title && cur.title.indexOf(' ') === -1) {
+            return cur.title.replace(/\\/+$/, '');
+          }
+        }
+        cur = cur.parentId ? nodeById.get(cur.parentId) : null;
+      }
+      return '';
+    }
+
+    function formatCompactSubtitle(node) {
+      if (!node) return '';
+      if (node.isSummary) return node.subtitle || '';
+      if (node.kind === 'folder') return '';
+      if (!node.path) return node.subtitle || '';
+
+      const norm = String(node.path);
+      const slashIdx = norm.lastIndexOf('/');
+      const baseName = slashIdx >= 0 ? norm.slice(slashIdx + 1) : norm;
+      let dirPart = slashIdx >= 0 ? norm.slice(0, slashIdx) : '';
+
+      const domPrefix = findAncestorDomainPrefix(node);
+      if (domPrefix && (dirPart === domPrefix || dirPart.indexOf(domPrefix + '/') === 0)) {
+        dirPart = dirPart.slice(domPrefix.length).replace(/^\\/+/, '');
+      }
+
+      // Also strip immediate folder title if parent is a folder node
+      const parent = node.parentId ? nodeById.get(node.parentId) : null;
+      if (parent && parent.kind === 'folder' && parent.title && dirPart === parent.title) {
+        dirPart = '';
+      }
+
+      const lineSuffix =
+        node.startLine && (node.startLine > 1 || node.kind === 'evidence')
+          ? ':' + node.startLine + (node.endLine && node.endLine !== node.startLine ? '-' + node.endLine : '')
+          : '';
+
+      if (node.title !== baseName) {
+        // Title is a symbol (e.g. pub fn run()), so keep filename + line!
+        return (dirPart ? dirPart + '/' : '') + baseName + lineSuffix;
+      }
+      if (dirPart) return dirPart + lineSuffix;
+      if (lineSuffix) return 'L' + lineSuffix.slice(1);
+      return '';
     }
 
     function isAnalyzableNode(node) {
@@ -1093,7 +1638,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         banner.classList.add('is-error');
         spinner.classList.add('hidden');
         textEl.textContent = t('analyzeErrorPrefix') + analyzeState.error;
-        dismissBtn.style.display = 'inline-block';
+        dismissBtn.style.display = 'inline-flex';
       } else {
         banner.classList.add('hidden');
         banner.classList.remove('is-error');
@@ -1118,22 +1663,28 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       document.getElementById('mAtlas').textContent = t('atlas');
       document.getElementById('mBriefing').textContent = t('briefing');
       document.getElementById('mHybrid').textContent = t('hybrid');
+      const lblRepo = document.getElementById('lblSwitchRepo');
+      if (lblRepo) lblRepo.textContent = t('switchRepoTitle');
       const wtBtn = document.getElementById('btnSetWorktree');
       if (wtBtn) wtBtn.textContent = t('loadRepoBtn');
       const wtInput = document.getElementById('worktreeInput');
       if (wtInput) wtInput.placeholder = t('worktreePh');
       document.getElementById('btnAnalyzeBranch').textContent = t('analyzeBranchBtn');
       document.getElementById('btnInspAnalyzeQuick').textContent = t('analyzeQuickBtn');
-      document.getElementById('btnSummaryToggle').textContent = t('summaryBtn');
-      document.getElementById('btnPruneToggle').textContent = pruneUnchanged ? t('pruneOn') : t('pruneOff');
+      const diffCnt = (graph.summary && graph.summary.changedFiles) || 0;
+      document.getElementById('btnSummaryToggle').textContent = t('summaryBtn') + (diffCnt > 0 ? ' (' + diffCnt + ')' : '');
+      document.getElementById('btnPruneToggle').textContent = t('pruneBtn');
       document.getElementById('btnPruneToggle').classList.toggle('active', pruneUnchanged);
       document.getElementById('btnRunImpact').textContent = t('impactBtn');
       document.getElementById('searchInput').placeholder = t('searchPh');
-      document.getElementById('btnDeltaToggle').textContent = deltaOverlay ? t('deltaOn') : t('deltaOff');
-      document.getElementById('btnFocusToggle').textContent = focusMode ? t('focusOn') : t('focusOff');
-      document.getElementById('btnRefresh').textContent = t('refresh');
+      document.getElementById('btnDeltaToggle').textContent = t('deltaBtn');
+      document.getElementById('btnDeltaToggle').classList.toggle('active', deltaOverlay);
+      document.getElementById('btnFocusToggle').textContent = t('focusBtn');
+      document.getElementById('btnFocusToggle').classList.toggle('active', focusMode);
+      document.getElementById('btnRefresh').title = t('refreshTip');
       document.getElementById('btnInitManifest').textContent = t('initManifest');
-      document.getElementById('btnAgentMenu').textContent = t('agentMenuBtn');
+      const agSec = document.getElementById('lblAgentBridgeSec');
+      if (agSec) agSec.textContent = t('agentSec');
       document.getElementById('lblCopyMcp').textContent = t('copyMcp');
       document.getElementById('descCopyMcp').textContent = t('copyMcpDesc');
       document.getElementById('lblCopyBranch').textContent = t('copyBranch');
@@ -1215,8 +1766,10 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       return set;
     }
 
-    function getNodeHeight(id) {
-      return measuredHeights.get(id) || 128;
+    function pairVerticalGap(prevId, nextId) {
+      const a = nodeById.get(prevId);
+      const b = nodeById.get(nextId);
+      return (isCompactNode(a) && isCompactNode(b)) ? Y_GAP_COMPACT : Y_GAP_CARD;
     }
 
     function computeTidyLayout(forceReset = false) {
@@ -1233,21 +1786,22 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         }
         let sum = 0;
         for (let i = 0; i < kids.length; i++) {
+          if (i > 0) sum += pairVerticalGap(kids[i - 1], kids[i]);
           sum += measureSubtree(kids[i]);
-          if (i > 0) sum += Y_PAD;
         }
         const total = Math.max(selfH, sum);
         subtreeHeights.set(id, total);
         return total;
       }
 
-      function placeSubtree(id, depth, bandTop) {
+      function placeSubtree(id, colLeftX, bandTop) {
         const selfH = getNodeHeight(id);
+        const selfW = getNodeWidth(id);
         const bandH = subtreeHeights.get(id) || selfH;
         const topY = bandTop + (bandH - selfH) / 2;
 
         if (forceReset || (!positions.has(id) && !manualPositions.has(id))) {
-          positions.set(id, { x: depth * X_GAP, y: topY });
+          positions.set(id, { x: colLeftX, y: topY });
         }
 
         const kids = (childrenMap.get(id) || []).filter(cid => visible.has(cid));
@@ -1255,14 +1809,16 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
 
         let kidsTotal = 0;
         for (let i = 0; i < kids.length; i++) {
+          if (i > 0) kidsTotal += pairVerticalGap(kids[i - 1], kids[i]);
           kidsTotal += subtreeHeights.get(kids[i]) || getNodeHeight(kids[i]);
-          if (i > 0) kidsTotal += Y_PAD;
         }
         let childCursor = bandTop + (bandH - kidsTotal) / 2;
-        for (const cid of kids) {
+        const nextColX = colLeftX + selfW + COL_GAP;
+        for (let i = 0; i < kids.length; i++) {
+          const cid = kids[i];
           const ch = subtreeHeights.get(cid) || getNodeHeight(cid);
-          placeSubtree(cid, depth + 1, childCursor);
-          childCursor += ch + Y_PAD;
+          placeSubtree(cid, nextColX, childCursor);
+          childCursor += ch + (i + 1 < kids.length ? pairVerticalGap(cid, kids[i + 1]) : 0);
         }
       }
 
@@ -1271,7 +1827,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       for (const r of roots) {
         const h = measureSubtree(r.id);
         placeSubtree(r.id, 0, rootCursor);
-        rootCursor += h + Y_PAD * 2;
+        rootCursor += h + Y_GAP_CARD * 2;
       }
     }
 
@@ -1279,8 +1835,9 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       const p = positions.get(id);
       if (!p) return;
       const rect = viewport.getBoundingClientRect();
+      const w = getNodeWidth(id);
       const h = getNodeHeight(id);
-      cam.x = rect.width / 2 - (p.x + NODE_W / 2) * cam.scale;
+      cam.x = rect.width / 2 - (p.x + w / 2) * cam.scale;
       cam.y = rect.height / 2 - (p.y + h / 2) * cam.scale;
       applyCamera();
     }
@@ -1294,14 +1851,14 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         if (!p) continue;
         minX = Math.min(minX, p.x);
         minY = Math.min(minY, p.y);
-        maxX = Math.max(maxX, p.x + NODE_W);
+        maxX = Math.max(maxX, p.x + getNodeWidth(id));
         maxY = Math.max(maxY, p.y + getNodeHeight(id));
       }
       const rect = viewport.getBoundingClientRect();
-      const pad = 52;
+      const pad = 48;
       const w = Math.max(1, maxX - minX);
       const h = Math.max(1, maxY - minY);
-      const scale = Math.min(1.05, Math.max(0.15, Math.min((rect.width - pad * 2) / w, (rect.height - pad * 2) / h)));
+      const scale = Math.min(1.04, Math.max(0.16, Math.min((rect.width - pad * 2) / w, (rect.height - pad * 2) / h)));
       cam.scale = scale;
       cam.x = (rect.width - w * scale) / 2 - minX * scale;
       cam.y = (rect.height - h * scale) / 2 - minY * scale;
@@ -1385,60 +1942,168 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       return false;
     }
 
+    function isEdgeDimmed(e, focusedSet, chipSet, matchedIds) {
+      if (e.kind === 'dep') return false;
+      const targetNode = nodeById.get(e.to);
+      if (focusedSet && (!focusedSet.has(e.from) || !focusedSet.has(e.to))) return true;
+      if (chipSet && (!chipSet.has(e.from) || !chipSet.has(e.to))) return true;
+      if (targetNode && deltaOverlay && !targetNode.changed && targetNode.kind !== 'root' && targetNode.kind !== 'directive') return true;
+      if (matchedIds && !matchedIds.has(e.to) && !matchedIds.has(e.from)) return true;
+      return false;
+    }
+
     function renderEdges() {
       const visible = getVisibleNodeIds();
       const focusedSet = getFocusedSet();
       const chipSet = computeFilterSet();
       const matchedIds = searchQuery.trim() ? new Set(searchMatches) : null;
 
-      let svgHtml = '';
+      let svgHtml =
+        '<defs>' +
+          '<marker id="arr-flow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M1 1.2 7 4 1 6.8" fill="none" stroke="#4da6ff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></marker>' +
+          '<marker id="arr-blocking" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M1 1.2 7 4 1 6.8" fill="none" stroke="#f0883e" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></marker>' +
+          '<marker id="arr-impact" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M1 1.2 7 4 1 6.8" fill="none" stroke="#39c5cf" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></marker>' +
+          '<marker id="arr-dep" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M1 1.2 7 4 1 6.8" fill="none" stroke="#58a6ff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></marker>' +
+          '<marker id="arr-directive" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M1 1.2 7 4 1 6.8" fill="none" stroke="#a371f7" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></marker>' +
+        '</defs>';
+
+      // 1. Group structural hierarchy edges by parent to draw a single clean orthogonal bus (zero alpha overlap!)
+      const hierarchyByParent = new Map();
+      const curvedEdges = [];
+
       for (const e of graph.edges) {
         if (!visible.has(e.from) || !visible.has(e.to)) continue;
-        // Progressive disclosure: only draw workspace dependency arcs for the inspected domain
         if (e.kind === 'dep' && selectedNodeId !== e.from && selectedNodeId !== e.to) continue;
+        if (e.kind === 'hierarchy') {
+          if (!hierarchyByParent.has(e.from)) hierarchyByParent.set(e.from, []);
+          hierarchyByParent.get(e.from).push(e);
+        } else {
+          curvedEdges.push(e);
+        }
+      }
+
+      for (const [parentId, list] of hierarchyByParent.entries()) {
+        const p1 = positions.get(parentId);
+        if (!p1) continue;
+        const x1 = p1.x + getNodeWidth(parentId);
+        const y1 = p1.y + getNodeHeight(parentId) / 2;
+
+        const forward = [];
+        for (const e of list) {
+          const p2 = positions.get(e.to);
+          if (!p2) continue;
+          const x2 = p2.x;
+          const y2 = p2.y + getNodeHeight(e.to) / 2;
+          const dimmed = isEdgeDimmed(e, focusedSet, chipSet, matchedIds);
+          const focused = Boolean(
+            (focusedSet && focusedSet.has(e.from) && focusedSet.has(e.to)) ||
+            (selectedNodeId && (selectedNodeId === e.to))
+          );
+          if (x2 >= x1 + 16) {
+            forward.push({ e, x2, y2, dimmed, focused });
+          } else {
+            curvedEdges.push(e);
+          }
+        }
+
+        if (forward.length === 1 && Math.abs(forward[0].y2 - y1) < 2) {
+          const item = forward[0];
+          const cls = 'edge-bus' + (item.dimmed ? ' dimmed' : '') + (item.focused ? ' focused' : '');
+          svgHtml += '<path class="' + cls + '" d="M ' + x1 + ' ' + y1 + ' L ' + item.x2 + ' ' + item.y2 + '" />';
+          continue;
+        }
+
+        if (forward.length > 0) {
+          let minX2 = Infinity;
+          let minY = y1;
+          let maxY = y1;
+          let allDimmed = true;
+          for (const item of forward) {
+            if (item.x2 < minX2) minX2 = item.x2;
+            if (item.y2 < minY) minY = item.y2;
+            if (item.y2 > maxY) maxY = item.y2;
+            if (!item.dimmed) allDimmed = false;
+          }
+          const busX = Math.round(x1 + Math.max(14, Math.min(26, (minX2 - x1) * 0.46)));
+          const baseCls = 'edge-bus' + (allDimmed ? ' dimmed' : '');
+
+          // Single parent horizontal stub + single vertical spine (drawn ONCE!)
+          svgHtml += '<path class="' + baseCls + '" d="M ' + x1 + ' ' + y1 + ' L ' + busX + ' ' + y1 + '" />';
+          if (maxY - minY > 0.5) {
+            svgHtml += '<path class="' + baseCls + '" d="M ' + busX + ' ' + minY + ' L ' + busX + ' ' + maxY + '" />';
+          }
+
+          // Individual horizontal ticks into each child (zero overlap!)
+          for (const item of forward) {
+            if (item.focused && !item.dimmed) continue;
+            const tickCls = 'edge-bus' + (item.dimmed ? ' dimmed' : '');
+            svgHtml += '<path class="' + tickCls + '" d="M ' + busX + ' ' + item.y2 + ' L ' + item.x2 + ' ' + item.y2 + '" />';
+          }
+
+          // Highlighted lineage overlay for focused/selected child
+          for (const item of forward) {
+            if (item.focused && !item.dimmed) {
+              const r = Math.min(6, Math.abs(item.y2 - y1) / 2, Math.abs(busX - x1) / 2, Math.abs(item.x2 - busX) / 2);
+              if (r < 1.5) {
+                svgHtml += '<path class="edge-bus focused" d="M ' + x1 + ' ' + y1 + ' L ' + busX + ' ' + y1 + ' L ' + busX + ' ' + item.y2 + ' L ' + item.x2 + ' ' + item.y2 + '" />';
+              } else {
+                const dir = item.y2 > y1 ? 1 : -1;
+                const d =
+                  'M ' + x1 + ' ' + y1 +
+                  ' L ' + (busX - r) + ' ' + y1 +
+                  ' Q ' + busX + ' ' + y1 + ' ' + busX + ' ' + (y1 + dir * r) +
+                  ' L ' + busX + ' ' + (item.y2 - dir * r) +
+                  ' Q ' + busX + ' ' + item.y2 + ' ' + (busX + r) + ' ' + item.y2 +
+                  ' L ' + item.x2 + ' ' + item.y2;
+                svgHtml += '<path class="edge-bus focused" d="' + d + '" />';
+              }
+            }
+          }
+        }
+      }
+
+      // 2. Render curved semantic & dependency edges
+      for (const e of curvedEdges) {
         const p1 = positions.get(e.from);
         const p2 = positions.get(e.to);
         if (!p1 || !p2) continue;
 
+        const w1 = getNodeWidth(e.from);
         let d = '';
         let mx = 0;
         let my = 0;
-        if (e.kind === 'dep' && Math.abs(p1.x - p2.x) < NODE_W) {
-          // Same-column vertical arc on the left edge so it never crosses sibling cards
+        if (e.kind === 'dep' && Math.abs(p1.x - p2.x) < w1) {
           const x1 = p1.x;
           const y1 = p1.y + getNodeHeight(e.from) / 2;
           const x2 = p2.x;
           const y2 = p2.y + getNodeHeight(e.to) / 2;
-          const arcOffset = Math.min(110, Math.max(46, Math.abs(y2 - y1) * 0.22));
+          const arcOffset = Math.min(104, Math.max(44, Math.abs(y2 - y1) * 0.22));
           d = 'M ' + x1 + ' ' + y1 + ' C ' + (x1 - arcOffset) + ' ' + y1 + ', ' + (x2 - arcOffset) + ' ' + y2 + ', ' + x2 + ' ' + y2;
           mx = x1 - arcOffset * 0.78;
           my = (y1 + y2) / 2;
         } else {
-          const x1 = p1.x + NODE_W;
+          const x1 = p1.x + w1;
           const y1 = p1.y + getNodeHeight(e.from) / 2;
           const x2 = p2.x;
           const y2 = p2.y + getNodeHeight(e.to) / 2;
-          const dx = Math.max(44, Math.abs(x2 - x1) * 0.48);
+          const dx = Math.max(40, Math.abs(x2 - x1) * 0.46);
           d = 'M ' + x1 + ' ' + y1 + ' C ' + (x1 + dx) + ' ' + y1 + ', ' + (x2 - dx) + ' ' + y2 + ', ' + x2 + ' ' + y2;
           mx = (x1 + x2) / 2;
           my = (y1 + y2) / 2;
         }
 
-        const targetNode = nodeById.get(e.to);
-        const dimmed =
-          e.kind !== 'dep' && (
-            (focusedSet && (!focusedSet.has(e.from) || !focusedSet.has(e.to))) ||
-            (chipSet && (!chipSet.has(e.from) || !chipSet.has(e.to))) ||
-            (targetNode && deltaOverlay && !targetNode.changed && targetNode.kind !== 'root' && targetNode.kind !== 'directive') ||
-            (matchedIds && !matchedIds.has(e.to) && !matchedIds.has(e.from))
-          );
+        const dimmed = isEdgeDimmed(e, focusedSet, chipSet, matchedIds);
         const isFocused = e.kind === 'dep' || (focusedSet && focusedSet.has(e.from) && focusedSet.has(e.to));
+        const markerAttr =
+          e.kind === 'flow' || e.kind === 'blocking' || e.kind === 'impact' || e.kind === 'dep' || e.kind === 'directive'
+            ? ' marker-end="url(#arr-' + esc(e.kind) + ')"'
+            : '';
 
-        svgHtml += '<path class="edge-path ' + esc(e.kind) + (dimmed ? ' dimmed' : '') + (isFocused ? ' focused' : '') + '" d="' + d + '" />';
+        svgHtml += '<path class="edge-path ' + esc(e.kind) + (dimmed ? ' dimmed' : '') + (isFocused ? ' focused' : '') + '" d="' + d + '"' + markerAttr + ' />';
         if (e.label) {
-          const pw = e.label.length * 8 + 14;
-          svgHtml += '<rect class="edge-pill ' + esc(e.kind) + (dimmed ? ' dimmed' : '') + '" x="' + (mx - pw / 2) + '" y="' + (my - 9) + '" width="' + pw + '" height="16" rx="8" />';
-          svgHtml += '<text class="edge-label ' + esc(e.kind) + (dimmed ? ' dimmed' : '') + '" x="' + mx + '" y="' + (my + 3) + '" text-anchor="middle">' + esc(e.label) + '</text>';
+          const pw = e.label.length * 7.5 + 14;
+          svgHtml += '<rect class="edge-pill ' + esc(e.kind) + (dimmed ? ' dimmed' : '') + '" x="' + (mx - pw / 2) + '" y="' + (my - 8) + '" width="' + pw + '" height="15" rx="7.5" />';
+          svgHtml += '<text class="edge-label ' + esc(e.kind) + (dimmed ? ' dimmed' : '') + '" x="' + mx + '" y="' + (my + 2.8) + '" text-anchor="middle">' + esc(e.label) + '</text>';
         }
       }
       edgesSvg.innerHTML = svgHtml;
@@ -1461,12 +2126,11 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       }
 
       let html =
-        '<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">' +
+        '<div style="font-size:11.5px;color:var(--muted);margin-bottom:6px;">' +
           '<code>' + esc(bs.branch) + '</code> vs <code>' + esc(bs.baseRef) + '</code>' +
         '</div>' +
         '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;">' + esc(t('summaryPruneHint')) + '</div>';
 
-      // Impacted Domains
       html += '<div class="summary-sec">' + esc(t('summaryImpacted')) + ' (' + bs.impactedDomains.length + ')</div>';
       if (bs.impactedDomains.length === 0) {
         html += '<div style="font-size:11.5px;color:var(--muted);">' + esc(t('summaryNoDiff')) + '</div>';
@@ -1475,8 +2139,11 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           html +=
             '<div class="summary-item" data-jump-node="' + esc(d.nodeId) + '" data-expand-dom="' + esc(d.domainId) + '">' +
               '<div class="summary-item-top">' +
-                '<span>' + esc(d.name) + '</span>' +
-                '<span><span class="diff-add">+' + d.additions + '</span> <span class="diff-del">-' + d.deletions + '</span></span>' +
+                '<span style="display:inline-flex;align-items:center;gap:6px;min-width:0;">' +
+                  getNodeIconSvg({ kind: 'domain', title: d.name }, false) +
+                  '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(d.name) + '</span>' +
+                '</span>' +
+                '<span style="flex-shrink:0;"><span class="diff-add">+' + d.additions + '</span> <span class="diff-del">-' + d.deletions + '</span></span>' +
               '</div>' +
               '<div class="summary-item-sub">' +
                 (d.layer ? esc(d.layer) + ' · ' : '') + d.changedFiles + (lang === 'zh' ? ' 个变更文件' : ' changed files') +
@@ -1485,21 +2152,19 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         }
       }
 
-      // Briefing Claims linked directly to Canvas
       if (bs.claimItems && bs.claimItems.length > 0) {
         html += '<div class="summary-sec">' + esc(t('summaryClaims')) + ' (' + bs.claimItems.length + ')</div>';
         for (const c of bs.claimItems) {
           html +=
             '<div class="summary-item" data-jump-node="' + esc(c.nodeId) + '">' +
               '<div class="summary-item-top">' +
-                '<span>' + esc(c.id + ' · ' + c.title) + '</span>' +
+                '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(c.id + ' · ' + c.title) + '</span>' +
                 '<span class="badge badge-' + esc(c.badge) + '">' + esc((t('badge')[c.badge] || c.badge)) + '</span>' +
               '</div>' +
             '</div>';
         }
       }
 
-      // Commits on this branch
       html += '<div class="summary-sec">' + esc(t('summaryCommits')) + ' (' + bs.commits.length + ')</div>';
       if (bs.commits.length === 0) {
         html += '<div style="font-size:11.5px;color:var(--muted);">' + esc(t('summaryNoCommits')) + '</div>';
@@ -1560,20 +2225,19 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
 
       const s = graph.summary || {};
       const chips = [];
-      if (s.verified > 0) chips.push('<span class="chip ok" data-chip="trust">' + (lang === 'zh' ? '已核验 ' : 'Verified ') + s.verified + '</span>');
-      if (s.mismatch > 0) chips.push('<span class="chip err' + (activeChipFilter === 'mismatch' ? ' active' : '') + '" data-chip="mismatch">' + (lang === 'zh' ? '失配 ' : 'Mismatch ') + s.mismatch + '</span>');
-      if (s.stale > 0) chips.push('<span class="chip warn" data-chip="trust">' + (lang === 'zh' ? '过期 ' : 'Stale ') + s.stale + '</span>');
+      if (s.verified > 0) chips.push('<span class="chip ok" data-chip="trust">' + (lang === 'zh' ? '✓ 已核验 ' : '✓ Verified ') + s.verified + '</span>');
+      if (s.mismatch > 0) chips.push('<span class="chip err' + (activeChipFilter === 'mismatch' ? ' active' : '') + '" data-chip="mismatch">' + (lang === 'zh' ? '✕ 失配 ' : '✕ Mismatch ') + s.mismatch + '</span>');
+      if (s.stale > 0) chips.push('<span class="chip warn" data-chip="trust">' + (lang === 'zh' ? '⟳ 过期 ' : '⟳ Stale ') + s.stale + '</span>');
       if (s.blockingCount > 0) chips.push('<span class="chip warn' + (activeChipFilter === 'blocking' ? ' active' : '') + '" data-chip="blocking">' + (lang === 'zh' ? '阻断 ' : 'Guards ') + s.blockingCount + '</span>');
-      if (s.impactCount > 0) chips.push('<span class="chip' + (activeChipFilter === 'impact' ? ' active' : '') + '" style="color:#39c5cf;background:rgba(57,197,207,0.16);" data-chip="impact">' + (lang === 'zh' ? '间接影响 ' : 'Impact ') + s.impactCount + '</span>');
-      if (s.manifestIssues && s.manifestIssues.length > 0) chips.push('<span class="chip err" data-chip="trust">' + (lang === 'zh' ? '骨架漂移 ' : 'Manifest Drift ') + s.manifestIssues.length + '</span>');
-      if (s.signals && s.signals.length > 0) chips.push('<span class="chip" data-chip="trust">' + (lang === 'zh' ? '信号 ' : 'Signals ') + s.signals.length + '</span>');
+      if (s.impactCount > 0) chips.push('<span class="chip' + (activeChipFilter === 'impact' ? ' active' : '') + '" style="color:var(--cyan);background:rgba(57,197,207,0.14);" data-chip="impact">' + (lang === 'zh' ? '影响 ' : 'Impact ') + s.impactCount + '</span>');
+      if (s.manifestIssues && s.manifestIssues.length > 0) chips.push('<span class="chip err" data-chip="trust">' + (lang === 'zh' ? '骨架漂移 ' : 'Drift ') + s.manifestIssues.length + '</span>');
       if (s.blindSpots && s.blindSpots.length > 0) chips.push('<span class="chip warn" data-chip="trust">' + (lang === 'zh' ? '盲区 ' : 'Blind Spots ') + s.blindSpots.length + '</span>');
       if (s.directiveCount > 0) chips.push('<span class="chip dir' + (activeChipFilter === 'directive' ? ' active' : '') + '" data-chip="directive">' + (lang === 'zh' ? '批注 ' : 'Directives ') + s.directiveCount + '</span>');
       if (s.prunedCount > 0) chips.push('<span class="chip">' + (lang === 'zh' ? '已剪枝 ' : 'Pruned ') + s.prunedCount + '</span>');
       if (s.hiddenSupportFiles > 0 || showSupportAssets) {
         const supLabel = showSupportAssets
-          ? (lang === 'zh' ? '已显示非源码资源' : 'Support/Assets: ON')
-          : (lang === 'zh' ? '已折叠非源码 ' + s.hiddenSupportFiles + ' 文件' : 'Hidden Assets/Config ' + s.hiddenSupportFiles);
+          ? (lang === 'zh' ? '非源码资源: 显示' : 'Assets: Visible')
+          : (lang === 'zh' ? '已收起资源 ' + s.hiddenSupportFiles : 'Folded Assets ' + s.hiddenSupportFiles);
         chips.push('<span class="chip' + (showSupportAssets ? ' active' : '') + '" data-chip="toggleSupport" title="' + (lang === 'zh' ? '点击切换显示/隐藏静态资源与配置目录' : 'Toggle non-code support & asset domains') + '">' + supLabel + '</span>');
       }
 
@@ -1624,79 +2288,145 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         const p = positions.get(n.id) || { x: 0, y: 0 };
         const kids = childrenMap.get(n.id) || [];
         const isCollapsed = collapsedIds.has(n.id);
+        const compact = isCompactNode(n);
 
         const el = document.createElement('div');
-        el.className = 'node kind-' + n.kind + (n.isSummary ? ' is-summary' : '');
+        el.className =
+          'node kind-' + n.kind +
+          (compact ? ' node-compact' : '') +
+          (n.isSummary ? ' is-summary' : '') +
+          (n.isSupport ? ' is-support' : '') +
+          (n.badge === 'mismatch' ? ' has-mismatch' : '');
         el.style.left = p.x + 'px';
         el.style.top = p.y + 'px';
+        if (n.path || n.subtitle) {
+          el.title = n.path || n.subtitle || n.title;
+        }
         el.dataset.id = n.id;
 
-        const diffHtml = n.changed && (n.additions !== undefined || n.deletions !== undefined)
-          ? '<span><span class="diff-add">+' + (n.additions || 0) + '</span> <span class="diff-del">-' + (n.deletions || 0) + '</span></span>'
-          : (n.changed ? '<span style="color:var(--yellow);">' + (lang === 'zh' ? '有变更' : 'modified') + '</span>' : '<span></span>');
+        const iconHtml = getNodeIconSvg(n, !isCollapsed);
 
-        let middleHtml = '';
-        if (n.kind === 'blocking' && n.condition) {
-          middleHtml =
-            '<div class="blocking-box">' +
-              '<div class="blocking-if">IF: ' + esc(n.condition) + '</div>' +
-              '<div class="blocking-then">→ ' + esc(n.outcome || '') + '</div>' +
+        if (compact) {
+          // Compact IDE-Style Row for Files, Entrypoints, Evidence & Subfolders
+          const subText = formatCompactSubtitle(n);
+          let tagHtml = '';
+          if (n.kind === 'entrypoint') {
+            tagHtml = '<span class="micro-tag">' + esc(t('entryTag')) + '</span>';
+          } else if (n.badge === 'verified') {
+            tagHtml = '<span class="status-dot" style="background:var(--green);" title="Verified"></span>';
+          } else if (n.badge === 'mismatch') {
+            tagHtml = '<span class="status-dot" style="background:var(--red);" title="Mismatch"></span>';
+          }
+
+          let rightHtml = '';
+          if (n.kind === 'folder' && n.canExpandFiles && n.folderId) {
+            const folderLbl = n.filesExpanded ? t('collapseDomainFiles') : String(n.fileCount || 0) + ' ▸';
+            rightHtml =
+              (n.changed ? '<span class="status-dot" style="background:var(--yellow);" title="Changed"></span>' : '') +
+              '<button class="quick-btn" data-toggle-folder="' + esc(n.folderId) + '">' + esc(folderLbl) + '</button>';
+          } else {
+            const diffPart =
+              n.changed && (n.additions !== undefined || n.deletions !== undefined)
+                ? '<span class="leaf-diff"><span class="diff-add">+' + (n.additions || 0) + '</span><span class="diff-del">-' + (n.deletions || 0) + '</span></span>'
+                : (n.changed ? '<span class="status-dot" style="background:var(--yellow);"></span>' : '');
+            const openBtnPart = n.path
+              ? '<button class="leaf-open" title="' + esc(t('openBtn')) + '" data-jump-path="' + esc(n.path) + '" data-jump-line="' + esc(n.startLine || 1) + '">↗</button>'
+              : '';
+            rightHtml = diffPart + openBtnPart;
+          }
+
+          el.innerHTML =
+            '<div class="leaf-row">' +
+              iconHtml +
+              '<div class="leaf-main">' +
+                '<div class="leaf-title-row">' +
+                  '<span class="leaf-title">' + esc(n.title) + '</span>' +
+                  tagHtml +
+                '</div>' +
+                (subText ? '<div class="leaf-sub">' + esc(subText) + '</div>' : '') +
+              '</div>' +
+              (rightHtml ? '<div class="leaf-right">' + rightHtml + '</div>' : '') +
             '</div>';
-        } else if (n.body) {
-          middleHtml = '<div class="node-body">' + esc(n.body) + '</div>';
-        }
+        } else {
+          // Structured Container / Causal Card (Root, Domain, Claim, Blocking, Impact, Directive)
+          let topRight = '';
+          if (n.badge) {
+            topRight = '<span class="badge badge-' + esc(n.badge) + '">' + esc(badgeLabels[n.badge] || n.badge) + '</span>';
+          } else if (n.layer) {
+            topRight = '<span class="layer-tag" title="' + esc(n.layer) + '">' + esc(n.layer) + '</span>';
+          } else if (n.kind === 'blocking' || n.kind === 'impact' || n.kind === 'directive') {
+            topRight = '<span class="layer-tag">' + esc(kindLabels[n.kind] || n.kind) + '</span>';
+          }
 
-        const cardAnalyzeBtn =
-          (n.kind === 'domain' || n.kind === 'folder') && !n.isSummary
-            ? '<button class="quick-btn quick-analyze analyze-action" data-analyze-node="' +
-              esc(n.id) +
-              '"' +
-              (analyzeState.running ? ' disabled' : '') +
-              '>' +
-              esc(t('analyzeQuickBtn')) +
-              '</button>'
+          // Deduplicate subtitle when identical to title or redundant FACT label
+          const showSub =
+            n.subtitle &&
+            n.subtitle !== n.title &&
+            n.kind !== 'claim';
+
+          let middleHtml = '';
+          if (n.kind === 'blocking' && n.condition) {
+            middleHtml =
+              '<div class="blocking-box">' +
+                '<div class="blocking-if">IF: ' + esc(n.condition) + '</div>' +
+                '<div class="blocking-then">→ ' + esc(n.outcome || '') + '</div>' +
+              '</div>';
+          } else if (n.body) {
+            middleHtml = '<div class="node-body">' + esc(n.body) + '</div>';
+          }
+
+          let footerLeft = '';
+          if (n.changed && (n.additions !== undefined || n.deletions !== undefined)) {
+            footerLeft = '<span class="node-footer-meta"><span class="diff-add">+' + (n.additions || 0) + '</span> <span class="diff-del">-' + (n.deletions || 0) + '</span></span>';
+          } else if (n.changed) {
+            footerLeft = '<span class="node-footer-meta" style="color:var(--yellow);"><span class="status-dot" style="background:var(--yellow);"></span>' + (lang === 'zh' ? '有变更' : 'modified') + '</span>';
+          } else if (n.kind === 'domain' && n.fileCount) {
+            footerLeft = '<span class="node-footer-meta">' + n.fileCount + (lang === 'zh' ? ' 文件' : ' files') + '</span>';
+          }
+
+          const cardAnalyzeBtn =
+            n.kind === 'domain' && !n.isSummary
+              ? '<button class="quick-btn quick-analyze analyze-action" data-analyze-node="' +
+                esc(n.id) +
+                '"' +
+                (analyzeState.running ? ' disabled' : '') +
+                '>' +
+                esc(t('analyzeQuickBtn')) +
+                '</button>'
+              : '';
+
+          let footerRight = '';
+          if (n.kind === 'domain' && n.canExpandFiles && n.domainId) {
+            const lbl = n.filesExpanded
+              ? (t('collapseDomainFiles') + ' ▴')
+              : (t('expandDomainFiles') + ' ▸');
+            footerRight =
+              '<span class="node-footer-actions">' +
+                cardAnalyzeBtn +
+                '<button class="quick-btn" data-toggle-dom="' + esc(n.domainId) + '">' + esc(lbl) + '</button>' +
+              '</span>';
+          } else if (cardAnalyzeBtn) {
+            footerRight = '<span class="node-footer-actions">' + cardAnalyzeBtn + '</span>';
+          } else if (n.path) {
+            footerRight = '<button class="quick-btn" data-jump-path="' + esc(n.path) + '" data-jump-line="' + esc(n.startLine || 1) + '">' + esc(t('openBtn')) + '</button>';
+          }
+
+          const footerHtml = (footerLeft || footerRight)
+            ? '<div class="node-footer">' + (footerLeft || '<span></span>') + footerRight + '</div>'
             : '';
 
-        let footerRight = '';
-        if (n.kind === 'domain' && n.canExpandFiles && n.domainId) {
-          const lbl = n.filesExpanded
-            ? t('collapseDomainFiles')
-            : (t('expandDomainFiles') + ' (' + (n.fileCount || 0) + ')');
-          footerRight =
-            '<span class="node-footer-actions">' +
-              cardAnalyzeBtn +
-              '<button class="quick-btn" data-toggle-dom="' + esc(n.domainId) + '">' + esc(lbl) + '</button>' +
-            '</span>';
-        } else if (n.kind === 'folder' && n.canExpandFiles && n.folderId) {
-          const lbl = n.filesExpanded
-            ? t('collapseDomainFiles')
-            : (t('expandDomainFiles') + ' (' + (n.fileCount || 0) + ')');
-          footerRight =
-            '<span class="node-footer-actions">' +
-              cardAnalyzeBtn +
-              '<button class="quick-btn" data-toggle-folder="' + esc(n.folderId) + '">' + esc(lbl) + '</button>' +
-            '</span>';
-        } else if (cardAnalyzeBtn) {
-          footerRight = '<span class="node-footer-actions">' + cardAnalyzeBtn + '</span>';
-        } else if (n.path) {
-          footerRight = '<button class="quick-btn quick-jump" data-jump-path="' + esc(n.path) + '" data-jump-line="' + esc(n.startLine || 1) + '">' + esc(t('openBtn')) + '</button>';
-        } else if (kids.length > 0) {
-          footerRight = '<span>' + kids.length + (lang === 'zh' ? ' 项' : ' items') + '</span>';
+          el.innerHTML =
+            '<div class="card-head">' +
+              '<div class="card-head-left">' +
+                iconHtml +
+                '<span class="node-title">' + esc(n.title) + '</span>' +
+              '</div>' +
+              topRight +
+            '</div>' +
+            (showSub ? '<div class="node-sub" title="' + esc(n.subtitle) + '">' + esc(n.subtitle) + '</div>' : '') +
+            middleHtml +
+            footerHtml;
         }
-
-        const topRight = n.badge
-          ? '<span class="badge badge-' + esc(n.badge) + '">' + esc(badgeLabels[n.badge] || n.badge) + '</span>'
-          : (n.layer ? '<span class="layer-tag" title="' + esc(n.layer) + '">' + esc(n.layer) + '</span>' : '');
-
-        el.innerHTML =
-          '<div class="node-top">' +
-            '<span class="node-kind">' + esc(kindLabels[n.kind] || n.kind) + '</span>' +
-            topRight +
-          '</div>' +
-          '<div class="node-title">' + esc(n.title) + '</div>' +
-          (n.subtitle ? '<div class="node-sub" title="' + esc(n.subtitle) + '">' + esc(n.subtitle) + '</div>' : '') +
-          middleHtml +
-          '<div class="node-footer">' + diffHtml + footerRight + '</div>';
 
         const qj = el.querySelector('[data-jump-path]');
         if (qj) {
@@ -1740,8 +2470,9 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
 
         if (kids.length > 0) {
           const btn = document.createElement('button');
-          btn.className = 'collapse-btn';
-          btn.textContent = isCollapsed ? String(kids.length) : '−';
+          btn.className = 'collapse-btn' + (isCollapsed ? ' is-collapsed' : '');
+          btn.textContent = isCollapsed ? ('+' + kids.length) : '−';
+          btn.title = isCollapsed ? (lang === 'zh' ? '展开子节点' : 'Expand children') : (lang === 'zh' ? '折叠子节点' : 'Collapse children');
           btn.addEventListener('mousedown', (ev) => ev.stopPropagation());
           btn.addEventListener('click', (ev) => {
             ev.stopPropagation();
@@ -1799,8 +2530,13 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         let changed = false;
         nodesLayer.querySelectorAll('.node').forEach(el => {
           const h = el.offsetHeight;
-          if (h > 0 && Math.abs((measuredHeights.get(el.dataset.id) || 0) - h) > 3) {
+          const w = el.offsetWidth;
+          if (h > 0 && Math.abs((measuredHeights.get(el.dataset.id) || 0) - h) > 2) {
             measuredHeights.set(el.dataset.id, h);
+            changed = true;
+          }
+          if (w > 0 && Math.abs((measuredWidths.get(el.dataset.id) || 0) - w) > 2) {
+            measuredWidths.set(el.dataset.id, w);
             changed = true;
           }
         });
@@ -1821,7 +2557,6 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
 
     function syncFocusButtons() {
       const btn = document.getElementById('btnFocusToggle');
-      btn.textContent = focusMode ? t('focusOn') : t('focusOff');
       btn.classList.toggle('active', focusMode);
       const ibtn = document.getElementById('btnInspFocus');
       if (ibtn) ibtn.classList.toggle('active', focusMode);
@@ -1842,6 +2577,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         quickInspBtn.disabled = analyzeState.running;
       }
       inspector.classList.remove('hidden');
+      document.getElementById('inspIcon').innerHTML = getNodeIconSvg(node, Boolean(node.filesExpanded));
       document.getElementById('inspTitle').textContent = node.title;
       syncVisualClasses();
       renderInspector(node);
@@ -1895,14 +2631,14 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         if (!s.blindSpots || s.blindSpots.length === 0) {
           html += '<div style="color:var(--muted);font-size:12px;margin-bottom:12px;">' + esc(t('noBlindSpots')) + '</div>';
         } else {
-          html += '<ul style="margin:0 0 12px;padding-left:18px;font-size:12px;">' + s.blindSpots.map(b => '<li>' + esc(b) + '</li>').join('') + '</ul>';
+          html += '<ul style="margin:0 0 12px;padding-left:18px;font-size:12px;line-height:1.5;">' + s.blindSpots.map(b => '<li>' + esc(b) + '</li>').join('') + '</ul>';
         }
 
         html += '<div style="font-weight:600;margin:12px 0 6px;">' + esc(t('guardrailsTitle')) + '</div>';
         if (!s.guardrails || s.guardrails.length === 0) {
           html += '<div style="color:var(--muted);font-size:12px;">' + esc(t('noGuardrails')) + '</div>';
         } else {
-          html += '<ul style="margin:0;padding-left:18px;font-size:12px;">' + s.guardrails.map(g => '<li>' + esc(g) + '</li>').join('') + '</ul>';
+          html += '<ul style="margin:0;padding-left:18px;font-size:12px;line-height:1.5;">' + s.guardrails.map(g => '<li>' + esc(g) + '</li>').join('') + '</ul>';
         }
 
         if (s.manifestIssues && s.manifestIssues.length > 0) {
@@ -2008,14 +2744,14 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       // Overview & Code tab
       const snippet = snippetCache.get(node.id);
       let html =
-        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">' +
-          '<span class="node-kind">' + esc(kindLabels[node.kind] || node.kind) + '</span>' +
+        '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;">' +
+          '<span class="layer-tag">' + esc(kindLabels[node.kind] || node.kind) + '</span>' +
           (node.badge ? '<span class="badge badge-' + esc(node.badge) + '">' + esc(badgeLabels[node.badge] || node.badge) + '</span>' : '') +
           (node.layer ? '<span class="layer-tag">' + esc(node.layer) + '</span>' : '') +
         '</div>';
 
-      if (node.subtitle) {
-        html += '<div style="font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-bottom:8px;">' + esc(node.subtitle) + '</div>';
+      if (node.subtitle && node.subtitle !== node.path && node.subtitle !== node.title) {
+        html += '<div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:8px;">' + esc(node.subtitle) + '</div>';
       }
       if (node.kind === 'blocking' && node.condition) {
         html +=
@@ -2024,7 +2760,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
             '<div class="blocking-then">→ ' + esc(node.outcome || '') + '</div>' +
           '</div>';
       } else if (node.body) {
-        html += '<p style="margin:0 0 10px;">' + esc(node.body) + '</p>';
+        html += '<p style="margin:0 0 10px;line-height:1.5;color:var(--fg);">' + esc(node.body) + '</p>';
       }
 
       if (node.notes && node.notes.length > 0) {
@@ -2061,7 +2797,6 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           '</div>';
       }
 
-      // Show clickable internal workspace dependencies for Domain nodes
       if (node.kind === 'domain') {
         const depsOut = graph.edges.filter(e => e.kind === 'dep' && e.from === node.id).map(e => nodeById.get(e.to)).filter(Boolean);
         const depsIn = graph.edges.filter(e => e.kind === 'dep' && e.to === node.id).map(e => nodeById.get(e.from)).filter(Boolean);
@@ -2082,10 +2817,16 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       }
 
       if (node.path) {
+        const locSuffix = node.startLine
+          ? ':' + node.startLine + (node.endLine && node.endLine !== node.startLine ? '-' + node.endLine : '')
+          : '';
         html +=
-          '<div style="display:flex;gap:6px;align-items:center;margin:10px 0;">' +
-            '<button id="btnJumpCode">' + esc(t('jumpEditor')) + '</button>' +
-            (snippet && snippet.refUsed ? '<span style="font-family:var(--mono);font-size:10.5px;color:var(--muted);">ref: ' + esc(snippet.refUsed) + '</span>' : '') +
+          '<div class="insp-file-bar">' +
+            '<span class="insp-file-path" title="' + esc(node.path + locSuffix) + '">' +
+              getFileIconSvg(node.path) +
+              '<span>' + esc(node.path + locSuffix) + '</span>' +
+            '</span>' +
+            '<button class="secondary" id="btnJumpCode" style="height:22px;padding:0 7px;font-size:11px;">' + esc(t('jumpEditor')) + '</button>' +
           '</div>';
         if (snippet && snippet.error) {
           html += '<div style="padding:8px;border-radius:5px;background:rgba(248,81,73,0.14);color:var(--red);font-size:11.5px;">' + esc(snippet.error) + '</div>';
@@ -2145,13 +2886,36 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       });
     }
 
-    // Bind UI events
+    // Repo Switcher Popover (MCP App) & Overflow Menu
+    const repoToggleBtn = document.getElementById('btnRepoToggle');
+    const repoPopover = document.getElementById('repoPopover');
     const wtInputEl = document.getElementById('worktreeInput');
     const wtBtnEl = document.getElementById('btnSetWorktree');
+    const moreMenu = document.getElementById('moreMenu');
+
+    function closePopovers() {
+      if (moreMenu) moreMenu.classList.add('hidden');
+      if (repoPopover && gitCtx) repoPopover.classList.add('hidden');
+    }
+
+    if (repoToggleBtn && repoPopover) {
+      repoToggleBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        if (moreMenu) moreMenu.classList.add('hidden');
+        repoPopover.classList.toggle('hidden');
+        if (!repoPopover.classList.contains('hidden') && wtInputEl) {
+          wtInputEl.focus();
+          wtInputEl.select();
+        }
+      });
+      repoPopover.addEventListener('click', (ev) => ev.stopPropagation());
+    }
+
     function submitWorktreeSwitch() {
       if (!wtInputEl) return;
       const val = wtInputEl.value.trim();
       if (!val) return;
+      if (repoPopover) repoPopover.classList.add('hidden');
       positions.clear();
       manualPositions.clear();
       collapsedIds.clear();
@@ -2170,6 +2934,13 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         }
       });
     }
+
+    document.getElementById('btnMoreMenu').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      if (repoPopover && gitCtx) repoPopover.classList.add('hidden');
+      moreMenu.classList.toggle('hidden');
+    });
+    document.addEventListener('click', closePopovers);
 
     document.getElementById('btnAnalyzeBranch').addEventListener('click', () => {
       if (analyzeState.running) return;
@@ -2215,6 +2986,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       }
     });
     document.getElementById('btnLangToggle').addEventListener('click', () => {
+      moreMenu.classList.add('hidden');
       lang = lang === 'zh' ? 'en' : 'zh';
       applyStaticTranslations();
       buildNodeDom(false);
@@ -2241,6 +3013,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       hostApi.postMessage({ type: 'setPruneUnchanged', value: pruneUnchanged });
     });
     document.getElementById('btnRunImpact').addEventListener('click', () => {
+      moreMenu.classList.add('hidden');
       hostApi.postMessage({ type: 'runImpactAnalysis' });
     });
 
@@ -2317,8 +3090,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     });
     document.getElementById('btnDeltaToggle').addEventListener('click', (ev) => {
       deltaOverlay = !deltaOverlay;
-      ev.target.textContent = deltaOverlay ? t('deltaOn') : t('deltaOff');
-      ev.target.classList.toggle('active', deltaOverlay);
+      ev.currentTarget.classList.toggle('active', deltaOverlay);
       syncVisualClasses();
     });
     document.getElementById('btnFocusToggle').addEventListener('click', () => {
@@ -2332,29 +3104,32 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       syncVisualClasses();
     });
     document.getElementById('btnRefresh').addEventListener('click', () => hostApi.postMessage({ type: 'refresh', baseRef }));
-    document.getElementById('btnInitManifest').addEventListener('click', () => hostApi.postMessage({ type: 'initManifestDraft' }));
-    const agentMenu = document.getElementById('agentMenu');
-    document.getElementById('btnAgentMenu').addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      agentMenu.classList.toggle('hidden');
+    document.getElementById('btnInitManifest').addEventListener('click', () => {
+      moreMenu.classList.add('hidden');
+      hostApi.postMessage({ type: 'initManifestDraft' });
     });
-    document.addEventListener('click', () => agentMenu.classList.add('hidden'));
     document.getElementById('btnCopyMcpCfg').addEventListener('click', () => {
-      agentMenu.classList.add('hidden');
+      moreMenu.classList.add('hidden');
       hostApi.postMessage({ type: 'copyMcpConfig' });
     });
     document.getElementById('btnCopyBranchPrompt').addEventListener('click', () => {
-      agentMenu.classList.add('hidden');
+      moreMenu.classList.add('hidden');
       hostApi.postMessage({ type: 'copyBranchPrompt' });
     });
     document.getElementById('btnCopyManifestPrompt').addEventListener('click', () => {
-      agentMenu.classList.add('hidden');
+      moreMenu.classList.add('hidden');
       hostApi.postMessage({ type: 'copyManifestPrompt' });
     });
     document.getElementById('btnReverifyStale').addEventListener('click', () => hostApi.postMessage({ type: 'refresh', baseRef }));
-    document.getElementById('btnVerifyBriefing').addEventListener('click', () => hostApi.postMessage({ type: 'pickBriefing' }));
+    document.getElementById('btnVerifyBriefing').addEventListener('click', () => {
+      moreMenu.classList.add('hidden');
+      hostApi.postMessage({ type: 'pickBriefing' });
+    });
     document.getElementById('btnEmptyVerify').addEventListener('click', () => hostApi.postMessage({ type: 'pickBriefing' }));
-    document.getElementById('btnCopyDirs').addEventListener('click', () => hostApi.postMessage({ type: 'copyDirectives' }));
+    document.getElementById('btnCopyDirs').addEventListener('click', () => {
+      moreMenu.classList.add('hidden');
+      hostApi.postMessage({ type: 'copyDirectives' });
+    });
     document.getElementById('btnLegendToggle').addEventListener('click', () => {
       document.getElementById('legendPopover').classList.toggle('hidden');
     });
@@ -2392,6 +3167,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           if (searchQuery) { searchQuery = ''; searchInput.value = ''; syncVisualClasses(); }
           return;
         }
+        closePopovers();
         if (searchQuery || activeChipFilter) {
           searchQuery = ''; searchInput.value = ''; activeChipFilter = ''; syncVisualClasses();
         } else if (focusMode) {
@@ -2446,14 +3222,19 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
             wtInputEl.value = incomingWt;
           }
         }
+        if (repoPopover) {
+          if (!gitCtx && isMcpAppHost) repoPopover.classList.remove('hidden');
+          else repoPopover.classList.add('hidden');
+        }
 
         applyStaticTranslations();
 
-        // Primary workflow: show Save Skeleton CTA only when repo has no .atlas/manifest.json
+        const needsManifest = Boolean(gitCtx && graph.architecture && !graph.architecture.hasManifest);
         const initBtn = document.getElementById('btnInitManifest');
-        initBtn.style.display = (gitCtx && graph.architecture && !graph.architecture.hasManifest) ? 'inline-block' : 'none';
+        initBtn.style.display = needsManifest ? 'flex' : 'none';
+        const moreDot = document.getElementById('moreMenuDot');
+        if (moreDot) moreDot.classList.toggle('hidden', !needsManifest);
 
-        // Architecture pill + small-project 1-click file expansion button
         const archPill = document.getElementById('archPill');
         const indexBtn = document.getElementById('btnIndexFiles');
         if (graph.architecture) {
@@ -2462,7 +3243,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           archPill.textContent = (lang === 'zh' ? a.patternLabelZh : a.patternLabelEn) + ' · ' + a.totalFiles + (lang === 'zh' ? ' 文件' : ' files');
           if (a.scale === 'small' && viewMode !== 'briefing') {
             const anyExp = graph.nodes.some(n => n.kind === 'domain' && n.filesExpanded);
-            indexBtn.style.display = 'inline-block';
+            indexBtn.style.display = 'inline-flex';
             indexBtn.textContent = anyExp ? t('collapseFiles') : t('indexFiles');
           } else {
             indexBtn.style.display = 'none';
@@ -2513,18 +3294,17 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           document.getElementById('emptyTitle').textContent = t('emptyBriefingTitle');
           document.getElementById('emptyDesc').textContent = t('emptyBriefingDesc');
           document.getElementById('btnEmptyVerify').textContent = t('verifyJson');
-          document.getElementById('btnEmptyVerify').style.display = isMcpAppHost ? 'none' : 'inline-block';
+          document.getElementById('btnEmptyVerify').style.display = isMcpAppHost ? 'none' : 'inline-flex';
         } else {
           emptyEl.classList.add('hidden');
         }
 
+        const repoShort = gitCtx && gitCtx.repoRoot
+          ? (gitCtx.repoRoot.split(/[\\\\/]/).filter(Boolean).pop() + ' · ')
+          : '';
         document.getElementById('gitPill').textContent = gitCtx
-          ? (gitCtx.branch + ' @ ' + gitCtx.shortSha)
+          ? ((isMcpAppHost ? repoShort : '') + gitCtx.branch + '@' + gitCtx.shortSha)
           : t('noGit');
-
-        const sumBtn = document.getElementById('btnSummaryToggle');
-        const diffCnt = (graph.summary && graph.summary.changedFiles) || 0;
-        sumBtn.textContent = t('summaryBtn') + (diffCnt > 0 ? ' (' + diffCnt + ')' : '');
 
         const topologyKey = graph.nodes.map(n => n.id + '@' + (n.parentId || '')).join('|');
         const topologyChanged = topologyKey !== lastTopologyKey;
@@ -2539,7 +3319,11 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         if (topologyChanged) {
           manualPositions.clear();
           for (const id of [...positions.keys()]) {
-            if (!nodeById.has(id)) positions.delete(id);
+            if (!nodeById.has(id)) {
+              positions.delete(id);
+              measuredHeights.delete(id);
+              measuredWidths.delete(id);
+            }
           }
         }
         if (shouldReset && graph.nodes.length > 28) {
