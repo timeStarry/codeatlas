@@ -13,8 +13,10 @@ import {
 import { matchDomainForPath } from './manifest.js';
 import {
   analyzeRepositoryArchitecture,
+  classifyFileArtifact,
   IndexedDomain,
   ProjectScale,
+  RepoArchitecture,
 } from './indexer.js';
 import { BranchCommitInfo } from './git.js';
 
@@ -23,6 +25,7 @@ export type CanvasViewMode = 'hybrid' | 'atlas' | 'briefing';
 export type CanvasNodeKind =
   | 'root'
   | 'domain'
+  | 'folder'
   | 'entrypoint'
   | 'claim'
   | 'blocking'
@@ -32,7 +35,7 @@ export type CanvasNodeKind =
   | 'impact'
   | 'directive';
 
-export type CanvasEdgeKind = 'hierarchy' | 'flow' | 'blocking' | 'impact' | 'directive';
+export type CanvasEdgeKind = 'hierarchy' | 'flow' | 'blocking' | 'impact' | 'directive' | 'dep';
 
 export interface AtlasGraphNode {
   id: string;
@@ -44,9 +47,12 @@ export interface AtlasGraphNode {
   badge?: VerificationBadge;
   layer?: string;
   domainId?: string;
+  folderId?: string;
   fileCount?: number;
   canExpandFiles?: boolean;
   filesExpanded?: boolean;
+  isSummary?: boolean;
+  isSupport?: boolean;
   claimType?: ClaimType;
   condition?: string;
   outcome?: string;
@@ -103,6 +109,7 @@ export interface AtlasGraphData {
     patternLabelZh: string;
     patternLabelEn: string;
     domainCount: number;
+    hasManifest: boolean;
   };
   branchSummary: BranchSummary;
   summary: {
@@ -127,13 +134,101 @@ export interface AtlasGraphData {
     impactStatus?: IndirectImpactReport['status'];
     impactReason?: string;
     manifestIssues: ManifestDriftIssue[];
+    hiddenSupportDomains: number;
+    hiddenSupportFiles: number;
   };
+}
+
+/**
+ * Strips domain prefix and compresses single-child directory wrappers like `src/`.
+ */
+function groupFilesBySubdirectory(
+  files: string[],
+  domainPrefix: string
+): Array<{ groupKey: string; label: string; files: string[] }> {
+  const cleanPrefix = domainPrefix ? `${domainPrefix.replace(/\/+$/, '')}/` : '';
+  let rels = files.map((f) => ({
+    full: f,
+    rel: cleanPrefix && f.startsWith(cleanPrefix) ? f.slice(cleanPrefix.length) : f,
+  }));
+
+  // Single-child prefix compression (e.g. unwrap `src/` when all files sit under `src/`)
+  let compressedPrefix = '';
+  for (let depth = 0; depth < 3; depth++) {
+    const firstSegs = new Set<string>();
+    let allHaveSubdir = true;
+    for (const item of rels) {
+      const idx = item.rel.indexOf('/');
+      if (idx < 0) {
+        allHaveSubdir = false;
+        break;
+      }
+      firstSegs.add(item.rel.slice(0, idx));
+    }
+    if (allHaveSubdir && firstSegs.size === 1) {
+      const onlySeg = [...firstSegs][0];
+      compressedPrefix = compressedPrefix ? `${compressedPrefix}/${onlySeg}` : onlySeg;
+      rels = rels.map((item) => ({
+        full: item.full,
+        rel: item.rel.slice(onlySeg.length + 1),
+      }));
+    } else {
+      break;
+    }
+  }
+
+  const map = new Map<string, string[]>();
+  for (const item of rels) {
+    const idx = item.rel.indexOf('/');
+    const key = idx >= 0 ? item.rel.slice(0, idx) : '(root)';
+    const arr = map.get(key) ?? [];
+    arr.push(item.full);
+    map.set(key, arr);
+  }
+
+  return [...map.entries()]
+    .map(([key, list]) => ({
+      groupKey: compressedPrefix && key !== '(root)' ? `${compressedPrefix}/${key}` : key,
+      label:
+        key === '(root)'
+          ? compressedPrefix || '(root)'
+          : compressedPrefix
+            ? `${compressedPrefix}/${key}`
+            : key,
+      files: list,
+    }))
+    .sort((a, b) => b.files.length - a.files.length || a.label.localeCompare(b.label));
+}
+
+function sortFilesByImportance(
+  files: string[],
+  diffMap: Map<string, DiffFileStat>
+): string[] {
+  const kindWeight: Record<string, number> = {
+    code: 0,
+    test: 1,
+    config: 2,
+    ci: 2,
+    docs: 3,
+    asset: 4,
+  };
+  return [...files].sort((a, b) => {
+    const ca = diffMap.has(a) ? 0 : 1;
+    const cb = diffMap.has(b) ? 0 : 1;
+    if (ca !== cb) return ca - cb;
+    const ka = kindWeight[classifyFileArtifact(a)] ?? 5;
+    const kb = kindWeight[classifyFileArtifact(b)] ?? 5;
+    if (ka !== kb) return ka - kb;
+    return a.localeCompare(b);
+  });
 }
 
 export function buildAtlasGraph(params: {
   git: GitContext;
   manifest?: AtlasManifest;
   manifestIssues?: ManifestDriftIssue[];
+  archOverride?: RepoArchitecture;
+  hasManifest?: boolean;
   diffStats: DiffFileStat[];
   trackedFiles?: string[];
   commits?: BranchCommitInfo[];
@@ -143,7 +238,9 @@ export function buildAtlasGraph(params: {
   mode?: CanvasViewMode;
   baseRef?: string;
   expandedDomainIds?: string[];
+  expandedFolderIds?: string[];
   pruneUnchanged?: boolean;
+  showSupportAssets?: boolean;
   lang?: 'zh' | 'en';
 }): AtlasGraphData {
   const {
@@ -161,13 +258,63 @@ export function buildAtlasGraph(params: {
   const baseRef = params.baseRef ?? 'HEAD';
   const lang = params.lang ?? 'zh';
   const expandedDomains = new Set(params.expandedDomainIds ?? []);
+  const expandedFolders = new Set(params.expandedFolderIds ?? []);
   const pruneUnchanged = Boolean(params.pruneUnchanged);
+  const showSupportAssets = Boolean(params.showSupportAssets);
+  const hasManifest = params.hasManifest ?? Boolean(manifest);
 
-  const arch = analyzeRepositoryArchitecture(trackedFiles, manifest, lang);
+  const arch =
+    params.archOverride ?? analyzeRepositoryArchitecture(trackedFiles, manifest, lang);
 
   const diffMap = new Map<string, DiffFileStat>();
   for (const d of diffStats) {
     diffMap.set(d.path.replace(/\\/g, '/'), d);
+  }
+
+  // Compute auto-promoted support domains (any support domain with diff, briefing, or directives MUST remain visible!)
+  const domainByName = new Map<string, IndexedDomain>();
+  const domainById = new Map<string, IndexedDomain>();
+  for (const d of arch.domains) {
+    domainByName.set(d.name, d);
+    domainById.set(d.id, d);
+  }
+
+  const resolveDomainForPath = (normPath: string): { name: string; indexed?: IndexedDomain } => {
+    for (const d of arch.domains) {
+      if (d.files.includes(normPath)) {
+        return { name: d.name, indexed: d };
+      }
+    }
+    const fallbackName = matchDomainForPath(normPath, manifest);
+    return { name: fallbackName, indexed: domainByName.get(fallbackName) };
+  };
+
+  const promotedSupportIds = new Set<string>();
+  const markPathPromoted = (p?: string) => {
+    if (!p) return;
+    const res = resolveDomainForPath(p.replace(/\\/g, '/'));
+    if (res.indexed?.isSupport) promotedSupportIds.add(res.indexed.id);
+  };
+  for (const d of diffStats) markPathPromoted(d.path);
+  for (const dir of directives) markPathPromoted(dir.path);
+  if (verification) {
+    for (const c of verification.claims) {
+      for (const a of c.claim.anchors) markPathPromoted(a.path);
+    }
+    for (const b of verification.blockingConditions) markPathPromoted(b.item.anchor?.path);
+    for (const imp of verification.impacts ?? []) {
+      markPathPromoted(imp.item.sourceAnchor.path);
+      markPathPromoted(imp.item.targetAnchor.path);
+    }
+  }
+
+  let hiddenSupportDomains = 0;
+  let hiddenSupportFiles = 0;
+  for (const d of arch.domains) {
+    if (d.isSupport && !showSupportAssets && !promotedSupportIds.has(d.id)) {
+      hiddenSupportDomains += 1;
+      hiddenSupportFiles += d.fileCount;
+    }
   }
 
   const nodes: AtlasGraphNode[] = [];
@@ -189,6 +336,7 @@ export function buildAtlasGraph(params: {
           ? 'Medium'
           : 'Large';
 
+  const visibleDomainCount = arch.domains.length - hiddenSupportDomains;
   nodes.push({
     id: rootId,
     kind: 'root',
@@ -197,21 +345,12 @@ export function buildAtlasGraph(params: {
     layer: `${patternLabel} · ${scaleLabel} (${arch.totalFiles})`,
     body: verification
       ? `${lang === 'zh' ? '当前简报' : 'Briefing'}: ${verification.briefingTitle}`
-      : `${arch.domains.length} ${lang === 'zh' ? '个架构域' : 'domains'} · ${arch.totalFiles} ${lang === 'zh' ? '个文件' : 'files'}`,
+      : `${visibleDomainCount} ${lang === 'zh' ? '个核心架构域' : 'code domains'}${hiddenSupportFiles > 0 ? ` · ${lang === 'zh' ? '已折叠' : 'folded'} ${hiddenSupportFiles} ${lang === 'zh' ? '个非源码资源' : 'support/assets'}` : ''}`,
     badge: verification?.overallBadge,
   });
 
-  // Map indexed domains by name and id
-  const domainByName = new Map<string, IndexedDomain>();
-  for (const d of arch.domains) {
-    domainByName.set(d.name, d);
-  }
-
   const domainNodeIds = new Map<string, string>();
-  const ensureDomain = (
-    name: string,
-    indexed?: IndexedDomain
-  ): string => {
+  const ensureDomain = (name: string, indexed?: IndexedDomain): string => {
     const existing = domainNodeIds.get(name);
     if (existing) return existing;
     const domIdKey = indexed?.id ?? name;
@@ -227,11 +366,14 @@ export function buildAtlasGraph(params: {
       domainId: domIdKey,
       title: name,
       layer: indexed?.layer,
-      subtitle: indexed?.paths.length
-        ? indexed.paths.join(', ')
-        : fileCount > 0
-          ? `${fileCount} ${lang === 'zh' ? '个文件' : 'files'}`
-          : undefined,
+      isSupport: indexed?.isSupport,
+      subtitle: indexed?.packageName
+        ? `${indexed.packageName}${indexed.paths.length ? ` · ${indexed.paths[0]}` : ''}`
+        : indexed?.paths.length
+          ? indexed.paths.join(', ')
+          : fileCount > 0
+            ? `${fileCount} ${lang === 'zh' ? '个文件' : 'files'}`
+            : undefined,
       body: indexed?.description || (lang === 'zh' ? '逻辑职责域' : 'Responsibility domain'),
       fileCount,
       canExpandFiles: fileCount > 0,
@@ -248,11 +390,69 @@ export function buildAtlasGraph(params: {
   };
 
   const pathToNodeId = new Map<string, string>();
+  const folderNodeByPathPrefix = new Map<string, string>();
 
-  // 1. Domains, Entrypoints, and On-Demand Lazy File Expansion (atlas & hybrid modes)
+  const emitFileListUnderParent = (
+    parentId: string,
+    fileList: string[],
+    cap: number
+  ) => {
+    const sorted = sortFilesByImportance(fileList, diffMap);
+    const shown = sorted.slice(0, cap);
+    for (const f of shown) {
+      if (pathToNodeId.has(f)) continue;
+      const fileNodeId = `file:${f}`;
+      const diff = diffMap.get(f);
+      nodes.push({
+        id: fileNodeId,
+        parentId,
+        kind: diff ? 'diff-file' : 'file',
+        title: f.split('/').pop() || f,
+        subtitle: diff ? `[${diff.status}] ${f}` : f,
+        path: f,
+        defaultDirectivePath: f,
+        startLine: 1,
+        changed: Boolean(diff),
+        additions: diff?.additions,
+        deletions: diff?.deletions,
+      });
+      edges.push({
+        id: `e:${parentId}->${fileNodeId}`,
+        from: parentId,
+        to: fileNodeId,
+        kind: 'hierarchy',
+      });
+      pathToNodeId.set(f, fileNodeId);
+    }
+    if (sorted.length > cap) {
+      const extra = sorted.length - cap;
+      const ovId = `overflow:${parentId}`;
+      nodes.push({
+        id: ovId,
+        parentId,
+        kind: 'file',
+        isSummary: true,
+        title: lang === 'zh' ? `+${extra} 个未展开文件` : `+${extra} more files`,
+        subtitle: `${sorted.length} ${lang === 'zh' ? '个文件（可用 / 搜索定位）' : 'files total (use / Search)'}`,
+      });
+      edges.push({
+        id: `e:${parentId}->${ovId}`,
+        from: parentId,
+        to: ovId,
+        kind: 'hierarchy',
+      });
+    }
+  };
+
+  // 1. Domains, Entrypoints, and 2-Level Lazy Folder/File Expansion
   if (mode !== 'briefing') {
     for (const d of arch.domains) {
+      if (d.isSupport && !showSupportAssets && !promotedSupportIds.has(d.id)) {
+        continue;
+      }
       const domId = ensureDomain(d.name, d);
+
+      // Show key entrypoints when domain is not yet expanded into folders/files (or always for manifest entrypoints)
       for (const ep of d.entrypoints) {
         const epId = `ep:${d.id}:${ep.path}:${ep.symbol ?? ep.startLine ?? 1}`;
         const normPath = ep.path.replace(/\\/g, '/');
@@ -282,68 +482,106 @@ export function buildAtlasGraph(params: {
         }
       }
 
-      // Lazy L2 file expansion: ONLY emit file nodes when this domain is expanded!
       if (expandedDomains.has(d.id)) {
-        const MAX_FILES_PER_DOMAIN = 40;
-        const filesToShow = d.files.slice(0, MAX_FILES_PER_DOMAIN);
-        for (const f of filesToShow) {
-          if (pathToNodeId.has(f)) continue;
-          const fileNodeId = `file:${f}`;
-          const diff = diffMap.get(f);
+        // Partition binary/media assets so 99 .png files NEVER explode into 99 cards!
+        const nonAssets: string[] = [];
+        const assetFiles: string[] = [];
+        for (const f of d.files) {
+          if (classifyFileArtifact(f) === 'asset' && !diffMap.has(f)) {
+            assetFiles.push(f);
+          } else {
+            nonAssets.push(f);
+          }
+        }
+
+        const groups = groupFilesBySubdirectory(nonAssets, d.paths[0] ?? '');
+        const useFolders = nonAssets.length > 8 && groups.length >= 2;
+
+        if (useFolders) {
+          for (const g of groups) {
+            const folderId = `folder:${d.id}:${g.groupKey}`;
+            const isFolderExp = expandedFolders.has(folderId);
+            const changedInFolder = g.files.filter((f) => diffMap.has(f)).length;
+            nodes.push({
+              id: folderId,
+              parentId: domId,
+              kind: 'folder',
+              domainId: d.id,
+              folderId,
+              title: g.label,
+              subtitle: `${g.files.length} ${lang === 'zh' ? '个文件' : 'files'}${changedInFolder > 0 ? ` · ${changedInFolder} ${lang === 'zh' ? '处变更' : 'changed'}` : ''}`,
+              fileCount: g.files.length,
+              canExpandFiles: true,
+              filesExpanded: isFolderExp,
+              changed: changedInFolder > 0,
+              defaultDirectivePath: g.files[0],
+            });
+            edges.push({
+              id: `e:${domId}->${folderId}`,
+              from: domId,
+              to: folderId,
+              kind: 'hierarchy',
+            });
+
+            for (const f of g.files) {
+              folderNodeByPathPrefix.set(f, folderId);
+            }
+
+            if (isFolderExp) {
+              emitFileListUnderParent(folderId, g.files, 25);
+            }
+          }
+        } else {
+          emitFileListUnderParent(domId, nonAssets, 25);
+        }
+
+        if (assetFiles.length >= 3) {
+          const assetSummaryId = `assets:${d.id}`;
           nodes.push({
-            id: fileNodeId,
+            id: assetSummaryId,
             parentId: domId,
             kind: 'file',
-            title: f.split('/').pop() || f,
-            subtitle: f,
-            path: f,
-            defaultDirectivePath: f,
-            startLine: 1,
-            changed: Boolean(diff),
-            additions: diff?.additions,
-            deletions: diff?.deletions,
+            isSummary: true,
+            title:
+              lang === 'zh'
+                ? `${assetFiles.length} 个静态资源文件（已折叠）`
+                : `${assetFiles.length} static assets (collapsed)`,
+            subtitle: assetFiles.slice(0, 3).map((x) => x.split('/').pop()).join(', '),
           });
           edges.push({
-            id: `e:${domId}->${fileNodeId}`,
+            id: `e:${domId}->${assetSummaryId}`,
             from: domId,
-            to: fileNodeId,
+            to: assetSummaryId,
             kind: 'hierarchy',
           });
-          pathToNodeId.set(f, fileNodeId);
+        } else if (assetFiles.length > 0) {
+          emitFileListUnderParent(domId, assetFiles, 3);
         }
-        if (d.files.length > MAX_FILES_PER_DOMAIN) {
-          const ovId = `file-overflow:${d.id}`;
-          const extra = d.files.length - MAX_FILES_PER_DOMAIN;
-          nodes.push({
-            id: ovId,
-            parentId: domId,
-            kind: 'file',
-            title: lang === 'zh' ? `+${extra} 个未展开文件` : `+${extra} more files`,
-            subtitle: `${d.files.length} ${lang === 'zh' ? '个文件（按需搜索定位）' : 'files total (use Search)'}`,
-          });
-          edges.push({
-            id: `e:${domId}->${ovId}`,
-            from: domId,
-            to: ovId,
-            kind: 'hierarchy',
-          });
-        }
+      }
+    }
+
+    // Internal workspace dependency edges (`dep`, rendered on-inspect in Canvas!)
+    for (const d of arch.domains) {
+      if (!d.workspaceDeps || d.workspaceDeps.length === 0) continue;
+      const fromNodeId = domainNodeIds.get(d.name);
+      if (!fromNodeId) continue;
+      for (const depDomId of d.workspaceDeps) {
+        const targetDom = domainById.get(depDomId);
+        if (!targetDom) continue;
+        const toNodeId = domainNodeIds.get(targetDom.name);
+        if (!toNodeId || toNodeId === fromNodeId) continue;
+        edges.push({
+          id: `dep:${fromNodeId}->${toNodeId}`,
+          from: fromNodeId,
+          to: toNodeId,
+          kind: 'dep',
+          label: lang === 'zh' ? '依赖' : 'depends',
+        });
       }
     }
   }
 
-  // Helper to resolve which domain an arbitrary path belongs to
-  const resolveDomainForPath = (normPath: string): { name: string; indexed?: IndexedDomain } => {
-    for (const d of arch.domains) {
-      if (d.files.includes(normPath)) {
-        return { name: d.name, indexed: d };
-      }
-    }
-    const fallbackName = matchDomainForPath(normPath, manifest);
-    return { name: fallbackName, indexed: domainByName.get(fallbackName) };
-  };
-
-  // 2. Claims & Evidence Anchors (briefing & hybrid modes)
+  // 2. Claims & Evidence Anchors
   const claimSummaryItems: Array<{
     id: string;
     nodeId: string;
@@ -471,7 +709,7 @@ export function buildAtlasGraph(params: {
     }
   }
 
-  // 4. Changed files from Git Diff
+  // 4. Changed files from Git Diff (attaching to folder node if parent domain is expanded into folders!)
   if (mode !== 'briefing') {
     const MAX_DIFF_NODES = 30;
     const shownDiffs = diffStats.slice(0, MAX_DIFF_NODES);
@@ -480,10 +718,11 @@ export function buildAtlasGraph(params: {
       if (pathToNodeId.has(normPath)) continue;
       const resolved = resolveDomainForPath(normPath);
       const domId = ensureDomain(resolved.name, resolved.indexed);
+      const parentId = folderNodeByPathPrefix.get(normPath) || domId;
       const diffId = `diff:${normPath}`;
       nodes.push({
         id: diffId,
-        parentId: domId,
+        parentId,
         kind: 'diff-file',
         title: normPath.split('/').pop() || normPath,
         subtitle: `[${d.status}] ${normPath}`,
@@ -495,8 +734,8 @@ export function buildAtlasGraph(params: {
         deletions: d.deletions,
       });
       edges.push({
-        id: `e:${domId}->${diffId}`,
-        from: domId,
+        id: `e:${parentId}->${diffId}`,
+        from: parentId,
         to: diffId,
         kind: 'hierarchy',
       });
@@ -509,6 +748,7 @@ export function buildAtlasGraph(params: {
         id: overflowId,
         parentId: rootId,
         kind: 'diff-file',
+        isSummary: true,
         title: lang === 'zh' ? `+${extra} 个更多变更文件` : `+${extra} more changed files`,
         subtitle: `${diffStats.length} ${lang === 'zh' ? '个变更文件总计' : 'changed files total'}`,
         changed: true,
@@ -522,7 +762,7 @@ export function buildAtlasGraph(params: {
     }
   }
 
-  // 5. Indirect Impact Nodes (LSP references + LSP unmodified-file errors + Agent-declared impacts)
+  // 5. Indirect Impact Nodes
   let impactCount = 0;
 
   if (indirectImpact && indirectImpact.status === 'ok') {
@@ -693,7 +933,7 @@ export function buildAtlasGraph(params: {
     });
   }
 
-  // Propagate changed status up to ancestor domains
+  // Propagate changed status up to ancestor folders/domains
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
   for (const n of nodes) {
     if (n.changed) {
@@ -705,7 +945,7 @@ export function buildAtlasGraph(params: {
     }
   }
 
-  // Build Branch Summary (Scenario C): impacted domains aggregated from diffStats
+  // Branch Summary
   const impactedMap = new Map<string, ImpactedDomainSummary>();
   for (const d of diffStats) {
     const normPath = d.path.replace(/\\/g, '/');
@@ -730,7 +970,7 @@ export function buildAtlasGraph(params: {
     (a, b) => b.changedFiles - a.changedFiles || b.additions - a.additions
   );
 
-  // Branch Pruning (Scenario C): remove completely unrelated branches when pruneUnchanged is ON
+  // Branch Pruning
   let finalNodes = nodes;
   let finalEdges = edges;
   let prunedCount = 0;
@@ -771,6 +1011,7 @@ export function buildAtlasGraph(params: {
       patternLabelZh: arch.patternLabelZh,
       patternLabelEn: arch.patternLabelEn,
       domainCount: arch.domains.length,
+      hasManifest,
     },
     branchSummary: {
       branch: git.branch,
@@ -805,6 +1046,8 @@ export function buildAtlasGraph(params: {
       impactStatus: indirectImpact?.status,
       impactReason: indirectImpact?.reason,
       manifestIssues,
+      hiddenSupportDomains,
+      hiddenSupportFiles,
     },
   };
 }

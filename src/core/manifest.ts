@@ -182,13 +182,18 @@ export async function exportManifestDraft(
   const draft: AtlasManifest = {
     schemaVersion: '0.1',
     domains: arch.domains
-      .filter((d) => d.paths.length > 0)
+      .filter((d) => d.paths.length > 0 && !d.isSupport)
       .map((d) => ({
         id: d.id.replace(/^auto:/, '').replace(/[^a-zA-Z0-9_-]/g, '-'),
         name: d.name,
         description: d.description,
         paths: d.paths,
-        entrypoints: d.files[0] ? [{ path: d.files[0], startLine: 1 }] : [],
+        entrypoints:
+          d.entrypoints.length > 0
+            ? d.entrypoints.slice(0, 3)
+            : d.files[0]
+              ? [{ path: d.files[0], startLine: 1 }]
+              : [],
       })),
     guardrails: [
       'Keep .atlas/manifest.json focused on stable architectural domains and guardrails.',

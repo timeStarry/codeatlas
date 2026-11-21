@@ -17,6 +17,7 @@ import {
   verifyManifest,
 } from './core/manifest.js';
 import { analyzeRepositoryArchitecture } from './core/indexer.js';
+import { enrichArchitectureWithWorkspace } from './core/workspace.js';
 import { verifyBriefing } from './core/verifier.js';
 import { formatDirectivesForAgent } from './core/directives.js';
 import { buildAtlasGraph, CanvasViewMode } from './core/graph.js';
@@ -59,7 +60,9 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
   private didAutoDiscover = false;
   private didMigrate = false;
   private expandedDomainIds = new Set<string>();
+  private expandedFolderIds = new Set<string>();
   private pruneUnchanged = false;
+  private showSupportAssets = false;
   private lang: 'zh' | 'en' = 'zh';
   private stateWatcher?: vscode.FileSystemWatcher;
   private watcherDebounce?: NodeJS.Timeout;
@@ -114,6 +117,7 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
       const git = await getGitContext(workspaceRoot);
       const tracked = await listTrackedFiles(git.repoRoot);
       const arch = analyzeRepositoryArchitecture(tracked, undefined, this.lang);
+      await enrichArchitectureWithWorkspace(git.repoRoot, arch);
 
       let overwrite = false;
       const target = path.join(git.repoRoot, '.atlas', 'manifest.json');
@@ -233,6 +237,23 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
             await this.pushState();
           }
           break;
+        case 'toggleFolderFiles':
+          if (typeof msg.folderId === 'string' && msg.folderId) {
+            if (this.expandedFolderIds.has(msg.folderId)) {
+              this.expandedFolderIds.delete(msg.folderId);
+            } else {
+              this.expandedFolderIds.add(msg.folderId);
+            }
+            await this.pushState();
+          }
+          break;
+        case 'toggleSupportAssets':
+          this.showSupportAssets = !this.showSupportAssets;
+          await this.pushState();
+          break;
+        case 'initManifestDraft':
+          await this.initManifestDraft();
+          break;
         case 'expandDomainFiles':
           if (typeof msg.domainId === 'string' && msg.domainId) {
             this.expandedDomainIds.add(msg.domainId);
@@ -249,6 +270,7 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
           break;
         case 'collapseAllFiles':
           this.expandedDomainIds.clear();
+          this.expandedFolderIds.clear();
           await this.pushState();
           break;
         case 'setPruneUnchanged':
@@ -711,10 +733,14 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
       });
 
       if (this.canvasPanel) {
+        const arch = analyzeRepositoryArchitecture(trackedFiles, manifest, this.lang);
+        await enrichArchitectureWithWorkspace(git.repoRoot, arch);
         const graph = buildAtlasGraph({
           git,
           manifest,
           manifestIssues,
+          archOverride: arch,
+          hasManifest: manifestRes.status === 'ok',
           diffStats,
           trackedFiles,
           commits,
@@ -724,7 +750,9 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
           mode: this.viewMode,
           baseRef: this.baseRef,
           expandedDomainIds: [...this.expandedDomainIds],
+          expandedFolderIds: [...this.expandedFolderIds],
           pruneUnchanged: this.pruneUnchanged,
+          showSupportAssets: this.showSupportAssets,
           lang: this.lang,
         });
         this.canvasPanel.webview.postMessage({
@@ -736,6 +764,7 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
             availableBriefings,
             activeBriefingPath: this.activeBriefingPath,
             pruneUnchanged: this.pruneUnchanged,
+            showSupportAssets: this.showSupportAssets,
             lang: this.lang,
           },
         });

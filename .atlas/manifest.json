@@ -17,7 +17,7 @@
       "description": "VS Code extension activation, webview bridge, LSP impact provider, source navigation, and local state watcher.",
       "paths": ["src/extension.ts", "src/webview", "src/lsp"],
       "entrypoints": [
-        { "path": "src/extension.ts", "startLine": 751, "symbol": "activate" }
+        { "path": "src/extension.ts", "startLine": 780, "symbol": "activate" }
       ]
     },
     {

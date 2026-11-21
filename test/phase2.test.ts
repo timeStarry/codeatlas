@@ -21,6 +21,9 @@ import {
   verifyManifest,
 } from '../src/core/manifest.js';
 import { aggregateCallerLocations, canRunLspImpact } from '../src/core/impact.js';
+import { analyzeRepositoryArchitecture, classifyFileArtifact } from '../src/core/indexer.js';
+import { enrichArchitectureWithWorkspace } from '../src/core/workspace.js';
+import { buildAtlasGraph } from '../src/core/graph.js';
 import { AtlasManifest, BriefingReport } from '../src/core/types.js';
 
 const execFileAsync = promisify(execFile);
@@ -248,4 +251,99 @@ test('impact precondition gate rejects stale historical refs and collapses high-
   assert.equal(imp.callers.length, 0);
   assert.equal(imp.byDomain.length, 2);
   assert.equal(imp.byDomain[0].sampleFiles.length, 5);
+});
+
+test('Phase 3: artifact taxonomy hides pure assets, auto-promotes changed CI, collapses asset walls, and extracts workspace deps', async () => {
+  assert.equal(classifyFileArtifact('wit/plugin.wit'), 'code');
+  assert.equal(classifyFileArtifact('assets/brand/mark-16.png'), 'asset');
+  assert.equal(classifyFileArtifact('.github/workflows/ci.yml'), 'ci');
+  assert.equal(classifyFileArtifact('pnpm-lock.yaml'), 'config');
+
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'codeatlas-p3-'));
+  try {
+    await fs.mkdir(path.join(dir, 'crates', 'core', 'src'), { recursive: true });
+    await fs.mkdir(path.join(dir, 'crates', 'app', 'src'), { recursive: true });
+    await fs.writeFile(
+      path.join(dir, 'crates', 'core', 'Cargo.toml'),
+      '[package]\nname = "aster-core"\ndescription = "Core document engine"\n',
+      'utf-8'
+    );
+    await fs.writeFile(
+      path.join(dir, 'crates', 'app', 'Cargo.toml'),
+      '[package]\nname = "aster-app"\ndescription = "Desktop app host"\n[dependencies]\naster-core = { path = "../core" }\n',
+      'utf-8'
+    );
+
+    const trackedFiles = [
+      'crates/core/Cargo.toml',
+      'crates/core/src/lib.rs',
+      'crates/app/Cargo.toml',
+      'crates/app/src/main.rs',
+      'assets/brand/mark-16.png',
+      'assets/brand/mark-24.png',
+      'assets/brand/mark-32.png',
+      'assets/brand/mark-48.png',
+      '.github/workflows/ci.yml',
+      'wit/plugin.wit',
+    ];
+
+    const arch = analyzeRepositoryArchitecture(trackedFiles, undefined, 'zh');
+    await enrichArchitectureWithWorkspace(dir, arch);
+
+    const appDom = arch.domains.find((d) => d.name === 'crates/app')!;
+    const coreDom = arch.domains.find((d) => d.name === 'crates/core')!;
+    assert.equal(coreDom.description, 'Core document engine');
+    assert.ok(appDom.workspaceDeps?.includes(coreDom.id));
+
+    // Build graph with showSupportAssets=false, but ci.yml is changed in diff -> .github MUST auto-promote while assets stays hidden!
+    const graph = buildAtlasGraph({
+      git: {
+        repoRoot: dir,
+        headSha: 'abc12345',
+        shortSha: 'abc12345',
+        branch: 'main',
+        dirtyCount: 1,
+        worktrees: [],
+        recentRefs: ['HEAD'],
+      },
+      archOverride: arch,
+      hasManifest: false,
+      diffStats: [{ path: '.github/workflows/ci.yml', status: 'M', additions: 5, deletions: 1 }],
+      directives: [],
+      showSupportAssets: false,
+      lang: 'zh',
+    });
+
+    assert.equal(graph.nodes.some((n) => n.title === 'assets'), false);
+    assert.equal(graph.nodes.some((n) => n.title === '.github'), true);
+    assert.equal(graph.nodes.some((n) => n.title === 'wit'), true);
+    assert.equal(graph.summary.hiddenSupportDomains, 1);
+    assert.equal(graph.summary.hiddenSupportFiles, 4);
+    assert.ok(graph.edges.some((e) => e.kind === 'dep'));
+
+    // When showSupportAssets=true and assets domain is expanded, 4 pngs collapse into 1 summary card instead of 4 cards!
+    const assetsDom = arch.domains.find((d) => d.name === 'assets')!;
+    const expGraph = buildAtlasGraph({
+      git: {
+        repoRoot: dir,
+        headSha: 'abc12345',
+        shortSha: 'abc12345',
+        branch: 'main',
+        dirtyCount: 0,
+        worktrees: [],
+        recentRefs: ['HEAD'],
+      },
+      archOverride: arch,
+      diffStats: [],
+      directives: [],
+      showSupportAssets: true,
+      expandedDomainIds: [assetsDom.id],
+      lang: 'zh',
+    });
+    const assetChildren = expGraph.nodes.filter((n) => n.parentId === `domain:${assetsDom.id}`);
+    assert.equal(assetChildren.length, 1);
+    assert.equal(assetChildren[0].isSummary, true);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
 });

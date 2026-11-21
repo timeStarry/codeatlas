@@ -302,17 +302,20 @@ export function getCanvasHtml(nonce: string): string {
     .edge-path.flow { stroke: #4da6ff; stroke-width: 2.2; }
     .edge-path.blocking { stroke: var(--amber); stroke-width: 2.3; stroke-dasharray: 6 4; }
     .edge-path.impact { stroke: #39c5cf; stroke-width: 2.1; stroke-dasharray: 5 3; }
+    .edge-path.dep { stroke: #58a6ff; stroke-width: 2; stroke-dasharray: 4 4; }
     .edge-path.directive { stroke: var(--purple); stroke-width: 2; stroke-dasharray: 3 3; }
     .edge-path.dimmed { opacity: 0.12; }
     .edge-path.focused { stroke-width: 2.8; opacity: 1; }
     .edge-pill { fill: var(--panel); stroke: var(--border); stroke-width: 1; }
     .edge-pill.blocking { stroke: var(--amber); }
     .edge-pill.impact { stroke: #39c5cf; }
+    .edge-pill.dep { stroke: #58a6ff; }
     .edge-pill.directive { stroke: var(--purple); }
     .edge-pill.dimmed, .edge-label.dimmed { opacity: 0.14; }
     .edge-label { fill: var(--muted); font-size: 9.5px; font-weight: 700; font-family: var(--mono); }
     .edge-label.blocking { fill: var(--amber); }
     .edge-label.impact { fill: #39c5cf; }
+    .edge-label.dep { fill: #58a6ff; }
     .edge-label.directive { fill: var(--purple); }
 
     .node {
@@ -335,8 +338,10 @@ export function getCanvasHtml(nonce: string): string {
 
     .node.kind-root { border: 2px solid var(--accent); background: linear-gradient(145deg, rgba(77,166,255,0.14), var(--panel)); }
     .node.kind-domain { border-top: 3px solid var(--green); background: linear-gradient(180deg, rgba(63,185,80,0.08), var(--panel)); }
+    .node.kind-folder { border-left: 4px solid #79c0ff; background: linear-gradient(180deg, rgba(121,192,255,0.08), var(--panel)); }
     .node.kind-entrypoint { border-left: 4px solid #58a6ff; }
     .node.kind-file { border-left: 4px solid rgba(139,148,158,0.65); background: var(--panel-2); }
+    .node.is-summary { border-style: dashed; opacity: 0.88; }
     .node.kind-claim { border-left: 4px solid #79c0ff; }
     .node.kind-evidence { border-left: 4px solid var(--green); background: var(--panel-2); }
     .node.kind-blocking {
@@ -611,8 +616,9 @@ export function getCanvasHtml(nonce: string): string {
         <button class="secondary" id="btnDeltaToggle">变更叠加: 关</button>
         <button class="secondary" id="btnFocusToggle">聚焦: 关</button>
         <button class="secondary" id="btnRefresh">刷新</button>
+        <button id="btnInitManifest" style="display:none;">保存骨架</button>
         <button class="secondary" id="btnCopyDirs">导出指令</button>
-        <button id="btnVerifyBriefing">核验简报</button>
+        <button class="secondary" id="btnVerifyBriefing">核验简报</button>
         <button class="secondary" id="btnLangToggle" style="padding:3px 7px;font-size:11px;">EN</button>
       </div>
     </div>
@@ -695,15 +701,15 @@ export function getCanvasHtml(nonce: string): string {
         atlas: '全景底图', briefing: '因果简报', hybrid: '融合视图',
         summaryBtn: '分支摘要', pruneOn: '仅看变更: 开', pruneOff: '仅看变更: 关', impactBtn: '分析影响面',
         searchPh: '搜索 (/)...', deltaOn: '变更叠加: 开', deltaOff: '变更叠加: 关',
-        focusOn: '聚焦: 开', focusOff: '聚焦: 关', refresh: '刷新', exportDir: '导出指令',
-        verifyJson: '核验简报', reverify: '立即重验', langBtn: 'EN',
+        focusOn: '聚焦: 开', focusOff: '聚焦: 关', refresh: '刷新索引', initManifest: '保存骨架', exportDir: '导出指令',
+        verifyJson: '核验 JSON', reverify: '立即重验', langBtn: 'EN',
         selectBriefing: '-- 选择简报 --', fit: '适配', tidy: '整理', expand: '展开', collapse: '收拢',
         indexFiles: '展开至文件层', collapseFiles: '收起文件层', legendBtn: '? 图例',
         summaryTitle: '分支变更摘要', tabCode: '源码', tabDiff: 'Diff', tabDir: '+ 批注', tabTrust: '可信度',
         inspFocus: '聚焦', defaultCrumb: '点击节点精读源码 · 双击节点聚焦分支 · 点域卡片按需展开文件',
         openBtn: '打开 ↗', expandDomainFiles: '展开文件', collapseDomainFiles: '收起文件',
         kind: {
-          root: '仓库快照', domain: '职责域', entrypoint: '业务入口', file: '文件',
+          root: '仓库快照', domain: '职责域', folder: '子目录', entrypoint: '业务入口', file: '文件',
           claim: '因果声明', evidence: '代码证据', blocking: '阻断分叉', 'diff-file': '变更文件', impact: '间接影响', directive: '纠偏批注'
         },
         badge: { verified: '已核验', mismatch: '失配', stale: '过期', unverified: '未核验', unknown: '未知' },
@@ -745,7 +751,7 @@ export function getCanvasHtml(nonce: string): string {
         atlas: 'Atlas', briefing: 'Briefing', hybrid: 'Hybrid',
         summaryBtn: 'Branch Summary', pruneOn: 'Changed Only: ON', pruneOff: 'Changed Only: OFF', impactBtn: 'Impact',
         searchPh: 'Search (/)...', deltaOn: 'Delta: ON', deltaOff: 'Delta: OFF',
-        focusOn: 'Focus: ON', focusOff: 'Focus: OFF', refresh: 'Refresh', exportDir: 'Export',
+        focusOn: 'Focus: ON', focusOff: 'Focus: OFF', refresh: 'Re-Index', initManifest: 'Save Skeleton', exportDir: 'Export',
         verifyJson: 'Verify JSON', reverify: 'Re-verify', langBtn: '中',
         selectBriefing: '-- Briefing --', fit: 'Fit', tidy: 'Tidy', expand: 'Expand', collapse: 'Collapse',
         indexFiles: 'Expand to Files', collapseFiles: 'Collapse Files', legendBtn: '? Legend',
@@ -753,7 +759,7 @@ export function getCanvasHtml(nonce: string): string {
         inspFocus: 'Focus', defaultCrumb: 'Click to inspect · Double-click to focus · Click Domain to lazy-expand files',
         openBtn: 'Open ↗', expandDomainFiles: 'Files', collapseDomainFiles: 'Hide Files',
         kind: {
-          root: 'Repository', domain: 'Domain', entrypoint: 'Entrypoint', file: 'File',
+          root: 'Repository', domain: 'Domain', folder: 'Folder', entrypoint: 'Entrypoint', file: 'File',
           claim: 'Claim', evidence: 'Evidence', blocking: 'Blocking Fork', 'diff-file': 'Changed File', impact: 'Indirect Impact', directive: 'Directive'
         },
         badge: { verified: 'verified', mismatch: 'mismatch', stale: 'stale', unverified: 'unverified', unknown: 'unknown' },
@@ -804,6 +810,8 @@ export function getCanvasHtml(nonce: string): string {
     let viewMode = 'hybrid';
     let deltaOverlay = false;
     let pruneUnchanged = false;
+    let showSupportAssets = false;
+    let lastTopologyKey = '';
     let summaryOpen = false;
     let focusMode = false;
     let activeChipFilter = '';
@@ -858,6 +866,7 @@ export function getCanvasHtml(nonce: string): string {
       document.getElementById('btnDeltaToggle').textContent = deltaOverlay ? t('deltaOn') : t('deltaOff');
       document.getElementById('btnFocusToggle').textContent = focusMode ? t('focusOn') : t('focusOff');
       document.getElementById('btnRefresh').textContent = t('refresh');
+      document.getElementById('btnInitManifest').textContent = t('initManifest');
       document.getElementById('btnCopyDirs').textContent = t('exportDir');
       document.getElementById('btnVerifyBriefing').textContent = t('verifyJson');
       document.getElementById('btnReverifyStale').textContent = t('reverify');
@@ -1050,7 +1059,8 @@ export function getCanvasHtml(nonce: string): string {
         }
       }
       if (expandedAny) {
-        computeTidyLayout(false);
+        manualPositions.clear();
+        computeTidyLayout(true);
         buildNodeDom(false);
         if (firstHitId) centerOnNode(firstHitId);
       }
@@ -1086,7 +1096,8 @@ export function getCanvasHtml(nonce: string): string {
       if (searchMatchIdx >= list.length) searchMatchIdx = 0;
       document.getElementById('searchCount').textContent = list.length > 0 ? ((searchMatchIdx + 1) + '/' + list.length) : '0/0';
       if (expandedAny) {
-        computeTidyLayout(false);
+        manualPositions.clear();
+        computeTidyLayout(true);
         buildNodeDom(false);
       }
       return matched;
@@ -1109,28 +1120,48 @@ export function getCanvasHtml(nonce: string): string {
       let svgHtml = '';
       for (const e of graph.edges) {
         if (!visible.has(e.from) || !visible.has(e.to)) continue;
+        // Progressive disclosure: only draw workspace dependency arcs for the inspected domain
+        if (e.kind === 'dep' && selectedNodeId !== e.from && selectedNodeId !== e.to) continue;
         const p1 = positions.get(e.from);
         const p2 = positions.get(e.to);
         if (!p1 || !p2) continue;
-        const x1 = p1.x + NODE_W;
-        const y1 = p1.y + getNodeHeight(e.from) / 2;
-        const x2 = p2.x;
-        const y2 = p2.y + getNodeHeight(e.to) / 2;
-        const dx = Math.max(44, Math.abs(x2 - x1) * 0.48);
-        const d = 'M ' + x1 + ' ' + y1 + ' C ' + (x1 + dx) + ' ' + y1 + ', ' + (x2 - dx) + ' ' + y2 + ', ' + x2 + ' ' + y2;
+
+        let d = '';
+        let mx = 0;
+        let my = 0;
+        if (e.kind === 'dep' && Math.abs(p1.x - p2.x) < NODE_W) {
+          // Same-column vertical arc on the left edge so it never crosses sibling cards
+          const x1 = p1.x;
+          const y1 = p1.y + getNodeHeight(e.from) / 2;
+          const x2 = p2.x;
+          const y2 = p2.y + getNodeHeight(e.to) / 2;
+          const arcOffset = Math.min(110, Math.max(46, Math.abs(y2 - y1) * 0.22));
+          d = 'M ' + x1 + ' ' + y1 + ' C ' + (x1 - arcOffset) + ' ' + y1 + ', ' + (x2 - arcOffset) + ' ' + y2 + ', ' + x2 + ' ' + y2;
+          mx = x1 - arcOffset * 0.78;
+          my = (y1 + y2) / 2;
+        } else {
+          const x1 = p1.x + NODE_W;
+          const y1 = p1.y + getNodeHeight(e.from) / 2;
+          const x2 = p2.x;
+          const y2 = p2.y + getNodeHeight(e.to) / 2;
+          const dx = Math.max(44, Math.abs(x2 - x1) * 0.48);
+          d = 'M ' + x1 + ' ' + y1 + ' C ' + (x1 + dx) + ' ' + y1 + ', ' + (x2 - dx) + ' ' + y2 + ', ' + x2 + ' ' + y2;
+          mx = (x1 + x2) / 2;
+          my = (y1 + y2) / 2;
+        }
 
         const targetNode = nodeById.get(e.to);
         const dimmed =
-          (focusedSet && (!focusedSet.has(e.from) || !focusedSet.has(e.to))) ||
-          (chipSet && (!chipSet.has(e.from) || !chipSet.has(e.to))) ||
-          (targetNode && deltaOverlay && !targetNode.changed && targetNode.kind !== 'root' && targetNode.kind !== 'directive') ||
-          (matchedIds && !matchedIds.has(e.to) && !matchedIds.has(e.from));
-        const isFocused = focusedSet && focusedSet.has(e.from) && focusedSet.has(e.to);
+          e.kind !== 'dep' && (
+            (focusedSet && (!focusedSet.has(e.from) || !focusedSet.has(e.to))) ||
+            (chipSet && (!chipSet.has(e.from) || !chipSet.has(e.to))) ||
+            (targetNode && deltaOverlay && !targetNode.changed && targetNode.kind !== 'root' && targetNode.kind !== 'directive') ||
+            (matchedIds && !matchedIds.has(e.to) && !matchedIds.has(e.from))
+          );
+        const isFocused = e.kind === 'dep' || (focusedSet && focusedSet.has(e.from) && focusedSet.has(e.to));
 
         svgHtml += '<path class="edge-path ' + esc(e.kind) + (dimmed ? ' dimmed' : '') + (isFocused ? ' focused' : '') + '" d="' + d + '" />';
         if (e.label) {
-          const mx = (x1 + x2) / 2;
-          const my = (y1 + y2) / 2;
           const pw = e.label.length * 8 + 14;
           svgHtml += '<rect class="edge-pill ' + esc(e.kind) + (dimmed ? ' dimmed' : '') + '" x="' + (mx - pw / 2) + '" y="' + (my - 9) + '" width="' + pw + '" height="16" rx="8" />';
           svgHtml += '<text class="edge-label ' + esc(e.kind) + (dimmed ? ' dimmed' : '') + '" x="' + mx + '" y="' + (my + 3) + '" text-anchor="middle">' + esc(e.label) + '</text>';
@@ -1265,12 +1296,22 @@ export function getCanvasHtml(nonce: string): string {
       if (s.blindSpots && s.blindSpots.length > 0) chips.push('<span class="chip warn" data-chip="trust">' + (lang === 'zh' ? '盲区 ' : 'Blind Spots ') + s.blindSpots.length + '</span>');
       if (s.directiveCount > 0) chips.push('<span class="chip dir' + (activeChipFilter === 'directive' ? ' active' : '') + '" data-chip="directive">' + (lang === 'zh' ? '批注 ' : 'Directives ') + s.directiveCount + '</span>');
       if (s.prunedCount > 0) chips.push('<span class="chip">' + (lang === 'zh' ? '已剪枝 ' : 'Pruned ') + s.prunedCount + '</span>');
+      if (s.hiddenSupportFiles > 0 || showSupportAssets) {
+        const supLabel = showSupportAssets
+          ? (lang === 'zh' ? '已显示非源码资源' : 'Support/Assets: ON')
+          : (lang === 'zh' ? '已折叠非源码 ' + s.hiddenSupportFiles + ' 文件' : 'Hidden Assets/Config ' + s.hiddenSupportFiles);
+        chips.push('<span class="chip' + (showSupportAssets ? ' active' : '') + '" data-chip="toggleSupport" title="' + (lang === 'zh' ? '点击切换显示/隐藏静态资源与配置目录' : 'Toggle non-code support & asset domains') + '">' + supLabel + '</span>');
+      }
 
       const tc = document.getElementById('trustChips');
       tc.innerHTML = chips.join('');
       tc.querySelectorAll('[data-chip]').forEach(el => {
         el.addEventListener('click', () => {
           const kind = el.dataset.chip;
+          if (kind === 'toggleSupport') {
+            vscode.postMessage({ type: 'toggleSupportAssets' });
+            return;
+          }
           if (kind === 'trust') {
             inspectorTab = 'trust';
             selectNode('root');
@@ -1311,7 +1352,7 @@ export function getCanvasHtml(nonce: string): string {
         const isCollapsed = collapsedIds.has(n.id);
 
         const el = document.createElement('div');
-        el.className = 'node kind-' + n.kind;
+        el.className = 'node kind-' + n.kind + (n.isSummary ? ' is-summary' : '');
         el.style.left = p.x + 'px';
         el.style.top = p.y + 'px';
         el.dataset.id = n.id;
@@ -1337,6 +1378,11 @@ export function getCanvasHtml(nonce: string): string {
             ? t('collapseDomainFiles')
             : (t('expandDomainFiles') + ' (' + (n.fileCount || 0) + ')');
           footerRight = '<button class="quick-btn" data-toggle-dom="' + esc(n.domainId) + '">' + esc(lbl) + '</button>';
+        } else if (n.kind === 'folder' && n.canExpandFiles && n.folderId) {
+          const lbl = n.filesExpanded
+            ? t('collapseDomainFiles')
+            : (t('expandDomainFiles') + ' (' + (n.fileCount || 0) + ')');
+          footerRight = '<button class="quick-btn" data-toggle-folder="' + esc(n.folderId) + '">' + esc(lbl) + '</button>';
         } else if (n.path) {
           footerRight = '<button class="quick-btn quick-jump" data-jump-path="' + esc(n.path) + '" data-jump-line="' + esc(n.startLine || 1) + '">' + esc(t('openBtn')) + '</button>';
         } else if (kids.length > 0) {
@@ -1374,6 +1420,17 @@ export function getCanvasHtml(nonce: string): string {
             pendingCenterNodeId = n.id;
             collapsedIds.delete(n.id);
             vscode.postMessage({ type: 'toggleDomainFiles', domainId: domToggle.dataset.toggleDom });
+          });
+        }
+
+        const folderToggle = el.querySelector('[data-toggle-folder]');
+        if (folderToggle) {
+          folderToggle.addEventListener('mousedown', (ev) => ev.stopPropagation());
+          folderToggle.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            pendingCenterNodeId = n.id;
+            collapsedIds.delete(n.id);
+            vscode.postMessage({ type: 'toggleFolderFiles', folderId: folderToggle.dataset.toggleFolder });
           });
         }
 
@@ -1670,6 +1727,26 @@ export function getCanvasHtml(nonce: string): string {
         html += '<div style="margin:8px 0;"><button class="danger" id="btnRemoveDir">' + esc(t('delDirBtn')) + '</button></div>';
       }
 
+      // Show clickable internal workspace dependencies for Domain nodes
+      if (node.kind === 'domain') {
+        const depsOut = graph.edges.filter(e => e.kind === 'dep' && e.from === node.id).map(e => nodeById.get(e.to)).filter(Boolean);
+        const depsIn = graph.edges.filter(e => e.kind === 'dep' && e.to === node.id).map(e => nodeById.get(e.from)).filter(Boolean);
+        if (depsOut.length > 0 || depsIn.length > 0) {
+          html += '<div style="margin:10px 0;padding:8px;border:1px solid var(--border);border-radius:6px;">';
+          if (depsOut.length > 0) {
+            html += '<div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;">' + (lang === 'zh' ? '依赖的模块 (Depends On)' : 'Depends On') + '</div>';
+            html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;">' +
+              depsOut.map(d => '<span class="chip" data-dep-jump="' + esc(d.id) + '">→ ' + esc(d.title) + '</span>').join('') + '</div>';
+          }
+          if (depsIn.length > 0) {
+            html += '<div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;">' + (lang === 'zh' ? '被以下模块依赖 (Used By)' : 'Used By') + '</div>';
+            html += '<div style="display:flex;flex-wrap:wrap;gap:4px;">' +
+              depsIn.map(d => '<span class="chip" data-dep-jump="' + esc(d.id) + '">← ' + esc(d.title) + '</span>').join('') + '</div>';
+          }
+          html += '</div>';
+        }
+      }
+
       if (node.path) {
         html +=
           '<div style="display:flex;gap:6px;align-items:center;margin:10px 0;">' +
@@ -1709,6 +1786,12 @@ export function getCanvasHtml(nonce: string): string {
           inspector.classList.add('hidden');
         });
       }
+      el.querySelectorAll('[data-dep-jump]').forEach(chip => {
+        chip.addEventListener('click', () => {
+          selectNode(chip.dataset.depJump);
+          centerOnNode(chip.dataset.depJump);
+        });
+      });
     }
 
     // Bind UI events
@@ -1852,6 +1935,7 @@ export function getCanvasHtml(nonce: string): string {
       syncVisualClasses();
     });
     document.getElementById('btnRefresh').addEventListener('click', () => vscode.postMessage({ type: 'refresh', baseRef }));
+    document.getElementById('btnInitManifest').addEventListener('click', () => vscode.postMessage({ type: 'initManifestDraft' }));
     document.getElementById('btnReverifyStale').addEventListener('click', () => vscode.postMessage({ type: 'refresh', baseRef }));
     document.getElementById('btnVerifyBriefing').addEventListener('click', () => vscode.postMessage({ type: 'pickBriefing' }));
     document.getElementById('btnEmptyVerify').addEventListener('click', () => vscode.postMessage({ type: 'pickBriefing' }));
@@ -1925,6 +2009,7 @@ export function getCanvasHtml(nonce: string): string {
 
         lang = msg.payload.lang || lang;
         pruneUnchanged = Boolean(msg.payload.pruneUnchanged);
+        showSupportAssets = Boolean(msg.payload.showSupportAssets);
         snippetCache.clear();
         diffCache.clear();
 
@@ -1940,6 +2025,10 @@ export function getCanvasHtml(nonce: string): string {
         activeBriefingPath = incomingBriefing;
 
         applyStaticTranslations();
+
+        // Primary workflow: show Save Skeleton CTA only when repo has no .atlas/manifest.json
+        const initBtn = document.getElementById('btnInitManifest');
+        initBtn.style.display = (gitCtx && graph.architecture && !graph.architecture.hasManifest) ? 'inline-block' : 'none';
 
         // Architecture pill + small-project 1-click file expansion button
         const archPill = document.getElementById('archPill');
@@ -1961,10 +2050,15 @@ export function getCanvasHtml(nonce: string): string {
         }
 
         const bSel = document.getElementById('briefingSelect');
-        bSel.innerHTML = '<option value="">' + esc(t('selectBriefing')) + '</option>' +
-          availableBriefings.map(b =>
-            '<option value="' + esc(b.path) + '"' + (b.path === activeBriefingPath ? ' selected' : '') + '>' + esc(b.label) + '</option>'
-          ).join('');
+        if (availableBriefings.length === 0) {
+          bSel.style.display = 'none';
+        } else {
+          bSel.style.display = 'inline-block';
+          bSel.innerHTML = '<option value="">' + esc(t('selectBriefing')) + '</option>' +
+            availableBriefings.map(b =>
+              '<option value="' + esc(b.path) + '"' + (b.path === activeBriefingPath ? ' selected' : '') + '>' + esc(b.label) + '</option>'
+            ).join('');
+        }
 
         const rSel = document.getElementById('baseRefSelect');
         const refs = (gitCtx && gitCtx.recentRefs) ? gitCtx.recentRefs : ['HEAD'];
@@ -2005,11 +2099,21 @@ export function getCanvasHtml(nonce: string): string {
         const diffCnt = (graph.summary && graph.summary.changedFiles) || 0;
         sumBtn.textContent = t('summaryBtn') + (diffCnt > 0 ? ' (' + diffCnt + ')' : '');
 
+        const topologyKey = graph.nodes.map(n => n.id + '@' + (n.parentId || '')).join('|');
+        const topologyChanged = topologyKey !== lastTopologyKey;
+        lastTopologyKey = topologyKey;
+
         const shouldReset = prevCount === 0 || briefingChanged || positions.size === 0;
         if (briefingChanged) {
           positions.clear();
           manualPositions.clear();
           collapsedIds.clear();
+        }
+        if (topologyChanged) {
+          manualPositions.clear();
+          for (const id of [...positions.keys()]) {
+            if (!nodeById.has(id)) positions.delete(id);
+          }
         }
         if (shouldReset && graph.nodes.length > 28) {
           for (const n of graph.nodes) {
@@ -2024,7 +2128,7 @@ export function getCanvasHtml(nonce: string): string {
           inspector.classList.add('hidden');
         }
 
-        computeTidyLayout(shouldReset || manualPositions.size === 0);
+        computeTidyLayout(shouldReset || topologyChanged || manualPositions.size === 0);
         buildNodeDom(true);
         renderBranchSummaryDrawer();
 
