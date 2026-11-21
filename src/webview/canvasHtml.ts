@@ -580,6 +580,42 @@ export function getCanvasHtml(nonce: string): string {
       gap: 5px;
     }
     .legend-popover.hidden { display: none; }
+    .agent-menu-wrap { position: relative; display: inline-block; }
+    .agent-menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      width: 245px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 6px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+      z-index: 40;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .agent-menu.hidden { display: none; }
+    .agent-menu button {
+      text-align: left;
+      background: transparent;
+      color: var(--fg);
+      border: 1px solid transparent;
+      padding: 6px 8px;
+      font-size: 12px;
+      border-radius: 5px;
+    }
+    .agent-menu button:hover {
+      background: var(--surface-subtle);
+      border-color: var(--border);
+    }
+    .agent-menu-desc {
+      display: block;
+      font-size: 10.5px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
     .dot {
       display: inline-block;
       width: 8px;
@@ -615,10 +651,27 @@ export function getCanvasHtml(nonce: string): string {
         </div>
         <button class="secondary" id="btnDeltaToggle">变更叠加: 关</button>
         <button class="secondary" id="btnFocusToggle">聚焦: 关</button>
-        <button class="secondary" id="btnRefresh">刷新</button>
+        <button class="secondary" id="btnRefresh">刷新索引</button>
         <button id="btnInitManifest" style="display:none;">保存骨架</button>
+        <div class="agent-menu-wrap">
+          <button id="btnAgentMenu">接入 Agent ▾</button>
+          <div class="agent-menu hidden" id="agentMenu">
+            <button id="btnCopyMcpCfg">
+              <strong id="lblCopyMcp">1. 复制 MCP 配置 JSON</strong>
+              <span class="agent-menu-desc" id="descCopyMcp">自动填好当前仓库路径，粘贴到 Agent 配置</span>
+            </button>
+            <button id="btnCopyBranchPrompt">
+              <strong id="lblCopyBranch">2. 复制“分析当前分支” Prompt</strong>
+              <span class="agent-menu-desc" id="descCopyBranch">让 Agent 生成因果简报并自动回传画布</span>
+            </button>
+            <button id="btnCopyManifestPrompt">
+              <strong id="lblCopyManifest">3. 复制“完善架构骨架” Prompt</strong>
+              <span class="agent-menu-desc" id="descCopyManifest">让 Agent 编写 .atlas/manifest.json 与红线</span>
+            </button>
+          </div>
+        </div>
         <button class="secondary" id="btnCopyDirs">导出指令</button>
-        <button class="secondary" id="btnVerifyBriefing">核验简报</button>
+        <button class="secondary" id="btnVerifyBriefing">核验 JSON</button>
         <button class="secondary" id="btnLangToggle" style="padding:3px 7px;font-size:11px;">EN</button>
       </div>
     </div>
@@ -701,7 +754,11 @@ export function getCanvasHtml(nonce: string): string {
         atlas: '全景底图', briefing: '因果简报', hybrid: '融合视图',
         summaryBtn: '分支摘要', pruneOn: '仅看变更: 开', pruneOff: '仅看变更: 关', impactBtn: '分析影响面',
         searchPh: '搜索 (/)...', deltaOn: '变更叠加: 开', deltaOff: '变更叠加: 关',
-        focusOn: '聚焦: 开', focusOff: '聚焦: 关', refresh: '刷新索引', initManifest: '保存骨架', exportDir: '导出指令',
+        focusOn: '聚焦: 开', focusOff: '聚焦: 关', refresh: '刷新索引', initManifest: '保存骨架', agentMenuBtn: '接入 Agent ▾', exportDir: '导出指令',
+        copyMcp: '1. 复制 MCP 配置 JSON', copyMcpDesc: '自动填好当前仓库路径，粘贴到 Agent 配置',
+        copyBranch: '2. 复制“分析当前分支” Prompt', copyBranchDesc: '让 Agent 生成因果简报并自动回传画布',
+        copyManifest: '3. 复制“完善架构骨架” Prompt', copyManifestDesc: '让 Agent 编写 .atlas/manifest.json 与红线',
+        copyNodePrompt: '复制 Agent 分析 Prompt',
         verifyJson: '核验 JSON', reverify: '立即重验', langBtn: 'EN',
         selectBriefing: '-- 选择简报 --', fit: '适配', tidy: '整理', expand: '展开', collapse: '收拢',
         indexFiles: '展开至文件层', collapseFiles: '收起文件层', legendBtn: '? 图例',
@@ -751,7 +808,11 @@ export function getCanvasHtml(nonce: string): string {
         atlas: 'Atlas', briefing: 'Briefing', hybrid: 'Hybrid',
         summaryBtn: 'Branch Summary', pruneOn: 'Changed Only: ON', pruneOff: 'Changed Only: OFF', impactBtn: 'Impact',
         searchPh: 'Search (/)...', deltaOn: 'Delta: ON', deltaOff: 'Delta: OFF',
-        focusOn: 'Focus: ON', focusOff: 'Focus: OFF', refresh: 'Re-Index', initManifest: 'Save Skeleton', exportDir: 'Export',
+        focusOn: 'Focus: ON', focusOff: 'Focus: OFF', refresh: 'Re-Index', initManifest: 'Save Skeleton', agentMenuBtn: 'Connect Agent ▾', exportDir: 'Export',
+        copyMcp: '1. Copy MCP Config JSON', copyMcpDesc: 'Pre-filled with current repo & dist/mcp-server.js',
+        copyBranch: '2. Copy Branch Analysis Prompt', copyBranchDesc: 'Ask Agent to submit a verified briefing to Canvas',
+        copyManifest: '3. Copy Manifest Authoring Prompt', copyManifestDesc: 'Ask Agent to write .atlas/manifest.json & guardrails',
+        copyNodePrompt: 'Copy Agent Analysis Prompt',
         verifyJson: 'Verify JSON', reverify: 'Re-verify', langBtn: '中',
         selectBriefing: '-- Briefing --', fit: 'Fit', tidy: 'Tidy', expand: 'Expand', collapse: 'Collapse',
         indexFiles: 'Expand to Files', collapseFiles: 'Collapse Files', legendBtn: '? Legend',
@@ -867,6 +928,13 @@ export function getCanvasHtml(nonce: string): string {
       document.getElementById('btnFocusToggle').textContent = focusMode ? t('focusOn') : t('focusOff');
       document.getElementById('btnRefresh').textContent = t('refresh');
       document.getElementById('btnInitManifest').textContent = t('initManifest');
+      document.getElementById('btnAgentMenu').textContent = t('agentMenuBtn');
+      document.getElementById('lblCopyMcp').textContent = t('copyMcp');
+      document.getElementById('descCopyMcp').textContent = t('copyMcpDesc');
+      document.getElementById('lblCopyBranch').textContent = t('copyBranch');
+      document.getElementById('descCopyBranch').textContent = t('copyBranchDesc');
+      document.getElementById('lblCopyManifest').textContent = t('copyManifest');
+      document.getElementById('descCopyManifest').textContent = t('copyManifestDesc');
       document.getElementById('btnCopyDirs').textContent = t('exportDir');
       document.getElementById('btnVerifyBriefing').textContent = t('verifyJson');
       document.getElementById('btnReverifyStale').textContent = t('reverify');
@@ -1727,6 +1795,10 @@ export function getCanvasHtml(nonce: string): string {
         html += '<div style="margin:8px 0;"><button class="danger" id="btnRemoveDir">' + esc(t('delDirBtn')) + '</button></div>';
       }
 
+      if (node.kind === 'domain' || node.kind === 'folder' || node.kind === 'entrypoint' || node.kind === 'file' || node.kind === 'diff-file' || node.kind === 'evidence') {
+        html += '<div style="margin:8px 0;"><button class="secondary" id="btnCopyNodePrompt">' + esc(t('copyNodePrompt')) + '</button></div>';
+      }
+
       // Show clickable internal workspace dependencies for Domain nodes
       if (node.kind === 'domain') {
         const depsOut = graph.edges.filter(e => e.kind === 'dep' && e.from === node.id).map(e => nodeById.get(e.to)).filter(Boolean);
@@ -1776,6 +1848,17 @@ export function getCanvasHtml(nonce: string): string {
       if (jumpBtn && node.path) {
         jumpBtn.addEventListener('click', () => {
           vscode.postMessage({ type: 'openFile', path: node.path, line: node.startLine || 1 });
+        });
+      }
+      const copyNodeBtn = document.getElementById('btnCopyNodePrompt');
+      if (copyNodeBtn) {
+        copyNodeBtn.addEventListener('click', () => {
+          vscode.postMessage({
+            type: 'copyNodePrompt',
+            title: node.title,
+            kind: node.kind,
+            path: node.path || node.defaultDirectivePath || ''
+          });
         });
       }
       const delBtn = document.getElementById('btnRemoveDir');
@@ -1936,6 +2019,24 @@ export function getCanvasHtml(nonce: string): string {
     });
     document.getElementById('btnRefresh').addEventListener('click', () => vscode.postMessage({ type: 'refresh', baseRef }));
     document.getElementById('btnInitManifest').addEventListener('click', () => vscode.postMessage({ type: 'initManifestDraft' }));
+    const agentMenu = document.getElementById('agentMenu');
+    document.getElementById('btnAgentMenu').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      agentMenu.classList.toggle('hidden');
+    });
+    document.addEventListener('click', () => agentMenu.classList.add('hidden'));
+    document.getElementById('btnCopyMcpCfg').addEventListener('click', () => {
+      agentMenu.classList.add('hidden');
+      vscode.postMessage({ type: 'copyMcpConfig' });
+    });
+    document.getElementById('btnCopyBranchPrompt').addEventListener('click', () => {
+      agentMenu.classList.add('hidden');
+      vscode.postMessage({ type: 'copyBranchPrompt' });
+    });
+    document.getElementById('btnCopyManifestPrompt').addEventListener('click', () => {
+      agentMenu.classList.add('hidden');
+      vscode.postMessage({ type: 'copyManifestPrompt' });
+    });
     document.getElementById('btnReverifyStale').addEventListener('click', () => vscode.postMessage({ type: 'refresh', baseRef }));
     document.getElementById('btnVerifyBriefing').addEventListener('click', () => vscode.postMessage({ type: 'pickBriefing' }));
     document.getElementById('btnEmptyVerify').addEventListener('click', () => vscode.postMessage({ type: 'pickBriefing' }));

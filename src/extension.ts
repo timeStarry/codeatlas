@@ -20,6 +20,12 @@ import { analyzeRepositoryArchitecture } from './core/indexer.js';
 import { enrichArchitectureWithWorkspace } from './core/workspace.js';
 import { verifyBriefing } from './core/verifier.js';
 import { formatDirectivesForAgent } from './core/directives.js';
+import {
+  buildAnalyzeBranchPrompt,
+  buildAnalyzeModulePrompt,
+  buildInitManifestPrompt,
+  buildMcpConfigJson,
+} from './core/agentBridge.js';
 import { buildAtlasGraph, CanvasViewMode } from './core/graph.js';
 import {
   clearAllDirectives,
@@ -318,6 +324,18 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
           break;
         case 'copyDirectives':
           await this.copyDirectivesToClipboard();
+          break;
+        case 'copyMcpConfig':
+          await this.copyMcpConfigToClipboard();
+          break;
+        case 'copyBranchPrompt':
+          await this.copyBranchPromptToClipboard();
+          break;
+        case 'copyManifestPrompt':
+          await this.copyManifestPromptToClipboard();
+          break;
+        case 'copyNodePrompt':
+          await this.copyNodePromptToClipboard(msg);
           break;
       }
     });
@@ -644,6 +662,96 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
     const md = formatDirectivesForAgent(repoRoot, targetRef, directives);
     await vscode.env.clipboard.writeText(md);
     vscode.window.showInformationMessage('CodeAtlas directives copied to clipboard as Markdown.');
+  }
+
+  private async copyMcpConfigToClipboard(): Promise<void> {
+    const workspaceRoot = this.getWorkspaceRoot();
+    if (!workspaceRoot) return;
+    let repoRoot = workspaceRoot;
+    try {
+      repoRoot = (await getGitContext(workspaceRoot)).repoRoot;
+    } catch {
+      // fallback
+    }
+    const mcpPath = path.join(this.context.extensionPath, 'dist', 'mcp-server.js');
+    const json = buildMcpConfigJson(mcpPath, repoRoot);
+    await vscode.env.clipboard.writeText(json);
+    vscode.window.showInformationMessage(
+      this.lang === 'zh'
+        ? '已复制 CodeAtlas MCP 配置 JSON，可直接粘贴到你的 Coding Agent 配置中。'
+        : 'Copied CodeAtlas MCP config JSON to clipboard.'
+    );
+  }
+
+  private async copyBranchPromptToClipboard(): Promise<void> {
+    const workspaceRoot = this.getWorkspaceRoot();
+    if (!workspaceRoot) return;
+    try {
+      const git = await getGitContext(workspaceRoot);
+      const effectiveBase = this.baseRef || git.recentRefs[0] || 'HEAD';
+      const prompt = buildAnalyzeBranchPrompt({
+        repoRoot: git.repoRoot,
+        branch: git.branch,
+        baseRef: effectiveBase,
+        lang: this.lang,
+      });
+      await vscode.env.clipboard.writeText(prompt);
+      vscode.window.showInformationMessage(
+        this.lang === 'zh'
+          ? '已复制「分析当前分支 Diff 并提交简报」Agent Prompt。'
+          : 'Copied branch-analysis Agent prompt to clipboard.'
+      );
+    } catch {
+      // ignore
+    }
+  }
+
+  private async copyManifestPromptToClipboard(): Promise<void> {
+    const workspaceRoot = this.getWorkspaceRoot();
+    if (!workspaceRoot) return;
+    let repoRoot = workspaceRoot;
+    try {
+      repoRoot = (await getGitContext(workspaceRoot)).repoRoot;
+    } catch {
+      // fallback
+    }
+    const prompt = buildInitManifestPrompt({ repoRoot, lang: this.lang });
+    await vscode.env.clipboard.writeText(prompt);
+    vscode.window.showInformationMessage(
+      this.lang === 'zh'
+        ? '已复制「生成/完善 .atlas/manifest.json 架构骨架」Agent Prompt。'
+        : 'Copied .atlas/manifest.json authoring prompt to clipboard.'
+    );
+  }
+
+  private async copyNodePromptToClipboard(msg: {
+    title?: string;
+    kind?: string;
+    path?: string;
+  }): Promise<void> {
+    const workspaceRoot = this.getWorkspaceRoot();
+    if (!workspaceRoot) return;
+    try {
+      const git = await getGitContext(workspaceRoot);
+      const effectiveBase = this.baseRef || git.recentRefs[0] || 'HEAD';
+      const prompt = buildAnalyzeModulePrompt({
+        repoRoot: git.repoRoot,
+        branch: git.branch,
+        baseRef: effectiveBase,
+        nodeTitle: msg.title || 'Selected Module',
+        nodeKind: msg.kind || 'module',
+        nodePath: msg.path,
+        lang: this.lang,
+      });
+      await vscode.env.clipboard.writeText(prompt);
+      vscode.window.showInformationMessage(
+        this.lang === 'zh'
+          ? `已复制分析「${msg.title || '当前节点'}」的 Agent Prompt，粘贴给 Agent 即可自动回传画布。`
+          : `Copied Agent analysis prompt for "${msg.title || 'node'}".`
+      );
+    } catch {
+      // ignore
+    }
   }
 
   private postEmptyOrErrorState(errorMsg?: string): void {

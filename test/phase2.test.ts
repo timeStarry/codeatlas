@@ -24,6 +24,7 @@ import { aggregateCallerLocations, canRunLspImpact } from '../src/core/impact.js
 import { analyzeRepositoryArchitecture, classifyFileArtifact } from '../src/core/indexer.js';
 import { enrichArchitectureWithWorkspace } from '../src/core/workspace.js';
 import { buildAtlasGraph } from '../src/core/graph.js';
+import { buildAnalyzeModulePrompt, buildMcpConfigJson } from '../src/core/agentBridge.js';
 import { AtlasManifest, BriefingReport } from '../src/core/types.js';
 
 const execFileAsync = promisify(execFile);
@@ -346,4 +347,25 @@ test('Phase 3: artifact taxonomy hides pure assets, auto-promotes changed CI, co
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
   }
+});
+
+test('agentBridge generates valid MCP config JSON and targeted module analysis prompt', () => {
+  const cfgStr = buildMcpConfigJson('d:\\Project\\codeatlas\\dist\\mcp-server.js', 'd:\\Project\\aster');
+  const parsed = JSON.parse(cfgStr) as { mcpServers: { codeatlas: { command: string; args: string[] } } };
+  assert.equal(parsed.mcpServers.codeatlas.command, 'node');
+  assert.equal(parsed.mcpServers.codeatlas.args[0], 'd:\\Project\\codeatlas\\dist\\mcp-server.js');
+  assert.equal(parsed.mcpServers.codeatlas.args[2], 'd:\\Project\\aster');
+
+  const prompt = buildAnalyzeModulePrompt({
+    repoRoot: 'd:\\Project\\aster',
+    branch: 'main',
+    baseRef: 'HEAD~1',
+    nodeTitle: 'crates/aster-cli',
+    nodeKind: 'domain',
+    nodePath: 'crates/aster-cli',
+    lang: 'zh',
+  });
+  assert.ok(prompt.includes('atlas_get_context'));
+  assert.ok(prompt.includes('atlas_submit_briefing'));
+  assert.ok(prompt.includes('crates/aster-cli'));
 });
