@@ -1,30 +1,56 @@
-export function getCanvasHtml(nonce: string): string {
+export interface CanvasHtmlOptions {
+  host?: 'vscode' | 'mcp-app';
+  inlineClientJs?: string;
+  initialWorktreePath?: string;
+}
+
+function escapeHtmlAttr(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): string {
+  const host = options?.host ?? (nonce ? 'vscode' : 'mcp-app');
+  const isMcpApp = host === 'mcp-app' || !nonce;
+  const cspContent = isMcpApp
+    ? "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';"
+    : `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';`;
+  const mainScriptAttr = isMcpApp ? '' : ` nonce="${nonce}"`;
+  const inlineClientScript = options?.inlineClientJs
+    ? `<script${mainScriptAttr}>${options.inlineClientJs.replace(/<\/script/gi, '<\\/script')}</script>\n  `
+    : '';
+  const initialWorktreeAttr = escapeHtmlAttr(options?.initialWorktreePath ?? '');
+  const bodyHostClass = isMcpApp ? 'host-mcp-app' : 'host-vscode';
+
   return /* html */ `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
+  <meta http-equiv="Content-Security-Policy" content="${cspContent}" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CodeAtlas Canvas</title>
   <style>
     :root {
-      --bg: var(--vscode-editor-background, #181a1f);
-      --fg: var(--vscode-editor-foreground, #d8dee9);
-      --muted: var(--vscode-descriptionForeground, #8b949e);
-      --panel: var(--vscode-sideBar-background, #21242b);
-      --panel-2: var(--vscode-editorWidget-background, #262a33);
-      --border: var(--vscode-panel-border, rgba(140,150,165,0.26));
-      --accent: var(--vscode-textLink-foreground, #4da6ff);
+      --bg: var(--vscode-editor-background, var(--color-background-primary, #181a1f));
+      --fg: var(--vscode-editor-foreground, var(--color-text-primary, #d8dee9));
+      --muted: var(--vscode-descriptionForeground, var(--color-text-secondary, #8b949e));
+      --panel: var(--vscode-sideBar-background, var(--color-background-secondary, #21242b));
+      --panel-2: var(--vscode-editorWidget-background, var(--color-background-tertiary, #262a33));
+      --border: var(--vscode-panel-border, var(--color-border-primary, rgba(140,150,165,0.26)));
+      --accent: var(--vscode-textLink-foreground, var(--color-text-info, #4da6ff));
       --btn-bg: var(--vscode-button-background, #0e639c);
       --btn-fg: var(--vscode-button-foreground, #ffffff);
       --btn-hover: var(--vscode-button-hoverBackground, #1177bb);
-      --input-bg: var(--vscode-input-background, #2b2f38);
-      --input-fg: var(--vscode-input-foreground, #d8dee9);
-      --input-border: var(--vscode-input-border, rgba(140,150,165,0.34));
-      --mono: var(--vscode-editor-font-family, Consolas, monospace);
-      --green: var(--vscode-charts-green, #3fb950);
-      --red: var(--vscode-charts-red, #f85149);
-      --amber: var(--vscode-charts-orange, #f0883e);
+      --input-bg: var(--vscode-input-background, var(--color-background-tertiary, #2b2f38));
+      --input-fg: var(--vscode-input-foreground, var(--color-text-primary, #d8dee9));
+      --input-border: var(--vscode-input-border, var(--color-border-secondary, rgba(140,150,165,0.34)));
+      --mono: var(--vscode-editor-font-family, var(--font-mono, Consolas, monospace));
+      --green: var(--vscode-charts-green, var(--color-text-success, #3fb950));
+      --red: var(--vscode-charts-red, var(--color-text-danger, #f85149));
+      --amber: var(--vscode-charts-orange, var(--color-text-warning, #f0883e));
       --yellow: var(--vscode-charts-yellow, #d29922);
       --purple: var(--vscode-charts-purple, #a371f7);
       --diff-add-bg: var(--vscode-diffEditor-insertedTextBackground, rgba(63,185,80,0.16));
@@ -40,10 +66,13 @@ export function getCanvasHtml(nonce: string): string {
       overflow: hidden;
       background: var(--bg);
       color: var(--fg);
-      font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Microsoft YaHei", sans-serif);
+      font-family: var(--vscode-font-family, var(--font-sans, -apple-system, BlinkMacSystemFont, "Microsoft YaHei", sans-serif));
       font-size: 13px;
       user-select: none;
     }
+    body.host-mcp-app, body.host-mcp-app .app { min-height: 620px; }
+    body.host-mcp-app .vscode-only { display: none !important; }
+    body.no-analyze-cap .analyze-action { display: none !important; }
     .app { display: flex; flex-direction: column; width: 100%; height: 100%; }
 
     .toolbar {
@@ -624,13 +653,99 @@ export function getCanvasHtml(nonce: string): string {
       margin-right: 5px;
       vertical-align: middle;
     }
+    .worktree-bar {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .worktree-input {
+      width: 220px;
+      max-width: 36vw;
+      font-family: var(--mono);
+      font-size: 11.5px;
+      padding: 3px 7px;
+    }
+    .btn-analyze {
+      background: linear-gradient(135deg, #1f6feb, #0e639c);
+      color: #ffffff;
+      font-weight: 600;
+      border: 1px solid rgba(121,192,255,0.45);
+      box-shadow: 0 2px 8px rgba(31,111,235,0.25);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .btn-analyze:hover:not(:disabled) {
+      background: linear-gradient(135deg, #388bfd, #1177bb);
+    }
+    .quick-analyze {
+      color: #58a6ff;
+      border-color: rgba(88,166,255,0.55);
+      background: rgba(56,139,253,0.1);
+      font-weight: 600;
+    }
+    .quick-analyze:hover:not(:disabled) {
+      background: rgba(56,139,253,0.22);
+      color: #ffffff;
+    }
+    .node-footer-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .analyze-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 5px 12px;
+      background: rgba(56,139,253,0.16);
+      border-bottom: 1px solid rgba(88,166,255,0.45);
+      color: var(--accent);
+      font-size: 11.5px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .analyze-banner.is-error {
+      background: rgba(248,81,73,0.16);
+      border-bottom-color: rgba(248,81,73,0.45);
+      color: var(--red);
+    }
+    .analyze-banner.hidden { display: none; }
+    .analyze-banner-main {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .analyze-spinner {
+      width: 12px;
+      height: 12px;
+      border: 2px solid rgba(88,166,255,0.3);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: atlas-spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+    .analyze-spinner.hidden { display: none; }
+    @keyframes atlas-spin {
+      to { transform: rotate(360deg); }
+    }
   </style>
 </head>
-<body>
+<body class="${bodyHostClass}">
   <div class="app">
     <div class="toolbar">
       <div class="group">
         <span class="brand">CodeAtlas</span>
+        ${isMcpApp ? `<div class="worktree-bar" id="worktreeBar">
+          <input id="worktreeInput" class="worktree-input" value="${initialWorktreeAttr}" placeholder="输入本地 Git 仓库路径 (如 D:\\Project\\aster)..." />
+          <button class="secondary" id="btnSetWorktree">切换仓库</button>
+        </div>` : ''}
         <span class="git-pill" id="gitPill">加载中...</span>
         <span class="arch-pill" id="archPill" style="display:none;"></span>
         <div class="segmented" id="modeControl">
@@ -640,11 +755,12 @@ export function getCanvasHtml(nonce: string): string {
         </div>
         <select id="briefingSelect" style="max-width:175px;"></select>
         <select id="baseRefSelect" style="max-width:115px;"></select>
+        <button class="btn-analyze analyze-action" id="btnAnalyzeBranch">⚡ 分析分支</button>
       </div>
       <div class="group">
         <button class="secondary" id="btnSummaryToggle">分支摘要</button>
         <button class="secondary" id="btnPruneToggle">仅看变更: 关</button>
-        <button class="secondary" id="btnRunImpact">分析影响面</button>
+        <button class="secondary vscode-only" id="btnRunImpact">分析影响面</button>
         <div class="search-wrap">
           <input id="searchInput" placeholder="搜索 (/)..." style="width:140px;padding-right:38px;" />
           <span class="search-count" id="searchCount"></span>
@@ -653,7 +769,7 @@ export function getCanvasHtml(nonce: string): string {
         <button class="secondary" id="btnFocusToggle">聚焦: 关</button>
         <button class="secondary" id="btnRefresh">刷新索引</button>
         <button id="btnInitManifest" style="display:none;">保存骨架</button>
-        <div class="agent-menu-wrap">
+        <div class="agent-menu-wrap vscode-only">
           <button id="btnAgentMenu">接入 Agent ▾</button>
           <div class="agent-menu hidden" id="agentMenu">
             <button id="btnCopyMcpCfg">
@@ -670,10 +786,18 @@ export function getCanvasHtml(nonce: string): string {
             </button>
           </div>
         </div>
-        <button class="secondary" id="btnCopyDirs">导出指令</button>
-        <button class="secondary" id="btnVerifyBriefing">核验 JSON</button>
+        <button class="secondary vscode-only" id="btnCopyDirs">导出指令</button>
+        <button class="secondary vscode-only" id="btnVerifyBriefing">核验 JSON</button>
         <button class="secondary" id="btnLangToggle" style="padding:3px 7px;font-size:11px;">EN</button>
       </div>
+    </div>
+
+    <div class="analyze-banner hidden" id="analyzeBanner">
+      <div class="analyze-banner-main">
+        <span class="analyze-spinner" id="analyzeSpinner"></span>
+        <span id="analyzeBannerText"></span>
+      </div>
+      <button class="secondary" id="btnDismissAnalyze" style="padding:1px 7px;font-size:11px;display:none;">✕</button>
     </div>
 
     <div class="stale-banner hidden" id="staleBanner">
@@ -730,7 +854,8 @@ export function getCanvasHtml(nonce: string): string {
       <aside class="inspector hidden" id="inspector">
         <div class="inspector-header">
           <strong id="inspTitle" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">节点精读</strong>
-          <div class="group" style="gap:4px;">
+          <div class="group" style="gap:4px;flex-shrink:0;">
+            <button class="btn-analyze analyze-action" id="btnInspAnalyzeQuick" style="padding:2px 8px;font-size:11px;display:none;">⚡ 立即分析</button>
             <button class="secondary" id="btnInspFocus" style="padding:2px 7px;font-size:11px;">聚焦</button>
             <button class="secondary" id="btnCloseInsp" style="padding:2px 7px;">✕</button>
           </div>
@@ -746,12 +871,18 @@ export function getCanvasHtml(nonce: string): string {
     </div>
   </div>
 
-  <script nonce="${nonce}">
-    const vscode = acquireVsCodeApi();
+  ${inlineClientScript}<script${mainScriptAttr}>
+    const hostApi = window.__CODEATLAS_HOST__ || acquireVsCodeApi();
+    const isMcpAppHost = document.body.classList.contains('host-mcp-app');
 
     const I18N = {
       zh: {
         atlas: '全景底图', briefing: '因果简报', hybrid: '融合视图',
+        loadRepoBtn: '切换仓库', worktreePh: '输入本地 Git 仓库路径 (如 D:\\\\Project\\\\aster)...',
+        mcpNoRepoDesc: '请在左上角输入本地 Git 仓库路径并点击「切换仓库」（如 D:\\\\Project\\\\aster）。',
+        analyzeBranchBtn: '⚡ 分析分支', analyzeNodeBtn: '⚡ 立即分析', analyzeQuickBtn: '⚡ 立即分析',
+        analyzingPrefix: '⚡ 正在分析: ', analyzingDefault: '⚡ 正在分析并生成确定性核验简报...',
+        analyzeErrorPrefix: '⚠ 分析失败: ',
         summaryBtn: '分支摘要', pruneOn: '仅看变更: 开', pruneOff: '仅看变更: 关', impactBtn: '分析影响面',
         searchPh: '搜索 (/)...', deltaOn: '变更叠加: 开', deltaOff: '变更叠加: 关',
         focusOn: '聚焦: 开', focusOff: '聚焦: 关', refresh: '刷新索引', initManifest: '保存骨架', agentMenuBtn: '接入 Agent ▾', exportDir: '导出指令',
@@ -777,7 +908,7 @@ export function getCanvasHtml(nonce: string): string {
           '<div><i class="dot" style="background:var(--purple);"></i>画布纠偏批注节点</div>' +
           '<div style="border-top:1px solid var(--border);padding-top:5px;margin-top:2px;font-family:var(--mono);font-size:10px;">/ 搜索 · F 适配 · 0 100% · D 变更叠加 · E/C 展开收拢 · Enter 跳源码 · Esc 返回</div>',
         emptyBriefingTitle: '尚未加载简报',
-        emptyBriefingDesc: '请在上方选择自动发现的简报，或点击“核验简报”加载 Agent 提交的 JSON（Schema v0.1）。',
+        emptyBriefingDesc: '请点击上方「⚡ 分析分支」一键生成核验简报，或选择已有简报。',
         noGit: '未检测到 Git 仓库',
         summaryImpacted: '受影响职责域（点击定位并展开）',
         summaryNoDiff: '当前相对基准无文件改动。',
@@ -806,6 +937,11 @@ export function getCanvasHtml(nonce: string): string {
       },
       en: {
         atlas: 'Atlas', briefing: 'Briefing', hybrid: 'Hybrid',
+        loadRepoBtn: 'Load Repo', worktreePh: 'Local Git repo path (e.g. D:\\\\Project\\\\aster)...',
+        mcpNoRepoDesc: 'Enter a local Git repository path in the top-left bar and click Load Repo.',
+        analyzeBranchBtn: '⚡ Analyze Branch', analyzeNodeBtn: '⚡ Analyze Module', analyzeQuickBtn: '⚡ Analyze',
+        analyzingPrefix: '⚡ Analyzing: ', analyzingDefault: '⚡ Analyzing & verifying briefing...',
+        analyzeErrorPrefix: '⚠ Analysis failed: ',
         summaryBtn: 'Branch Summary', pruneOn: 'Changed Only: ON', pruneOff: 'Changed Only: OFF', impactBtn: 'Impact',
         searchPh: 'Search (/)...', deltaOn: 'Delta: ON', deltaOff: 'Delta: OFF',
         focusOn: 'Focus: ON', focusOff: 'Focus: OFF', refresh: 'Re-Index', initManifest: 'Save Skeleton', agentMenuBtn: 'Connect Agent ▾', exportDir: 'Export',
@@ -831,7 +967,7 @@ export function getCanvasHtml(nonce: string): string {
           '<div><i class="dot" style="background:var(--purple);"></i>Wired Directive Node</div>' +
           '<div style="border-top:1px solid var(--border);padding-top:5px;margin-top:2px;font-family:var(--mono);font-size:10px;">/ Search · F Fit · 0 100% · D Delta · E/C Expand/Collapse · Enter Jump · Esc Back</div>',
         emptyBriefingTitle: 'No Briefing Loaded',
-        emptyBriefingDesc: 'Select a discovered briefing above or click Verify JSON to inspect claims and blocking forks.',
+        emptyBriefingDesc: 'Click ⚡ Analyze Branch above to generate a verified briefing, or select a discovered briefing.',
         noGit: 'No Git repository',
         summaryImpacted: 'Impacted Domains (click to focus)',
         summaryNoDiff: 'No changed files vs current base ref.',
@@ -861,6 +997,7 @@ export function getCanvasHtml(nonce: string): string {
     };
 
     let lang = 'zh';
+    let analyzeState = { running: false, label: '', error: '' };
     let graph = { mode: 'hybrid', nodes: [], edges: [], summary: {}, architecture: null, branchSummary: null };
     let nodeById = new Map();
     let gitCtx = null;
@@ -915,10 +1052,78 @@ export function getCanvasHtml(nonce: string): string {
         .replace(/"/g, '&quot;');
     }
 
+    function isAnalyzableNode(node) {
+      if (!node || node.isSummary) return false;
+      return (
+        node.kind === 'domain' ||
+        node.kind === 'folder' ||
+        node.kind === 'entrypoint' ||
+        node.kind === 'file' ||
+        node.kind === 'diff-file'
+      );
+    }
+
+    function triggerNodeAnalyze(node) {
+      if (!node || analyzeState.running) return;
+      hostApi.postMessage({
+        type: 'analyzeTarget',
+        scope: 'node',
+        nodeId: node.id,
+        title: node.title,
+        kind: node.kind,
+        path: node.path || node.defaultDirectivePath || ''
+      });
+    }
+
+    function syncAnalyzeUi() {
+      const banner = document.getElementById('analyzeBanner');
+      const spinner = document.getElementById('analyzeSpinner');
+      const textEl = document.getElementById('analyzeBannerText');
+      const dismissBtn = document.getElementById('btnDismissAnalyze');
+
+      if (analyzeState.running) {
+        banner.classList.remove('hidden', 'is-error');
+        spinner.classList.remove('hidden');
+        textEl.textContent = analyzeState.label
+          ? (t('analyzingPrefix') + analyzeState.label)
+          : t('analyzingDefault');
+        dismissBtn.style.display = 'none';
+      } else if (analyzeState.error) {
+        banner.classList.remove('hidden');
+        banner.classList.add('is-error');
+        spinner.classList.add('hidden');
+        textEl.textContent = t('analyzeErrorPrefix') + analyzeState.error;
+        dismissBtn.style.display = 'inline-block';
+      } else {
+        banner.classList.add('hidden');
+        banner.classList.remove('is-error');
+        dismissBtn.style.display = 'none';
+      }
+
+      const branchBtn = document.getElementById('btnAnalyzeBranch');
+      if (branchBtn) branchBtn.disabled = analyzeState.running || !gitCtx;
+
+      const quickInspBtn = document.getElementById('btnInspAnalyzeQuick');
+      if (quickInspBtn) quickInspBtn.disabled = analyzeState.running;
+
+      const inspNodeBtn = document.getElementById('btnAnalyzeNode');
+      if (inspNodeBtn) inspNodeBtn.disabled = analyzeState.running;
+
+      nodesLayer.querySelectorAll('[data-analyze-node]').forEach(btn => {
+        btn.disabled = analyzeState.running;
+      });
+    }
+
     function applyStaticTranslations() {
       document.getElementById('mAtlas').textContent = t('atlas');
       document.getElementById('mBriefing').textContent = t('briefing');
       document.getElementById('mHybrid').textContent = t('hybrid');
+      const wtBtn = document.getElementById('btnSetWorktree');
+      if (wtBtn) wtBtn.textContent = t('loadRepoBtn');
+      const wtInput = document.getElementById('worktreeInput');
+      if (wtInput) wtInput.placeholder = t('worktreePh');
+      document.getElementById('btnAnalyzeBranch').textContent = t('analyzeBranchBtn');
+      document.getElementById('btnInspAnalyzeQuick').textContent = t('analyzeQuickBtn');
       document.getElementById('btnSummaryToggle').textContent = t('summaryBtn');
       document.getElementById('btnPruneToggle').textContent = pruneUnchanged ? t('pruneOn') : t('pruneOff');
       document.getElementById('btnPruneToggle').classList.toggle('active', pruneUnchanged);
@@ -951,6 +1156,7 @@ export function getCanvasHtml(nonce: string): string {
       document.getElementById('tabDir').textContent = t('tabDir');
       document.getElementById('tabTrust').textContent = t('tabTrust');
       document.getElementById('btnInspFocus').textContent = t('inspFocus');
+      syncAnalyzeUi();
     }
 
     function applyCamera() {
@@ -1315,7 +1521,7 @@ export function getCanvasHtml(nonce: string): string {
           const domId = item.dataset.expandDom;
           if (domId) {
             pendingCenterNodeId = nid;
-            vscode.postMessage({ type: 'expandDomainFiles', domainId: domId });
+            hostApi.postMessage({ type: 'expandDomainFiles', domainId: domId });
           }
           if (nodeById.has(nid)) {
             collapsedIds.delete(nid);
@@ -1377,7 +1583,7 @@ export function getCanvasHtml(nonce: string): string {
         el.addEventListener('click', () => {
           const kind = el.dataset.chip;
           if (kind === 'toggleSupport') {
-            vscode.postMessage({ type: 'toggleSupportAssets' });
+            hostApi.postMessage({ type: 'toggleSupportAssets' });
             return;
           }
           if (kind === 'trust') {
@@ -1440,17 +1646,38 @@ export function getCanvasHtml(nonce: string): string {
           middleHtml = '<div class="node-body">' + esc(n.body) + '</div>';
         }
 
+        const cardAnalyzeBtn =
+          (n.kind === 'domain' || n.kind === 'folder') && !n.isSummary
+            ? '<button class="quick-btn quick-analyze analyze-action" data-analyze-node="' +
+              esc(n.id) +
+              '"' +
+              (analyzeState.running ? ' disabled' : '') +
+              '>' +
+              esc(t('analyzeQuickBtn')) +
+              '</button>'
+            : '';
+
         let footerRight = '';
         if (n.kind === 'domain' && n.canExpandFiles && n.domainId) {
           const lbl = n.filesExpanded
             ? t('collapseDomainFiles')
             : (t('expandDomainFiles') + ' (' + (n.fileCount || 0) + ')');
-          footerRight = '<button class="quick-btn" data-toggle-dom="' + esc(n.domainId) + '">' + esc(lbl) + '</button>';
+          footerRight =
+            '<span class="node-footer-actions">' +
+              cardAnalyzeBtn +
+              '<button class="quick-btn" data-toggle-dom="' + esc(n.domainId) + '">' + esc(lbl) + '</button>' +
+            '</span>';
         } else if (n.kind === 'folder' && n.canExpandFiles && n.folderId) {
           const lbl = n.filesExpanded
             ? t('collapseDomainFiles')
             : (t('expandDomainFiles') + ' (' + (n.fileCount || 0) + ')');
-          footerRight = '<button class="quick-btn" data-toggle-folder="' + esc(n.folderId) + '">' + esc(lbl) + '</button>';
+          footerRight =
+            '<span class="node-footer-actions">' +
+              cardAnalyzeBtn +
+              '<button class="quick-btn" data-toggle-folder="' + esc(n.folderId) + '">' + esc(lbl) + '</button>' +
+            '</span>';
+        } else if (cardAnalyzeBtn) {
+          footerRight = '<span class="node-footer-actions">' + cardAnalyzeBtn + '</span>';
         } else if (n.path) {
           footerRight = '<button class="quick-btn quick-jump" data-jump-path="' + esc(n.path) + '" data-jump-line="' + esc(n.startLine || 1) + '">' + esc(t('openBtn')) + '</button>';
         } else if (kids.length > 0) {
@@ -1476,7 +1703,16 @@ export function getCanvasHtml(nonce: string): string {
           qj.addEventListener('mousedown', (ev) => ev.stopPropagation());
           qj.addEventListener('click', (ev) => {
             ev.stopPropagation();
-            vscode.postMessage({ type: 'openFile', path: qj.dataset.jumpPath, line: parseInt(qj.dataset.jumpLine || '1', 10) });
+            hostApi.postMessage({ type: 'openFile', path: qj.dataset.jumpPath, line: parseInt(qj.dataset.jumpLine || '1', 10) });
+          });
+        }
+
+        const anBtn = el.querySelector('[data-analyze-node]');
+        if (anBtn) {
+          anBtn.addEventListener('mousedown', (ev) => ev.stopPropagation());
+          anBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            triggerNodeAnalyze(n);
           });
         }
 
@@ -1487,7 +1723,7 @@ export function getCanvasHtml(nonce: string): string {
             ev.stopPropagation();
             pendingCenterNodeId = n.id;
             collapsedIds.delete(n.id);
-            vscode.postMessage({ type: 'toggleDomainFiles', domainId: domToggle.dataset.toggleDom });
+            hostApi.postMessage({ type: 'toggleDomainFiles', domainId: domToggle.dataset.toggleDom });
           });
         }
 
@@ -1498,7 +1734,7 @@ export function getCanvasHtml(nonce: string): string {
             ev.stopPropagation();
             pendingCenterNodeId = n.id;
             collapsedIds.delete(n.id);
-            vscode.postMessage({ type: 'toggleFolderFiles', folderId: folderToggle.dataset.toggleFolder });
+            hostApi.postMessage({ type: 'toggleFolderFiles', folderId: folderToggle.dataset.toggleFolder });
           });
         }
 
@@ -1594,10 +1830,16 @@ export function getCanvasHtml(nonce: string): string {
     function selectNode(nodeId) {
       selectedNodeId = nodeId;
       const node = nodeById.get(nodeId);
+      const quickInspBtn = document.getElementById('btnInspAnalyzeQuick');
       if (!node) {
+        if (quickInspBtn) quickInspBtn.style.display = 'none';
         inspector.classList.add('hidden');
         syncVisualClasses();
         return;
+      }
+      if (quickInspBtn) {
+        quickInspBtn.style.display = isAnalyzableNode(node) ? 'inline-flex' : 'none';
+        quickInspBtn.disabled = analyzeState.running;
       }
       inspector.classList.remove('hidden');
       document.getElementById('inspTitle').textContent = node.title;
@@ -1605,7 +1847,7 @@ export function getCanvasHtml(nonce: string): string {
       renderInspector(node);
       if (node.path) {
         if (!snippetCache.has(node.id)) {
-          vscode.postMessage({
+          hostApi.postMessage({
             type: 'requestSnippet',
             nodeId: node.id,
             path: node.path,
@@ -1615,7 +1857,7 @@ export function getCanvasHtml(nonce: string): string {
           });
         }
         if (!diffCache.has(node.id)) {
-          vscode.postMessage({
+          hostApi.postMessage({
             type: 'requestDiff',
             nodeId: node.id,
             path: node.path
@@ -1722,7 +1964,7 @@ export function getCanvasHtml(nonce: string): string {
           '<div id="dirValidation" style="font-size:11px;color:var(--red);margin-top:4px;min-height:15px;"></div>' +
           '<div style="display:flex;gap:6px;margin-top:6px;">' +
             '<button id="btnAddCanvasDir" disabled>' + esc(t('dirWireBtn')) + '</button>' +
-            '<button class="secondary" id="btnInspCopyDirs">' + esc(t('dirCopyBtn')) + '</button>' +
+            '<button class="secondary vscode-only" id="btnInspCopyDirs">' + esc(t('dirCopyBtn')) + '</button>' +
           '</div>';
 
         const pathInput = document.getElementById('inspDirPath');
@@ -1747,7 +1989,7 @@ export function getCanvasHtml(nonce: string): string {
           const kind = document.getElementById('inspDirKind').value;
           const line = parseInt(document.getElementById('inspDirLine').value, 10);
           if (!note || !p) return;
-          vscode.postMessage({
+          hostApi.postMessage({
             type: 'addDirective',
             kind,
             path: p,
@@ -1758,7 +2000,7 @@ export function getCanvasHtml(nonce: string): string {
           inspectorTab = 'overview';
         });
         document.getElementById('btnInspCopyDirs').addEventListener('click', () => {
-          vscode.postMessage({ type: 'copyDirectives' });
+          hostApi.postMessage({ type: 'copyDirectives' });
         });
         return;
       }
@@ -1795,8 +2037,28 @@ export function getCanvasHtml(nonce: string): string {
         html += '<div style="margin:8px 0;"><button class="danger" id="btnRemoveDir">' + esc(t('delDirBtn')) + '</button></div>';
       }
 
-      if (node.kind === 'domain' || node.kind === 'folder' || node.kind === 'entrypoint' || node.kind === 'file' || node.kind === 'diff-file' || node.kind === 'evidence') {
-        html += '<div style="margin:8px 0;"><button class="secondary" id="btnCopyNodePrompt">' + esc(t('copyNodePrompt')) + '</button></div>';
+      const showAnalyzeBtn = isAnalyzableNode(node);
+      const showCopyPromptBtn =
+        node.kind === 'domain' ||
+        node.kind === 'folder' ||
+        node.kind === 'entrypoint' ||
+        node.kind === 'file' ||
+        node.kind === 'diff-file' ||
+        node.kind === 'evidence';
+      if (showAnalyzeBtn || showCopyPromptBtn) {
+        html +=
+          '<div style="display:flex;flex-wrap:wrap;gap:6px;margin:8px 0;">' +
+            (showAnalyzeBtn
+              ? '<button class="btn-analyze analyze-action" id="btnAnalyzeNode"' +
+                (analyzeState.running ? ' disabled' : '') +
+                '>' +
+                esc(t('analyzeNodeBtn')) +
+                '</button>'
+              : '') +
+            (showCopyPromptBtn
+              ? '<button class="secondary vscode-only" id="btnCopyNodePrompt">' + esc(t('copyNodePrompt')) + '</button>'
+              : '') +
+          '</div>';
       }
 
       // Show clickable internal workspace dependencies for Domain nodes
@@ -1847,13 +2109,19 @@ export function getCanvasHtml(nonce: string): string {
       const jumpBtn = document.getElementById('btnJumpCode');
       if (jumpBtn && node.path) {
         jumpBtn.addEventListener('click', () => {
-          vscode.postMessage({ type: 'openFile', path: node.path, line: node.startLine || 1 });
+          hostApi.postMessage({ type: 'openFile', path: node.path, line: node.startLine || 1 });
+        });
+      }
+      const analyzeNodeBtn = document.getElementById('btnAnalyzeNode');
+      if (analyzeNodeBtn) {
+        analyzeNodeBtn.addEventListener('click', () => {
+          triggerNodeAnalyze(node);
         });
       }
       const copyNodeBtn = document.getElementById('btnCopyNodePrompt');
       if (copyNodeBtn) {
         copyNodeBtn.addEventListener('click', () => {
-          vscode.postMessage({
+          hostApi.postMessage({
             type: 'copyNodePrompt',
             title: node.title,
             kind: node.kind,
@@ -1864,7 +2132,7 @@ export function getCanvasHtml(nonce: string): string {
       const delBtn = document.getElementById('btnRemoveDir');
       if (delBtn && node.directiveId) {
         delBtn.addEventListener('click', () => {
-          vscode.postMessage({ type: 'removeDirective', id: node.directiveId });
+          hostApi.postMessage({ type: 'removeDirective', id: node.directiveId });
           selectedNodeId = null;
           inspector.classList.add('hidden');
         });
@@ -1878,6 +2146,46 @@ export function getCanvasHtml(nonce: string): string {
     }
 
     // Bind UI events
+    const wtInputEl = document.getElementById('worktreeInput');
+    const wtBtnEl = document.getElementById('btnSetWorktree');
+    function submitWorktreeSwitch() {
+      if (!wtInputEl) return;
+      const val = wtInputEl.value.trim();
+      if (!val) return;
+      positions.clear();
+      manualPositions.clear();
+      collapsedIds.clear();
+      selectedNodeId = null;
+      inspector.classList.add('hidden');
+      hostApi.postMessage({ type: 'setWorktreePath', worktreePath: val });
+    }
+    if (wtBtnEl) {
+      wtBtnEl.addEventListener('click', submitWorktreeSwitch);
+    }
+    if (wtInputEl) {
+      wtInputEl.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          submitWorktreeSwitch();
+        }
+      });
+    }
+
+    document.getElementById('btnAnalyzeBranch').addEventListener('click', () => {
+      if (analyzeState.running) return;
+      hostApi.postMessage({ type: 'analyzeTarget', scope: 'branch', baseRef });
+    });
+
+    document.getElementById('btnInspAnalyzeQuick').addEventListener('click', () => {
+      if (!selectedNodeId || !nodeById.has(selectedNodeId)) return;
+      triggerNodeAnalyze(nodeById.get(selectedNodeId));
+    });
+
+    document.getElementById('btnDismissAnalyze').addEventListener('click', () => {
+      analyzeState = { running: false, label: '', error: '' };
+      syncAnalyzeUi();
+    });
+
     document.querySelectorAll('.insp-tab').forEach(btn => {
       btn.addEventListener('click', () => {
         inspectorTab = btn.dataset.itab;
@@ -1893,22 +2201,28 @@ export function getCanvasHtml(nonce: string): string {
         positions.clear();
         manualPositions.clear();
         collapsedIds.clear();
-        vscode.postMessage({ type: 'setMode', mode: viewMode });
+        hostApi.postMessage({ type: 'setMode', mode: viewMode });
       });
     });
 
     document.getElementById('briefingSelect').addEventListener('change', (ev) => {
-      if (ev.target.value) vscode.postMessage({ type: 'selectBriefing', path: ev.target.value });
+      if (ev.target.value) hostApi.postMessage({ type: 'selectBriefing', path: ev.target.value });
     });
     document.getElementById('baseRefSelect').addEventListener('change', (ev) => {
       if (ev.target.value) {
         baseRef = ev.target.value;
-        vscode.postMessage({ type: 'setBaseRef', baseRef });
+        hostApi.postMessage({ type: 'setBaseRef', baseRef });
       }
     });
     document.getElementById('btnLangToggle').addEventListener('click', () => {
       lang = lang === 'zh' ? 'en' : 'zh';
-      vscode.postMessage({ type: 'setLang', lang });
+      applyStaticTranslations();
+      buildNodeDom(false);
+      renderBranchSummaryDrawer();
+      if (selectedNodeId && nodeById.has(selectedNodeId)) {
+        renderInspector(nodeById.get(selectedNodeId));
+      }
+      hostApi.postMessage({ type: 'setLang', lang });
     });
     document.getElementById('btnSummaryToggle').addEventListener('click', () => {
       summaryOpen = !summaryOpen;
@@ -1924,10 +2238,10 @@ export function getCanvasHtml(nonce: string): string {
       pruneUnchanged = !pruneUnchanged;
       positions.clear();
       manualPositions.clear();
-      vscode.postMessage({ type: 'setPruneUnchanged', value: pruneUnchanged });
+      hostApi.postMessage({ type: 'setPruneUnchanged', value: pruneUnchanged });
     });
     document.getElementById('btnRunImpact').addEventListener('click', () => {
-      vscode.postMessage({ type: 'runImpactAnalysis' });
+      hostApi.postMessage({ type: 'runImpactAnalysis' });
     });
 
     document.getElementById('btnIndexFiles').addEventListener('click', () => {
@@ -1936,9 +2250,9 @@ export function getCanvasHtml(nonce: string): string {
       positions.clear();
       manualPositions.clear();
       if (anyExpanded) {
-        vscode.postMessage({ type: 'collapseAllFiles' });
+        hostApi.postMessage({ type: 'collapseAllFiles' });
       } else {
-        vscode.postMessage({ type: 'expandAllFiles', domainIds: domainNodes.map(n => n.domainId) });
+        hostApi.postMessage({ type: 'expandAllFiles', domainIds: domainNodes.map(n => n.domainId) });
       }
     });
 
@@ -2017,8 +2331,8 @@ export function getCanvasHtml(nonce: string): string {
       syncFocusButtons();
       syncVisualClasses();
     });
-    document.getElementById('btnRefresh').addEventListener('click', () => vscode.postMessage({ type: 'refresh', baseRef }));
-    document.getElementById('btnInitManifest').addEventListener('click', () => vscode.postMessage({ type: 'initManifestDraft' }));
+    document.getElementById('btnRefresh').addEventListener('click', () => hostApi.postMessage({ type: 'refresh', baseRef }));
+    document.getElementById('btnInitManifest').addEventListener('click', () => hostApi.postMessage({ type: 'initManifestDraft' }));
     const agentMenu = document.getElementById('agentMenu');
     document.getElementById('btnAgentMenu').addEventListener('click', (ev) => {
       ev.stopPropagation();
@@ -2027,20 +2341,20 @@ export function getCanvasHtml(nonce: string): string {
     document.addEventListener('click', () => agentMenu.classList.add('hidden'));
     document.getElementById('btnCopyMcpCfg').addEventListener('click', () => {
       agentMenu.classList.add('hidden');
-      vscode.postMessage({ type: 'copyMcpConfig' });
+      hostApi.postMessage({ type: 'copyMcpConfig' });
     });
     document.getElementById('btnCopyBranchPrompt').addEventListener('click', () => {
       agentMenu.classList.add('hidden');
-      vscode.postMessage({ type: 'copyBranchPrompt' });
+      hostApi.postMessage({ type: 'copyBranchPrompt' });
     });
     document.getElementById('btnCopyManifestPrompt').addEventListener('click', () => {
       agentMenu.classList.add('hidden');
-      vscode.postMessage({ type: 'copyManifestPrompt' });
+      hostApi.postMessage({ type: 'copyManifestPrompt' });
     });
-    document.getElementById('btnReverifyStale').addEventListener('click', () => vscode.postMessage({ type: 'refresh', baseRef }));
-    document.getElementById('btnVerifyBriefing').addEventListener('click', () => vscode.postMessage({ type: 'pickBriefing' }));
-    document.getElementById('btnEmptyVerify').addEventListener('click', () => vscode.postMessage({ type: 'pickBriefing' }));
-    document.getElementById('btnCopyDirs').addEventListener('click', () => vscode.postMessage({ type: 'copyDirectives' }));
+    document.getElementById('btnReverifyStale').addEventListener('click', () => hostApi.postMessage({ type: 'refresh', baseRef }));
+    document.getElementById('btnVerifyBriefing').addEventListener('click', () => hostApi.postMessage({ type: 'pickBriefing' }));
+    document.getElementById('btnEmptyVerify').addEventListener('click', () => hostApi.postMessage({ type: 'pickBriefing' }));
+    document.getElementById('btnCopyDirs').addEventListener('click', () => hostApi.postMessage({ type: 'copyDirectives' }));
     document.getElementById('btnLegendToggle').addEventListener('click', () => {
       document.getElementById('legendPopover').classList.toggle('hidden');
     });
@@ -2096,12 +2410,13 @@ export function getCanvasHtml(nonce: string): string {
       else if (ev.key === 'c' || ev.key === 'C') document.getElementById('btnCollapseDomains').click();
       else if (ev.key === 'Enter' && selectedNodeId) {
         const cur = nodeById.get(selectedNodeId);
-        if (cur && cur.path) vscode.postMessage({ type: 'openFile', path: cur.path, line: cur.startLine || 1 });
+        if (cur && cur.path) hostApi.postMessage({ type: 'openFile', path: cur.path, line: cur.startLine || 1 });
       }
     });
 
     window.addEventListener('message', (event) => {
       const msg = event.data;
+      if (!msg || typeof msg.type !== 'string') return;
       if (msg.type === 'canvasState') {
         const prevCount = graph.nodes.length;
         const incomingBriefing = msg.payload.activeBriefingPath || '';
@@ -2124,6 +2439,13 @@ export function getCanvasHtml(nonce: string): string {
         nodeById = new Map(graph.nodes.map(n => [n.id, n]));
         availableBriefings = msg.payload.availableBriefings || [];
         activeBriefingPath = incomingBriefing;
+
+        if (wtInputEl) {
+          const incomingWt = msg.payload.worktreePath || (gitCtx && gitCtx.repoRoot) || '';
+          if (incomingWt && document.activeElement !== wtInputEl) {
+            wtInputEl.value = incomingWt;
+          }
+        }
 
         applyStaticTranslations();
 
@@ -2181,12 +2503,17 @@ export function getCanvasHtml(nonce: string): string {
           document.getElementById('emptyTitle').textContent = t('noGit');
           document.getElementById('emptyDesc').textContent = msg.payload.error;
           document.getElementById('btnEmptyVerify').style.display = 'none';
+        } else if (!gitCtx && isMcpAppHost) {
+          emptyEl.classList.remove('hidden');
+          document.getElementById('emptyTitle').textContent = t('noGit');
+          document.getElementById('emptyDesc').textContent = t('mcpNoRepoDesc');
+          document.getElementById('btnEmptyVerify').style.display = 'none';
         } else if (graph.mode === 'briefing' && !(graph.summary && graph.summary.hasBriefing)) {
           emptyEl.classList.remove('hidden');
           document.getElementById('emptyTitle').textContent = t('emptyBriefingTitle');
           document.getElementById('emptyDesc').textContent = t('emptyBriefingDesc');
           document.getElementById('btnEmptyVerify').textContent = t('verifyJson');
-          document.getElementById('btnEmptyVerify').style.display = 'inline-block';
+          document.getElementById('btnEmptyVerify').style.display = isMcpAppHost ? 'none' : 'inline-block';
         } else {
           emptyEl.classList.add('hidden');
         }
@@ -2195,7 +2522,6 @@ export function getCanvasHtml(nonce: string): string {
           ? (gitCtx.branch + ' @ ' + gitCtx.shortSha)
           : t('noGit');
 
-        // Auto-open Branch Summary if user has changes and it's first load? Keep toggle button badge visible
         const sumBtn = document.getElementById('btnSummaryToggle');
         const diffCnt = (graph.summary && graph.summary.changedFiles) || 0;
         sumBtn.textContent = t('summaryBtn') + (diffCnt > 0 ? ' (' + diffCnt + ')' : '');
@@ -2243,6 +2569,17 @@ export function getCanvasHtml(nonce: string): string {
         if (selectedNodeId && nodeById.has(selectedNodeId)) {
           selectNode(selectedNodeId);
         }
+      } else if (msg.type === 'analyzeStatus') {
+        const p = msg.payload || {};
+        analyzeState = {
+          running: Boolean(p.running),
+          label: p.label || '',
+          error: p.error || ''
+        };
+        syncAnalyzeUi();
+      } else if (msg.type === 'hostCapabilities') {
+        const canAnalyze = msg.payload ? Boolean(msg.payload.canAnalyze) : true;
+        document.body.classList.toggle('no-analyze-cap', !canAnalyze);
       } else if (msg.type === 'snippet') {
         snippetCache.set(msg.payload.nodeId, msg.payload);
         if (selectedNodeId === msg.payload.nodeId && inspectorTab === 'overview') {
@@ -2259,7 +2596,7 @@ export function getCanvasHtml(nonce: string): string {
     });
 
     applyStaticTranslations();
-    vscode.postMessage({ type: 'ready' });
+    hostApi.postMessage({ type: 'ready' });
   </script>
 </body>
 </html>`;

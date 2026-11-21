@@ -180,6 +180,21 @@ export function getCockpitHtml(nonce: string): string {
     }
     .diff-add { color: #3fb950; }
     .diff-del { color: #f85149; }
+    .analyze-pill {
+      padding: 6px 10px;
+      border-radius: 4px;
+      margin-bottom: 10px;
+      font-size: 12px;
+      font-weight: 600;
+      background: rgba(56, 139, 253, 0.16);
+      border: 1px solid rgba(88, 166, 255, 0.45);
+      color: var(--accent);
+    }
+    .analyze-pill.err {
+      background: rgba(248, 81, 73, 0.16);
+      border-color: rgba(248, 81, 73, 0.45);
+      color: #f85149;
+    }
     .hidden { display: none; }
   </style>
 </head>
@@ -191,10 +206,13 @@ export function getCockpitHtml(nonce: string): string {
     </div>
     <div class="actions">
       <button id="btnOpenCanvas">打开画布</button>
+      <button id="btnAnalyzeBranch">⚡ 分析分支</button>
       <button class="secondary" id="btnLoadBriefing">核验简报</button>
       <button class="secondary" id="btnRefresh">刷新</button>
     </div>
   </div>
+
+  <div id="cockpitAnalyzeStatus" class="analyze-pill hidden"></div>
 
   <div class="tabs">
     <button class="tab active" data-tab="briefing">因果简报</button>
@@ -207,7 +225,7 @@ export function getCockpitHtml(nonce: string): string {
   <div id="tab-directives" class="hidden"></div>
 
   <script nonce="${nonce}">
-    const vscode = acquireVsCodeApi();
+    const hostApi = window.__CODEATLAS_HOST__ || acquireVsCodeApi();
     let state = {
       git: null,
       baseRef: 'HEAD~1',
@@ -231,7 +249,7 @@ export function getCockpitHtml(nonce: string): string {
     }
 
     function openAnchor(path, line) {
-      vscode.postMessage({ type: 'openFile', path, line: line || 1 });
+      hostApi.postMessage({ type: 'openFile', path, line: line || 1 });
     }
 
     function switchTab(tab) {
@@ -249,15 +267,19 @@ export function getCockpitHtml(nonce: string): string {
     });
 
     document.getElementById('btnOpenCanvas').addEventListener('click', () => {
-      vscode.postMessage({ type: 'openCanvas' });
+      hostApi.postMessage({ type: 'openCanvas' });
+    });
+
+    document.getElementById('btnAnalyzeBranch').addEventListener('click', () => {
+      hostApi.postMessage({ type: 'analyzeTarget', scope: 'branch', baseRef: state.baseRef });
     });
 
     document.getElementById('btnRefresh').addEventListener('click', () => {
-      vscode.postMessage({ type: 'refresh', baseRef: state.baseRef });
+      hostApi.postMessage({ type: 'refresh', baseRef: state.baseRef });
     });
 
     document.getElementById('btnLoadBriefing').addEventListener('click', () => {
-      vscode.postMessage({ type: 'pickBriefing' });
+      hostApi.postMessage({ type: 'pickBriefing' });
     });
 
     function render() {
@@ -413,7 +435,7 @@ export function getCockpitHtml(nonce: string): string {
       if (sel) {
         sel.addEventListener('change', () => {
           state.baseRef = sel.value;
-          vscode.postMessage({ type: 'refresh', baseRef: state.baseRef });
+          hostApi.postMessage({ type: 'refresh', baseRef: state.baseRef });
         });
       }
       bindDynamicEvents(el);
@@ -467,7 +489,7 @@ export function getCockpitHtml(nonce: string): string {
         const lineVal = parseInt(document.getElementById('dirLine').value, 10);
         const noteVal = document.getElementById('dirNote').value.trim();
         if (!pathVal || !noteVal) return;
-        vscode.postMessage({
+        hostApi.postMessage({
           type: 'addDirective',
           kind,
           path: pathVal,
@@ -477,16 +499,16 @@ export function getCockpitHtml(nonce: string): string {
       });
 
       document.getElementById('btnCopyDirs').addEventListener('click', () => {
-        vscode.postMessage({ type: 'copyDirectives' });
+        hostApi.postMessage({ type: 'copyDirectives' });
       });
 
       document.getElementById('btnClearDirs').addEventListener('click', () => {
-        vscode.postMessage({ type: 'clearDirectives' });
+        hostApi.postMessage({ type: 'clearDirectives' });
       });
 
       el.querySelectorAll('[data-del-dir]').forEach(btn => {
         btn.addEventListener('click', () => {
-          vscode.postMessage({ type: 'removeDirective', id: btn.dataset.delDir });
+          hostApi.postMessage({ type: 'removeDirective', id: btn.dataset.delDir });
         });
       });
     }
@@ -513,13 +535,32 @@ export function getCockpitHtml(nonce: string): string {
 
     window.addEventListener('message', (event) => {
       const msg = event.data;
+      if (!msg || typeof msg.type !== 'string') return;
       if (msg.type === 'state') {
         state = { ...state, ...msg.payload };
         render();
+      } else if (msg.type === 'analyzeStatus') {
+        const p = msg.payload || {};
+        const el = document.getElementById('cockpitAnalyzeStatus');
+        const btn = document.getElementById('btnAnalyzeBranch');
+        if (btn) btn.disabled = Boolean(p.running);
+        if (el) {
+          if (p.running) {
+            el.classList.remove('hidden', 'err');
+            el.textContent = '⚡ 正在分析: ' + (p.label || '生成并核验简报...');
+          } else if (p.error) {
+            el.classList.remove('hidden');
+            el.classList.add('err');
+            el.textContent = '⚠ 分析失败: ' + p.error;
+          } else {
+            el.classList.add('hidden');
+            el.classList.remove('err');
+          }
+        }
       }
     });
 
-    vscode.postMessage({ type: 'ready' });
+    hostApi.postMessage({ type: 'ready' });
   </script>
 </body>
 </html>`;

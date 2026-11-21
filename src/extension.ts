@@ -35,6 +35,11 @@ import {
   listStoredBriefings,
   StoredBriefingRecord,
 } from './core/store.js';
+import {
+  AnalyzerConfig,
+  AnalyzerProvider,
+  runClickToAnalyze,
+} from './core/runner.js';
 import { analyzeWorkspaceIndirectImpact } from './lsp/impactProvider.js';
 import {
   AnnotationDirective,
@@ -70,6 +75,7 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
   private pruneUnchanged = false;
   private showSupportAssets = false;
   private lang: 'zh' | 'en' = 'zh';
+  private isAnalyzing = false;
   private stateWatcher?: vscode.FileSystemWatcher;
   private watcherDebounce?: NodeJS.Timeout;
 
@@ -336,6 +342,9 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
           break;
         case 'copyNodePrompt':
           await this.copyNodePromptToClipboard(msg);
+          break;
+        case 'analyzeTarget':
+          await this.handleAnalyzeTarget(msg);
           break;
       }
     });
@@ -751,6 +760,131 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
       );
     } catch {
       // ignore
+    }
+  }
+
+  private broadcastAnalyzeStatus(payload: {
+    running: boolean;
+    label?: string;
+    error?: string;
+  }): void {
+    const message = { type: 'analyzeStatus', payload };
+    void this.view?.webview.postMessage(message);
+    void this.canvasPanel?.webview.postMessage(message);
+  }
+
+  private readAnalyzerConfig(): AnalyzerConfig {
+    const cfg = vscode.workspace.getConfiguration('codeatlas.analyzer');
+    const rawProvider = cfg.get<string>('provider', 'cli-codex');
+    const validProviders: AnalyzerProvider[] = [
+      'cli-codex',
+      'cli-claude',
+      'cli-gemini',
+      'openai-compatible',
+    ];
+    const provider: AnalyzerProvider = validProviders.includes(rawProvider as AnalyzerProvider)
+      ? (rawProvider as AnalyzerProvider)
+      : 'cli-codex';
+
+    return {
+      provider,
+      apiBaseUrl: cfg.get<string>('apiBaseUrl', 'https://api.openai.com/v1'),
+      apiKey: cfg.get<string>('apiKey', ''),
+      model: cfg.get<string>('model', 'gpt-4.1'),
+      cliCommand: cfg.get<string>('cliCommand', ''),
+    };
+  }
+
+  private async handleAnalyzeTarget(msg: {
+    scope?: 'branch' | 'node';
+    nodeId?: string;
+    title?: string;
+    kind?: string;
+    path?: string;
+    baseRef?: string;
+  }): Promise<void> {
+    if (this.isAnalyzing) return;
+
+    const workspaceRoot = this.getWorkspaceRoot();
+    if (!workspaceRoot) {
+      vscode.window.showWarningMessage(
+        this.lang === 'zh'
+          ? 'CodeAtlas: 请先打开一个 Git 仓库工作区。'
+          : 'CodeAtlas: Open a Git repository workspace first.'
+      );
+      return;
+    }
+
+    this.isAnalyzing = true;
+    try {
+      const gitCtx = await getGitContext(workspaceRoot);
+      const scope: 'branch' | 'node' = msg.scope === 'node' ? 'node' : 'branch';
+      const effectiveBase =
+        typeof msg.baseRef === 'string' && msg.baseRef
+          ? msg.baseRef
+          : this.baseRef || gitCtx.recentRefs[0] || 'HEAD';
+      const baseLabel =
+        scope === 'node'
+          ? msg.title || msg.path || 'Node'
+          : `branch (${effectiveBase})`;
+
+      this.broadcastAnalyzeStatus({ running: true, label: baseLabel });
+
+      const config = this.readAnalyzerConfig();
+      const record = await runClickToAnalyze({
+        repoRoot: gitCtx.repoRoot,
+        scope,
+        baseRef: effectiveBase,
+        nodeTitle: msg.title,
+        nodeKind: msg.kind,
+        nodePath: msg.path,
+        lang: this.lang,
+        config,
+        onProgress: (stage) => {
+          if (stage === 'retrying') {
+            this.broadcastAnalyzeStatus({
+              running: true,
+              label:
+                this.lang === 'zh'
+                  ? `${baseLabel}（自纠重验中...）`
+                  : `${baseLabel} (self-correcting...)`,
+            });
+          }
+        },
+      });
+
+      this.lastVerification = record.verification;
+      this.activeBriefingPath = record.filePath;
+      this.broadcastAnalyzeStatus({ running: false });
+      await this.pushState();
+
+      const badgeText = record.verification.overallBadge.toUpperCase();
+      vscode.window.showInformationMessage(
+        this.lang === 'zh'
+          ? `CodeAtlas 已生成并核验简报「${record.briefing.title}」: ${badgeText}`
+          : `CodeAtlas generated & verified "${record.briefing.title}": ${badgeText}`
+      );
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      this.broadcastAnalyzeStatus({ running: false, error: errMsg });
+
+      const needsSettingsHint =
+        /apikey|spawn|enoent|not recognized|not found|command/i.test(errMsg);
+      const hint = needsSettingsHint
+        ? this.lang === 'zh'
+          ? '（可在 VS Code 设置中配置 codeatlas.analyzer.*）'
+          : ' (Configure codeatlas.analyzer.* in VS Code Settings)'
+        : '';
+      const openSettingsBtn = this.lang === 'zh' ? '打开设置' : 'Open Settings';
+      const picked = await vscode.window.showErrorMessage(
+        `CodeAtlas 分析失败: ${errMsg}${hint}`,
+        ...(needsSettingsHint ? [openSettingsBtn] : [])
+      );
+      if (picked === openSettingsBtn) {
+        void vscode.commands.executeCommand('workbench.action.openSettings', 'codeatlas.analyzer');
+      }
+    } finally {
+      this.isAnalyzing = false;
     }
   }
 

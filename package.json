@@ -2,7 +2,7 @@
   "name": "codeatlas",
   "displayName": "CodeAtlas",
   "description": "Git-anchored deterministic verification and system understanding cockpit for human-agent software engineering.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "timeStarry",
   "license": "MIT",
   "repository": {
@@ -61,13 +61,49 @@
         "command": "codeatlas.initManifest",
         "title": "CodeAtlas: Generate .atlas/manifest.json Draft"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "CodeAtlas",
+      "properties": {
+        "codeatlas.analyzer.provider": {
+          "type": "string",
+          "enum": [
+            "cli-codex",
+            "cli-claude",
+            "cli-gemini",
+            "openai-compatible"
+          ],
+          "default": "cli-codex",
+          "description": "Execution backend for 1-click Click-to-Analyze briefing generation."
+        },
+        "codeatlas.analyzer.apiBaseUrl": {
+          "type": "string",
+          "default": "https://api.openai.com/v1",
+          "description": "Base URL for the openai-compatible analyzer provider."
+        },
+        "codeatlas.analyzer.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API key for the openai-compatible analyzer provider."
+        },
+        "codeatlas.analyzer.model": {
+          "type": "string",
+          "default": "gpt-4.1",
+          "description": "Model name used when provider is set to openai-compatible."
+        },
+        "codeatlas.analyzer.cliCommand": {
+          "type": "string",
+          "default": "",
+          "description": "Optional custom CLI binary path/name overriding default codex, claude, or gemini executable."
+        }
+      }
+    }
   },
   "scripts": {
     "build": "node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
     "typecheck": "tsc --noEmit",
-    "test": "node esbuild.mjs --test && node --test dist-test/verifier.test.js dist-test/phase2.test.js",
+    "test": "node esbuild.mjs --test && node --test dist-test/verifier.test.js dist-test/phase2.test.js dist-test/runner.test.js dist-test/mcpApp.test.js",
     "verify-briefing": "node dist/verify-briefing.js",
     "mcp": "node dist/mcp-server.js"
   },
@@ -76,5 +112,8 @@
     "@types/vscode": "^1.90.0",
     "esbuild": "^0.24.0",
     "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "^2.0.4"
   }
 }
