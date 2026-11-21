@@ -21,7 +21,8 @@
     "onView:codeatlas.cockpit",
     "onCommand:codeatlas.openCockpit",
     "onCommand:codeatlas.openCanvas",
-    "onCommand:codeatlas.verifyBriefing"
+    "onCommand:codeatlas.verifyBriefing",
+    "onCommand:codeatlas.initManifest"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -55,6 +56,10 @@
       {
         "command": "codeatlas.verifyBriefing",
         "title": "CodeAtlas: Verify Agent Briefing JSON"
+      },
+      {
+        "command": "codeatlas.initManifest",
+        "title": "CodeAtlas: Generate .atlas/manifest.json Draft"
       }
     ]
   },
@@ -62,8 +67,9 @@
     "build": "node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
     "typecheck": "tsc --noEmit",
-    "test": "node esbuild.mjs --test && node --test dist-test/verifier.test.js",
-    "verify-briefing": "node dist/verify-briefing.js"
+    "test": "node esbuild.mjs --test && node --test dist-test/verifier.test.js dist-test/phase2.test.js",
+    "verify-briefing": "node dist/verify-briefing.js",
+    "mcp": "node dist/mcp-server.js"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
-import { DiffFileStat, GitContext, WorktreeInfo } from './types.js';
+import { CompareMode, DiffFileStat, FileDiffHunks, GitContext, WorktreeInfo } from './types.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -18,6 +18,34 @@ export async function runGit(cwd: string, args: string[]): Promise<string> {
 export async function getRepoRoot(cwd: string): Promise<string> {
   const out = await runGit(cwd, ['rev-parse', '--show-toplevel']);
   return path.normalize(out.trim());
+}
+
+/**
+ * Returns per-worktree runtime state directory inside `<git-dir>/codeatlas`.
+ * Strictly isolated per linked worktree and 100% invisible to `git status` / `git diff`.
+ */
+export async function getGitStateDir(repoRoot: string): Promise<string> {
+  const out = await runGit(repoRoot, ['rev-parse', '--git-dir']);
+  const gitDir = path.resolve(repoRoot, out.trim());
+  return path.join(gitDir, 'codeatlas');
+}
+
+export async function resolveEffectiveBaseRef(
+  repoRoot: string,
+  baseRef: string,
+  targetRef?: string,
+  compareMode: CompareMode = 'direct-diff'
+): Promise<string> {
+  if (compareMode !== 'merge-base') {
+    return baseRef;
+  }
+  const target = !targetRef || targetRef === 'WORKTREE' ? 'HEAD' : targetRef;
+  try {
+    const out = await runGit(repoRoot, ['merge-base', baseRef, target]);
+    return out.trim() || baseRef;
+  } catch {
+    return baseRef;
+  }
 }
 
 export async function resolveRef(repoRoot: string, ref: string): Promise<string | undefined> {
@@ -183,15 +211,17 @@ export async function getBranchCommits(
 export async function getDiffStats(
   repoRoot: string,
   baseRef?: string,
-  targetRef?: string
+  targetRef?: string,
+  compareMode: CompareMode = 'direct-diff'
 ): Promise<DiffFileStat[]> {
-  const args = ['diff', '--numstat', '--name-status'];
-  // Run two focused commands so parsing is exact and clean
   const rangeArgs: string[] = [];
-  if (baseRef && targetRef && targetRef !== 'WORKTREE') {
-    rangeArgs.push(baseRef, targetRef);
-  } else if (baseRef) {
-    rangeArgs.push(baseRef);
+  if (baseRef) {
+    const effectiveBase = await resolveEffectiveBaseRef(repoRoot, baseRef, targetRef, compareMode);
+    if (targetRef && targetRef !== 'WORKTREE') {
+      rangeArgs.push(effectiveBase, targetRef);
+    } else {
+      rangeArgs.push(effectiveBase);
+    }
   }
 
   const stats: DiffFileStat[] = [];
@@ -280,14 +310,18 @@ export async function getFileDiff(
   repoRoot: string,
   relPath: string,
   baseRef?: string,
-  targetRef?: string
+  targetRef?: string,
+  compareMode: CompareMode = 'direct-diff'
 ): Promise<string> {
   const posixPath = relPath.replace(/\\/g, '/').replace(/^\.\//, '');
   const args = ['diff', '--unified=3'];
-  if (baseRef && targetRef && targetRef !== 'WORKTREE') {
-    args.push(baseRef, targetRef);
-  } else if (baseRef) {
-    args.push(baseRef);
+  if (baseRef) {
+    const effectiveBase = await resolveEffectiveBaseRef(repoRoot, baseRef, targetRef, compareMode);
+    if (targetRef && targetRef !== 'WORKTREE') {
+      args.push(effectiveBase, targetRef);
+    } else {
+      args.push(effectiveBase);
+    }
   }
   args.push('--', posixPath);
   try {
@@ -295,4 +329,63 @@ export async function getFileDiff(
   } catch {
     return '';
   }
+}
+
+export async function getDiffHunks(
+  repoRoot: string,
+  baseRef: string,
+  targetRef?: string,
+  compareMode: CompareMode = 'direct-diff'
+): Promise<FileDiffHunks[]> {
+  const effectiveBase = await resolveEffectiveBaseRef(repoRoot, baseRef, targetRef, compareMode);
+  const args = ['diff', '-U0', '--no-color', effectiveBase];
+  if (targetRef && targetRef !== 'WORKTREE') {
+    args.push(targetRef);
+  }
+
+  let out = '';
+  try {
+    out = await runGit(repoRoot, args);
+  } catch {
+    return [];
+  }
+
+  const results: FileDiffHunks[] = [];
+  let current: FileDiffHunks | undefined;
+  const hunkRe = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
+
+  for (const line of out.split(/\r?\n/)) {
+    if (line.startsWith('+++ b/')) {
+      const filePath = line.slice('+++ b/'.length).trim().replace(/\\/g, '/');
+      current = { path: filePath, addedRanges: [], deletedOnlyHunks: [] };
+      results.push(current);
+      continue;
+    }
+    if (line.startsWith('+++ /dev/null')) {
+      current = undefined;
+      continue;
+    }
+    if (!current) continue;
+    const m = hunkRe.exec(line);
+    if (!m) continue;
+    const oldStart = parseInt(m[1], 10);
+    const oldCount = m[2] !== undefined ? parseInt(m[2], 10) : 1;
+    const newStart = parseInt(m[3], 10);
+    const newCount = m[4] !== undefined ? parseInt(m[4], 10) : 1;
+
+    if (newCount === 0) {
+      current.deletedOnlyHunks.push({
+        oldStart,
+        oldCount,
+        newAnchorLine: Math.max(1, newStart),
+      });
+    } else {
+      current.addedRanges.push({
+        start: newStart,
+        end: newStart + newCount - 1,
+      });
+    }
+  }
+
+  return results;
 }

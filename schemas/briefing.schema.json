@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/timeStarry/codeatlas/schemas/briefing.schema.json",
-  "title": "CodeAtlas Agent Briefing v0.1",
+  "title": "CodeAtlas Agent Briefing v0.2",
   "description": "Contract schema for Agent-submitted causal change briefings verified deterministically by CodeAtlas.",
   "type": "object",
   "required": ["schemaVersion", "title", "targetRef", "summary", "claims"],
   "properties": {
     "schemaVersion": {
-      "const": "0.1"
+      "enum": ["0.1", "0.2"]
     },
     "title": {
       "type": "string",
@@ -68,6 +68,24 @@
             "type": "array",
             "items": { "$ref": "#/$defs/evidenceAnchor" }
           }
+        }
+      }
+    },
+    "impacts": {
+      "type": "array",
+      "description": "Agent-declared cross-language, IPC, event, or runtime indirect impacts (verified for anchor existence; capped at unverified).",
+      "items": {
+        "type": "object",
+        "required": ["id", "relation", "description", "sourceAnchor", "targetAnchor"],
+        "properties": {
+          "id": { "type": "string" },
+          "relation": {
+            "type": "string",
+            "enum": ["ipc", "event", "schema", "runtime", "other"]
+          },
+          "description": { "type": "string" },
+          "sourceAnchor": { "$ref": "#/$defs/evidenceAnchor" },
+          "targetAnchor": { "$ref": "#/$defs/evidenceAnchor" }
         }
       }
     },

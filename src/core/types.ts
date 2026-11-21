@@ -1,6 +1,7 @@
 export type CompareMode = 'direct-diff' | 'merge-base' | 'worktree';
 export type ClaimType = 'fact' | 'inference' | 'unknown';
 export type VerificationBadge = 'verified' | 'mismatch' | 'stale' | 'unverified' | 'unknown';
+export type DirectiveStatus = 'open' | 'claimed' | 'resolved' | 'dismissed';
 
 export interface EvidenceAnchor {
   path: string;
@@ -26,6 +27,14 @@ export interface BriefingClaim {
   anchors: EvidenceAnchor[];
 }
 
+export interface DeclaredImpact {
+  id: string;
+  relation: 'ipc' | 'event' | 'schema' | 'runtime' | 'other';
+  description: string;
+  sourceAnchor: EvidenceAnchor;
+  targetAnchor: EvidenceAnchor;
+}
+
 export interface VerificationSignal {
   kind: 'unit-test' | 'integration-test' | 'typecheck' | 'lint' | 'manual' | 'other';
   status: 'passed' | 'failed' | 'not-run' | 'unknown';
@@ -35,7 +44,7 @@ export interface VerificationSignal {
 }
 
 export interface BriefingReport {
-  schemaVersion: '0.1';
+  schemaVersion: '0.1' | '0.2';
   title: string;
   author?: string;
   baseRef?: string;
@@ -44,6 +53,7 @@ export interface BriefingReport {
   summary: string;
   blockingConditions?: BlockingCondition[];
   claims: BriefingClaim[];
+  impacts?: DeclaredImpact[];
   verificationSignals?: VerificationSignal[];
   blindSpots?: string[];
 }
@@ -60,6 +70,12 @@ export interface DiffFileStat {
   status: string;
   additions: number;
   deletions: number;
+}
+
+export interface FileDiffHunks {
+  path: string;
+  addedRanges: Array<{ start: number; end: number }>;
+  deletedOnlyHunks: Array<{ oldStart: number; oldCount: number; newAnchorLine: number }>;
 }
 
 export interface GitContext {
@@ -96,6 +112,14 @@ export interface BlockingConditionVerification {
   anchorResult?: AnchorVerification;
 }
 
+export interface DeclaredImpactVerification {
+  item: DeclaredImpact;
+  badge: VerificationBadge;
+  sourceResult?: AnchorVerification;
+  targetResult?: AnchorVerification;
+  notes: string[];
+}
+
 export interface BriefingVerificationResult {
   briefingTitle: string;
   sourcePath?: string;
@@ -113,9 +137,44 @@ export interface BriefingVerificationResult {
   };
   claims: ClaimVerification[];
   blockingConditions: BlockingConditionVerification[];
+  impacts: DeclaredImpactVerification[];
   signals: VerificationSignal[];
   blindSpots: string[];
   verifiedAt: string;
+}
+
+export interface LspCallerDomainSummary {
+  domainName: string;
+  fileCount: number;
+  callSites: number;
+  sampleFiles: string[];
+}
+
+export interface LspReferenceImpact {
+  sourcePath: string;
+  sourceSymbol: string;
+  sourceLine: number;
+  truncated: boolean;
+  totalCallerFiles: number;
+  totalCallSites: number;
+  callers: Array<{ path: string; line: number }>;
+  byDomain: LspCallerDomainSummary[];
+}
+
+export interface LspDiagnosticImpact {
+  path: string;
+  line: number;
+  message: string;
+  source?: string;
+}
+
+export interface IndirectImpactReport {
+  status: 'ok' | 'skipped-snapshot-mismatch' | 'skipped-no-diff' | 'error';
+  reason?: string;
+  lspReferences: LspReferenceImpact[];
+  lspDiagnostics: LspDiagnosticImpact[];
+  unresolvedDeletions: Array<{ path: string; oldStart: number; oldCount: number }>;
+  budgetExhausted: boolean;
 }
 
 export interface AtlasDomain {
@@ -132,9 +191,43 @@ export interface AtlasManifest {
   guardrails?: string[];
 }
 
+export type ManifestLoadResult =
+  | { status: 'ok'; manifest: AtlasManifest }
+  | { status: 'missing' }
+  | { status: 'invalid'; errors: string[] };
+
+export interface ManifestDriftIssue {
+  severity: 'error' | 'warning';
+  domainId: string;
+  field: 'path' | 'entrypoint';
+  target: string;
+  message: string;
+}
+
+export interface ManifestVerificationResult {
+  valid: boolean;
+  issues: ManifestDriftIssue[];
+}
+
+export interface DirectiveClaim {
+  agentId: string;
+  claimedAt: string;
+  leaseExpiresAt: string;
+}
+
+export interface DirectiveResolution {
+  agentId: string;
+  resolvedAt: string;
+  resolvedAtRef: string;
+  summary: string;
+  evidenceAnchor?: EvidenceAnchor;
+}
+
 export interface AnnotationDirective {
   id: string;
+  revision: number;
   createdAt: string;
+  updatedAt: string;
   ref: string;
   path: string;
   startLine?: number;
@@ -142,4 +235,9 @@ export interface AnnotationDirective {
   targetNodeId?: string;
   kind: 'constraint' | 'question' | 'rework';
   note: string;
+  status: DirectiveStatus;
+  claim?: DirectiveClaim;
+  resolution?: DirectiveResolution;
+  /** Derived dynamically at read time; never persisted */
+  isStale?: boolean;
 }

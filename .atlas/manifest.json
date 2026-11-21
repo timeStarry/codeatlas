@@ -7,24 +7,24 @@
       "description": "Git snapshot resolution, diff stats, and deterministic claim/anchor verification.",
       "paths": ["src/core"],
       "entrypoints": [
-        { "path": "src/core/verifier.ts", "startLine": 1, "symbol": "verifyBriefing" },
-        { "path": "src/core/git.ts", "startLine": 1, "symbol": "getGitContext" }
+        { "path": "src/core/verifier.ts", "startLine": 138, "symbol": "verifyBriefing" },
+        { "path": "src/core/git.ts", "startLine": 63, "symbol": "getGitContext" }
       ]
     },
     {
       "id": "vscode-host",
       "name": "VS Code Cockpit Host",
-      "description": "VS Code extension activation, webview bridge, source navigation, and local directive storage.",
-      "paths": ["src/extension.ts", "src/webview"],
+      "description": "VS Code extension activation, webview bridge, LSP impact provider, source navigation, and local state watcher.",
+      "paths": ["src/extension.ts", "src/webview", "src/lsp"],
       "entrypoints": [
-        { "path": "src/extension.ts", "startLine": 1, "symbol": "activate" }
+        { "path": "src/extension.ts", "startLine": 751, "symbol": "activate" }
       ]
     },
     {
-      "id": "cli-gate-b",
-      "name": "Gate B Verification CLI",
-      "description": "Standalone CLI for running deterministic briefing verification experiments without IDE UI.",
-      "paths": ["src/cli", "schemas"]
+      "id": "cli-mcp-gate-b",
+      "name": "Gate B CLI & MCP Server",
+      "description": "Standalone CLI and Stdio JSON-RPC 2.0 MCP server for Agent briefing verification and directive handoff.",
+      "paths": ["src/cli", "src/mcp", "schemas"]
     }
   ],
   "guardrails": [

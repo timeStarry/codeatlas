@@ -200,11 +200,14 @@ test('buildAtlasGraph generates domain, claim, evidence, blocking fork, and dire
       directives: [
         {
           id: 'd1',
+          revision: 1,
           createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
           ref: headSha.slice(0, 8),
           path: 'src/sync.ts',
           startLine: 2,
           kind: 'rework',
+          status: 'open',
           note: 'Add telemetry on conflict',
         },
       ],

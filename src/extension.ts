@@ -7,22 +7,39 @@ import {
   getDiffStats,
   getFileDiff,
   getGitContext,
+  getGitStateDir,
   listTrackedFiles,
   readFileAtRef,
 } from './core/git.js';
-import { loadAtlasManifest } from './core/manifest.js';
+import {
+  exportManifestDraft,
+  loadAtlasManifestResult,
+  verifyManifest,
+} from './core/manifest.js';
+import { analyzeRepositoryArchitecture } from './core/indexer.js';
 import { verifyBriefing } from './core/verifier.js';
 import { formatDirectivesForAgent } from './core/directives.js';
 import { buildAtlasGraph, CanvasViewMode } from './core/graph.js';
 import {
+  clearAllDirectives,
+  createDirective,
+  deleteDirective,
+  listDirectives,
+  listStoredBriefings,
+  StoredBriefingRecord,
+} from './core/store.js';
+import { analyzeWorkspaceIndirectImpact } from './lsp/impactProvider.js';
+import {
   AnnotationDirective,
   BriefingReport,
   BriefingVerificationResult,
+  IndirectImpactReport,
+  ManifestDriftIssue,
 } from './core/types.js';
 import { getCockpitHtml } from './webview/html.js';
 import { getCanvasHtml } from './webview/canvasHtml.js';
 
-const DIRECTIVES_STORAGE_KEY = 'codeatlas.directives.v1';
+const LEGACY_DIRECTIVES_KEY = 'codeatlas.directives.v1';
 
 interface DiscoveredBriefing {
   label: string;
@@ -35,13 +52,17 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
   private canvasPanel?: vscode.WebviewPanel;
   private lastVerification?: BriefingVerificationResult;
+  private lastIndirectImpact?: IndirectImpactReport;
   private activeBriefingPath = '';
   private baseRef = '';
   private viewMode: CanvasViewMode = 'hybrid';
   private didAutoDiscover = false;
+  private didMigrate = false;
   private expandedDomainIds = new Set<string>();
   private pruneUnchanged = false;
-  private lang: 'zh' | 'en' = vscode.env.language.toLowerCase().startsWith('zh') ? 'zh' : 'zh';
+  private lang: 'zh' | 'en' = 'zh';
+  private stateWatcher?: vscode.FileSystemWatcher;
+  private watcherDebounce?: NodeJS.Timeout;
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -83,6 +104,97 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
     this.bindWebviewMessages(panel.webview);
   }
 
+  public async initManifestDraft(): Promise<void> {
+    const workspaceRoot = this.getWorkspaceRoot();
+    if (!workspaceRoot) {
+      vscode.window.showWarningMessage('CodeAtlas: 请先打开一个 Git 仓库工作区。');
+      return;
+    }
+    try {
+      const git = await getGitContext(workspaceRoot);
+      const tracked = await listTrackedFiles(git.repoRoot);
+      const arch = analyzeRepositoryArchitecture(tracked, undefined, this.lang);
+
+      let overwrite = false;
+      const target = path.join(git.repoRoot, '.atlas', 'manifest.json');
+      try {
+        await fs.access(target);
+        const choice = await vscode.window.showWarningMessage(
+          '.atlas/manifest.json 已存在，是否覆盖为自动生成的草稿？',
+          '覆盖',
+          '取消'
+        );
+        if (choice !== '覆盖') return;
+        overwrite = true;
+      } catch {
+        // does not exist
+      }
+
+      const written = await exportManifestDraft(git.repoRoot, arch, overwrite);
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(written));
+      await vscode.window.showTextDocument(doc);
+      await this.pushState();
+      vscode.window.showInformationMessage('CodeAtlas: 已生成 .atlas/manifest.json 草稿。');
+    } catch (err) {
+      vscode.window.showErrorMessage(
+        `CodeAtlas 生成 manifest 失败: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
+  public dispose(): void {
+    this.stateWatcher?.dispose();
+    if (this.watcherDebounce) clearTimeout(this.watcherDebounce);
+  }
+
+  private async ensureStateWatcher(repoRoot: string): Promise<void> {
+    if (this.stateWatcher) return;
+    try {
+      const stateDir = await getGitStateDir(repoRoot);
+      await fs.mkdir(stateDir, { recursive: true });
+      const pattern = new vscode.RelativePattern(vscode.Uri.file(stateDir), '**/*.json');
+      const watcher = vscode.workspace.createFileSystemWatcher(pattern);
+      const schedule = () => {
+        if (this.watcherDebounce) clearTimeout(this.watcherDebounce);
+        this.watcherDebounce = setTimeout(() => {
+          void this.pushState();
+        }, 150);
+      };
+      watcher.onDidCreate(schedule);
+      watcher.onDidChange(schedule);
+      watcher.onDidDelete(schedule);
+      this.stateWatcher = watcher;
+      this.context.subscriptions.push(watcher);
+    } catch {
+      // non-git or watcher unavailable
+    }
+  }
+
+  private async migrateLegacyDirectivesOnce(repoRoot: string): Promise<void> {
+    if (this.didMigrate) return;
+    this.didMigrate = true;
+    const legacy = this.context.workspaceState.get<AnnotationDirective[]>(
+      LEGACY_DIRECTIVES_KEY,
+      []
+    );
+    if (!legacy || legacy.length === 0) return;
+
+    for (const d of legacy) {
+      await createDirective(repoRoot, {
+        id: d.id,
+        ref: d.ref || 'WORKTREE',
+        path: d.path,
+        startLine: d.startLine,
+        endLine: d.endLine,
+        targetNodeId: d.targetNodeId,
+        kind: d.kind,
+        note: d.note,
+        createdAt: d.createdAt,
+      });
+    }
+    await this.context.workspaceState.update(LEGACY_DIRECTIVES_KEY, undefined);
+  }
+
   private bindWebviewMessages(webview: vscode.Webview): void {
     webview.onDidReceiveMessage(async (msg) => {
       switch (msg.type) {
@@ -101,6 +213,7 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
         case 'setBaseRef':
           if (typeof msg.baseRef === 'string' && msg.baseRef) {
             this.baseRef = msg.baseRef;
+            this.lastIndirectImpact = undefined;
             await this.pushState();
           }
           break;
@@ -142,6 +255,9 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
           this.pruneUnchanged = Boolean(msg.value);
           await this.pushState();
           break;
+        case 'runImpactAnalysis':
+          await this.runIndirectImpactAnalysis();
+          break;
         case 'selectBriefing':
           if (typeof msg.path === 'string' && msg.path) {
             await this.verifyBriefingFile(msg.path);
@@ -176,8 +292,7 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
           await this.removeDirective(msg.id);
           break;
         case 'clearDirectives':
-          await this.context.workspaceState.update(DIRECTIVES_STORAGE_KEY, []);
-          await this.pushState();
+          await this.clearDirectives();
           break;
         case 'copyDirectives':
           await this.copyDirectivesToClipboard();
@@ -190,18 +305,55 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
     return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   }
 
-  private getDirectives(): AnnotationDirective[] {
-    return this.context.workspaceState.get<AnnotationDirective[]>(
-      DIRECTIVES_STORAGE_KEY,
-      []
-    );
+  private async runIndirectImpactAnalysis(): Promise<void> {
+    const workspaceRoot = this.getWorkspaceRoot();
+    if (!workspaceRoot) return;
+    try {
+      const gitCtx = await getGitContext(workspaceRoot);
+      const effectiveBase = this.baseRef || gitCtx.recentRefs[0] || 'HEAD';
+      const [diffStats, manifestRes] = await Promise.all([
+        getDiffStats(gitCtx.repoRoot, effectiveBase),
+        loadAtlasManifestResult(gitCtx.repoRoot),
+      ]);
+      const manifest = manifestRes.status === 'ok' ? manifestRes.manifest : undefined;
+
+      this.lastIndirectImpact = await analyzeWorkspaceIndirectImpact({
+        gitCtx,
+        baseRef: effectiveBase,
+        targetRef: this.lastVerification?.targetRefClaimed ?? 'WORKTREE',
+        resolvedTargetSha: this.lastVerification?.resolvedTargetSha,
+        diffStats,
+        manifest,
+      });
+
+      await this.pushState();
+      if (this.lastIndirectImpact.status === 'ok') {
+        const refCnt = this.lastIndirectImpact.lspReferences.length;
+        const errCnt = this.lastIndirectImpact.lspDiagnostics.length;
+        vscode.window.showInformationMessage(
+          `CodeAtlas 影响面分析完成：${refCnt} 处符号调用影响，${errCnt} 处未改文件报错。`
+        );
+      } else if (this.lastIndirectImpact.reason) {
+        vscode.window.showInformationMessage(
+          `CodeAtlas 影响面分析已跳过：${this.lastIndirectImpact.reason}`
+        );
+      }
+    } catch (err) {
+      vscode.window.showErrorMessage(
+        `CodeAtlas 影响面分析失败: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
   }
 
   private async isValidBriefingFile(filePath: string): Promise<boolean> {
     try {
       const raw = await fs.readFile(filePath, 'utf-8');
-      const parsed = JSON.parse(raw) as Partial<BriefingReport>;
-      return parsed?.schemaVersion === '0.1' && Array.isArray(parsed?.claims);
+      const parsed = JSON.parse(raw) as Partial<BriefingReport & StoredBriefingRecord>;
+      const target = parsed?.briefing ?? parsed;
+      return (
+        (target?.schemaVersion === '0.1' || target?.schemaVersion === '0.2') &&
+        Array.isArray(target?.claims)
+      );
     } catch {
       return false;
     }
@@ -209,10 +361,12 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
 
   private async discoverBriefings(repoRoot: string): Promise<DiscoveredBriefing[]> {
     const candidates: DiscoveredBriefing[] = [];
-    const dirs = [
-      path.join(repoRoot, '.codeatlas', 'briefings'),
-      path.join(repoRoot, 'examples'),
-    ];
+    // 1. MCP-submitted briefings inside <git-dir>/codeatlas/briefings/
+    const stored = await listStoredBriefings(repoRoot);
+    candidates.push(...stored);
+
+    // 2. Workspace examples & root briefing.json
+    const dirs = [path.join(repoRoot, 'examples')];
     for (const dir of dirs) {
       try {
         const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -226,7 +380,7 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
           }
         }
       } catch {
-        // directory may not exist
+        // ignore
       }
     }
     const rootBriefing = path.join(repoRoot, 'briefing.json');
@@ -241,9 +395,10 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
     if (!workspaceRoot) return;
     try {
       const raw = await fs.readFile(filePath, 'utf-8');
-      const briefing = JSON.parse(raw) as BriefingReport;
+      const parsed = JSON.parse(raw) as Partial<BriefingReport & StoredBriefingRecord>;
+      const briefing = (parsed.briefing ?? parsed) as BriefingReport;
       if (!briefing || !Array.isArray(briefing.claims)) {
-        throw new Error('JSON does not match CodeAtlas Briefing v0.1 schema (missing claims array).');
+        throw new Error('JSON does not match CodeAtlas Briefing v0.1/v0.2 schema.');
       }
       const gitCtx = await getGitContext(workspaceRoot);
       this.lastVerification = await verifyBriefing(gitCtx.repoRoot, briefing, filePath);
@@ -406,57 +561,70 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
     note: string;
   }): Promise<void> {
     const workspaceRoot = this.getWorkspaceRoot();
-    let ref = 'WORKTREE';
-    if (workspaceRoot) {
-      try {
-        const gitCtx = await getGitContext(workspaceRoot);
-        ref = gitCtx.shortSha || 'WORKTREE';
-      } catch {
-        ref = 'WORKTREE';
-      }
+    if (!workspaceRoot) return;
+    try {
+      const gitCtx = await getGitContext(workspaceRoot);
+      await createDirective(gitCtx.repoRoot, {
+        ref: gitCtx.headSha || 'WORKTREE',
+        path: msg.path,
+        startLine: msg.startLine,
+        targetNodeId: msg.targetNodeId,
+        kind: msg.kind,
+        note: msg.note,
+      });
+      await this.pushState();
+    } catch (err) {
+      vscode.window.showErrorMessage(
+        `CodeAtlas failed to save directive: ${err instanceof Error ? err.message : String(err)}`
+      );
     }
-
-    const directives = this.getDirectives();
-    directives.push({
-      id: crypto.randomBytes(6).toString('hex'),
-      createdAt: new Date().toISOString(),
-      ref,
-      path: msg.path,
-      startLine: msg.startLine,
-      targetNodeId: msg.targetNodeId,
-      kind: msg.kind,
-      note: msg.note,
-    });
-    await this.context.workspaceState.update(DIRECTIVES_STORAGE_KEY, directives);
-    await this.pushState();
   }
 
   private async removeDirective(id: string): Promise<void> {
-    const directives = this.getDirectives().filter((d) => d.id !== id);
-    await this.context.workspaceState.update(DIRECTIVES_STORAGE_KEY, directives);
-    await this.pushState();
+    const workspaceRoot = this.getWorkspaceRoot();
+    if (!workspaceRoot) return;
+    try {
+      const gitCtx = await getGitContext(workspaceRoot);
+      await deleteDirective(gitCtx.repoRoot, id);
+      await this.pushState();
+    } catch {
+      // ignore
+    }
+  }
+
+  private async clearDirectives(): Promise<void> {
+    const workspaceRoot = this.getWorkspaceRoot();
+    if (!workspaceRoot) return;
+    try {
+      const gitCtx = await getGitContext(workspaceRoot);
+      await clearAllDirectives(gitCtx.repoRoot);
+      await this.pushState();
+    } catch {
+      // ignore
+    }
   }
 
   private async copyDirectivesToClipboard(): Promise<void> {
     const workspaceRoot = this.getWorkspaceRoot() ?? '';
     let targetRef = 'WORKTREE';
     let repoRoot = workspaceRoot;
+    let directives: AnnotationDirective[] = [];
     if (workspaceRoot) {
       try {
         const gitCtx = await getGitContext(workspaceRoot);
         repoRoot = gitCtx.repoRoot;
         targetRef = gitCtx.headSha || 'WORKTREE';
+        directives = await listDirectives(gitCtx.repoRoot, false);
       } catch {
         // fallback
       }
     }
-    const md = formatDirectivesForAgent(repoRoot, targetRef, this.getDirectives());
+    const md = formatDirectivesForAgent(repoRoot, targetRef, directives);
     await vscode.env.clipboard.writeText(md);
     vscode.window.showInformationMessage('CodeAtlas directives copied to clipboard as Markdown.');
   }
 
   private postEmptyOrErrorState(errorMsg?: string): void {
-    const directives = this.getDirectives();
     this.view?.webview.postMessage({
       type: 'state',
       payload: {
@@ -465,7 +633,7 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
         diffStats: [],
         manifest: null,
         verification: this.lastVerification ?? null,
-        directives,
+        directives: [],
         error: errorMsg,
       },
     });
@@ -478,6 +646,7 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
         availableBriefings: [],
         activeBriefingPath: '',
         error: errorMsg,
+        lang: this.lang,
       },
     });
   }
@@ -491,6 +660,9 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
 
     try {
       const git = await getGitContext(workspaceRoot);
+      await this.migrateLegacyDirectivesOnce(git.repoRoot);
+      await this.ensureStateWatcher(git.repoRoot);
+
       if (!this.baseRef || !git.recentRefs.includes(this.baseRef)) {
         this.baseRef = git.recentRefs[0] || 'HEAD';
       }
@@ -502,14 +674,28 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
         return;
       }
 
-      const [diffStats, manifest, trackedFiles, commits] = await Promise.all([
+      const [diffStats, manifestRes, trackedFiles, commits, directives] = await Promise.all([
         getDiffStats(git.repoRoot, this.baseRef),
-        loadAtlasManifest(git.repoRoot),
+        loadAtlasManifestResult(git.repoRoot),
         listTrackedFiles(git.repoRoot),
         getBranchCommits(git.repoRoot, this.baseRef),
+        listDirectives(git.repoRoot, true),
       ]);
 
-      const directives = this.getDirectives();
+      const manifest = manifestRes.status === 'ok' ? manifestRes.manifest : undefined;
+      let manifestIssues: ManifestDriftIssue[] = [];
+      if (manifestRes.status === 'invalid') {
+        manifestIssues = manifestRes.errors.map((e) => ({
+          severity: 'error',
+          domainId: '(manifest)',
+          field: 'path',
+          target: '.atlas/manifest.json',
+          message: e,
+        }));
+      } else if (manifest) {
+        const ver = await verifyManifest(git.repoRoot, manifest);
+        manifestIssues = ver.issues;
+      }
 
       this.view?.webview.postMessage({
         type: 'state',
@@ -528,10 +714,12 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
         const graph = buildAtlasGraph({
           git,
           manifest,
+          manifestIssues,
           diffStats,
           trackedFiles,
           commits,
           verification: this.lastVerification,
+          indirectImpact: this.lastIndirectImpact,
           directives,
           mode: this.viewMode,
           baseRef: this.baseRef,
@@ -579,7 +767,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('codeatlas.verifyBriefing', async () => {
       await vscode.commands.executeCommand('workbench.view.extension.codeatlas');
       await provider.pickAndVerifyBriefing();
-    })
+    }),
+    vscode.commands.registerCommand('codeatlas.initManifest', async () => {
+      await provider.initManifestDraft();
+    }),
+    { dispose: () => provider.dispose() }
   );
 }
 

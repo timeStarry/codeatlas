@@ -5,6 +5,7 @@ import {
   BriefingReport,
   BriefingVerificationResult,
   ClaimVerification,
+  DeclaredImpactVerification,
   EvidenceAnchor,
   VerificationBadge,
 } from './types.js';
@@ -14,7 +15,7 @@ function normalizePosix(p: string): string {
   return p.replace(/\\/g, '/').replace(/^\.\//, '');
 }
 
-async function verifyAnchor(
+export async function verifyAnchor(
   repoRoot: string,
   anchor: EvidenceAnchor,
   targetRef: string,
@@ -139,6 +140,12 @@ export async function verifyBriefing(
   briefing: BriefingReport,
   sourcePath?: string
 ): Promise<BriefingVerificationResult> {
+  if (briefing.schemaVersion !== '0.1' && briefing.schemaVersion !== '0.2') {
+    throw new Error(
+      `Unsupported briefing schemaVersion "${String(briefing.schemaVersion)}". Expected "0.1" or "0.2".`
+    );
+  }
+
   const gitCtx = await getGitContext(repoRoot);
   const resolvedTargetSha =
     briefing.targetRef === 'WORKTREE'
@@ -158,7 +165,8 @@ export async function verifyBriefing(
     ? await getDiffStats(
         repoRoot,
         briefing.baseRef,
-        briefing.targetRef === 'WORKTREE' ? undefined : briefing.targetRef
+        briefing.targetRef === 'WORKTREE' ? undefined : briefing.targetRef,
+        briefing.compareMode ?? 'direct-diff'
       )
     : [];
   const changedFiles = new Set(diffStats.map((d) => normalizePosix(d.path)));
@@ -231,6 +239,54 @@ export async function verifyBriefing(
     });
   }
 
+  const impactResults: DeclaredImpactVerification[] = [];
+  for (const imp of briefing.impacts ?? []) {
+    if (targetMissing) {
+      impactResults.push({
+        item: imp,
+        badge: 'mismatch',
+        notes: [`Target ref "${briefing.targetRef}" could not be resolved in git.`],
+      });
+      continue;
+    }
+    const sourceResult = await verifyAnchor(
+      repoRoot,
+      imp.sourceAnchor,
+      briefing.targetRef,
+      isStale,
+      changedFiles,
+      Boolean(briefing.baseRef),
+      Boolean(briefing.baseRef)
+    );
+    const targetResult = await verifyAnchor(
+      repoRoot,
+      imp.targetAnchor,
+      briefing.targetRef,
+      isStale,
+      changedFiles,
+      Boolean(briefing.baseRef),
+      false
+    );
+    const notes: string[] = [
+      'Agent-declared cross-boundary impact: anchors checked, runtime coupling requires verification.',
+      ...sourceResult.notes,
+      ...targetResult.notes,
+    ];
+    let badge: VerificationBadge = 'unverified';
+    if (sourceResult.badge === 'mismatch' || targetResult.badge === 'mismatch') {
+      badge = 'mismatch';
+    } else if (isStale || sourceResult.badge === 'stale' || targetResult.badge === 'stale') {
+      badge = 'stale';
+    }
+    impactResults.push({
+      item: imp,
+      badge,
+      sourceResult,
+      targetResult,
+      notes,
+    });
+  }
+
   const summaryCounts = {
     verified: 0,
     mismatch: 0,
@@ -244,9 +300,10 @@ export async function verifyBriefing(
 
   const blockingMismatch = blockingResults.some((b) => b.badge === 'mismatch');
   const blockingStale = blockingResults.some((b) => b.badge === 'stale');
+  const impactMismatch = impactResults.some((i) => i.badge === 'mismatch');
 
   let overallBadge: VerificationBadge = 'verified';
-  if (targetMissing || summaryCounts.mismatch > 0 || blockingMismatch) {
+  if (targetMissing || summaryCounts.mismatch > 0 || blockingMismatch || impactMismatch) {
     overallBadge = 'mismatch';
   } else if (isStale || summaryCounts.stale > 0 || blockingStale) {
     overallBadge = 'stale';
@@ -267,6 +324,7 @@ export async function verifyBriefing(
     summaryCounts,
     claims: claimResults,
     blockingConditions: blockingResults,
+    impacts: impactResults,
     signals: briefing.verificationSignals ?? [],
     blindSpots: briefing.blindSpots ?? [],
     verifiedAt: new Date().toISOString(),

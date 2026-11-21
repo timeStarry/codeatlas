@@ -301,15 +301,18 @@ export function getCanvasHtml(nonce: string): string {
     }
     .edge-path.flow { stroke: #4da6ff; stroke-width: 2.2; }
     .edge-path.blocking { stroke: var(--amber); stroke-width: 2.3; stroke-dasharray: 6 4; }
+    .edge-path.impact { stroke: #39c5cf; stroke-width: 2.1; stroke-dasharray: 5 3; }
     .edge-path.directive { stroke: var(--purple); stroke-width: 2; stroke-dasharray: 3 3; }
     .edge-path.dimmed { opacity: 0.12; }
     .edge-path.focused { stroke-width: 2.8; opacity: 1; }
     .edge-pill { fill: var(--panel); stroke: var(--border); stroke-width: 1; }
     .edge-pill.blocking { stroke: var(--amber); }
+    .edge-pill.impact { stroke: #39c5cf; }
     .edge-pill.directive { stroke: var(--purple); }
     .edge-pill.dimmed, .edge-label.dimmed { opacity: 0.14; }
     .edge-label { fill: var(--muted); font-size: 9.5px; font-weight: 700; font-family: var(--mono); }
     .edge-label.blocking { fill: var(--amber); }
+    .edge-label.impact { fill: #39c5cf; }
     .edge-label.directive { fill: var(--purple); }
 
     .node {
@@ -342,6 +345,11 @@ export function getCanvasHtml(nonce: string): string {
       background: linear-gradient(135deg, rgba(240,136,62,0.14), var(--panel));
     }
     .node.kind-diff-file { border-left: 4px solid var(--yellow); }
+    .node.kind-impact {
+      border: 1.5px solid rgba(57,197,207,0.65);
+      border-left: 5px solid #39c5cf;
+      background: linear-gradient(135deg, rgba(57,197,207,0.12), var(--panel));
+    }
     .node.kind-directive {
       border: 1.5px dashed rgba(163,113,247,0.75);
       border-left: 5px solid var(--purple);
@@ -595,6 +603,7 @@ export function getCanvasHtml(nonce: string): string {
       <div class="group">
         <button class="secondary" id="btnSummaryToggle">分支摘要</button>
         <button class="secondary" id="btnPruneToggle">仅看变更: 关</button>
+        <button class="secondary" id="btnRunImpact">分析影响面</button>
         <div class="search-wrap">
           <input id="searchInput" placeholder="搜索 (/)..." style="width:140px;padding-right:38px;" />
           <span class="search-count" id="searchCount"></span>
@@ -684,7 +693,7 @@ export function getCanvasHtml(nonce: string): string {
     const I18N = {
       zh: {
         atlas: '全景底图', briefing: '因果简报', hybrid: '融合视图',
-        summaryBtn: '分支摘要', pruneOn: '仅看变更: 开', pruneOff: '仅看变更: 关',
+        summaryBtn: '分支摘要', pruneOn: '仅看变更: 开', pruneOff: '仅看变更: 关', impactBtn: '分析影响面',
         searchPh: '搜索 (/)...', deltaOn: '变更叠加: 开', deltaOff: '变更叠加: 关',
         focusOn: '聚焦: 开', focusOff: '聚焦: 关', refresh: '刷新', exportDir: '导出指令',
         verifyJson: '核验简报', reverify: '立即重验', langBtn: 'EN',
@@ -695,7 +704,7 @@ export function getCanvasHtml(nonce: string): string {
         openBtn: '打开 ↗', expandDomainFiles: '展开文件', collapseDomainFiles: '收起文件',
         kind: {
           root: '仓库快照', domain: '职责域', entrypoint: '业务入口', file: '文件',
-          claim: '因果声明', evidence: '代码证据', blocking: '阻断分叉', 'diff-file': '变更文件', directive: '纠偏批注'
+          claim: '因果声明', evidence: '代码证据', blocking: '阻断分叉', 'diff-file': '变更文件', impact: '间接影响', directive: '纠偏批注'
         },
         badge: { verified: '已核验', mismatch: '失配', stale: '过期', unverified: '未核验', unknown: '未知' },
         legendHtml:
@@ -734,7 +743,7 @@ export function getCanvasHtml(nonce: string): string {
       },
       en: {
         atlas: 'Atlas', briefing: 'Briefing', hybrid: 'Hybrid',
-        summaryBtn: 'Branch Summary', pruneOn: 'Changed Only: ON', pruneOff: 'Changed Only: OFF',
+        summaryBtn: 'Branch Summary', pruneOn: 'Changed Only: ON', pruneOff: 'Changed Only: OFF', impactBtn: 'Impact',
         searchPh: 'Search (/)...', deltaOn: 'Delta: ON', deltaOff: 'Delta: OFF',
         focusOn: 'Focus: ON', focusOff: 'Focus: OFF', refresh: 'Refresh', exportDir: 'Export',
         verifyJson: 'Verify JSON', reverify: 'Re-verify', langBtn: '中',
@@ -745,7 +754,7 @@ export function getCanvasHtml(nonce: string): string {
         openBtn: 'Open ↗', expandDomainFiles: 'Files', collapseDomainFiles: 'Hide Files',
         kind: {
           root: 'Repository', domain: 'Domain', entrypoint: 'Entrypoint', file: 'File',
-          claim: 'Claim', evidence: 'Evidence', blocking: 'Blocking Fork', 'diff-file': 'Changed File', directive: 'Directive'
+          claim: 'Claim', evidence: 'Evidence', blocking: 'Blocking Fork', 'diff-file': 'Changed File', impact: 'Indirect Impact', directive: 'Directive'
         },
         badge: { verified: 'verified', mismatch: 'mismatch', stale: 'stale', unverified: 'unverified', unknown: 'unknown' },
         legendHtml:
@@ -844,6 +853,7 @@ export function getCanvasHtml(nonce: string): string {
       document.getElementById('btnSummaryToggle').textContent = t('summaryBtn');
       document.getElementById('btnPruneToggle').textContent = pruneUnchanged ? t('pruneOn') : t('pruneOff');
       document.getElementById('btnPruneToggle').classList.toggle('active', pruneUnchanged);
+      document.getElementById('btnRunImpact').textContent = t('impactBtn');
       document.getElementById('searchInput').placeholder = t('searchPh');
       document.getElementById('btnDeltaToggle').textContent = deltaOverlay ? t('deltaOn') : t('deltaOff');
       document.getElementById('btnFocusToggle').textContent = focusMode ? t('focusOn') : t('focusOff');
@@ -1024,6 +1034,7 @@ export function getCanvasHtml(nonce: string): string {
         const hit =
           (activeChipFilter === 'mismatch' && n.badge === 'mismatch') ||
           (activeChipFilter === 'blocking' && n.kind === 'blocking') ||
+          (activeChipFilter === 'impact' && n.kind === 'impact') ||
           (activeChipFilter === 'directive' && n.kind === 'directive');
         if (hit) {
           if (!firstHitId) firstHitId = n.id;
@@ -1248,6 +1259,8 @@ export function getCanvasHtml(nonce: string): string {
       if (s.mismatch > 0) chips.push('<span class="chip err' + (activeChipFilter === 'mismatch' ? ' active' : '') + '" data-chip="mismatch">' + (lang === 'zh' ? '失配 ' : 'Mismatch ') + s.mismatch + '</span>');
       if (s.stale > 0) chips.push('<span class="chip warn" data-chip="trust">' + (lang === 'zh' ? '过期 ' : 'Stale ') + s.stale + '</span>');
       if (s.blockingCount > 0) chips.push('<span class="chip warn' + (activeChipFilter === 'blocking' ? ' active' : '') + '" data-chip="blocking">' + (lang === 'zh' ? '阻断 ' : 'Guards ') + s.blockingCount + '</span>');
+      if (s.impactCount > 0) chips.push('<span class="chip' + (activeChipFilter === 'impact' ? ' active' : '') + '" style="color:#39c5cf;background:rgba(57,197,207,0.16);" data-chip="impact">' + (lang === 'zh' ? '间接影响 ' : 'Impact ') + s.impactCount + '</span>');
+      if (s.manifestIssues && s.manifestIssues.length > 0) chips.push('<span class="chip err" data-chip="trust">' + (lang === 'zh' ? '骨架漂移 ' : 'Manifest Drift ') + s.manifestIssues.length + '</span>');
       if (s.signals && s.signals.length > 0) chips.push('<span class="chip" data-chip="trust">' + (lang === 'zh' ? '信号 ' : 'Signals ') + s.signals.length + '</span>');
       if (s.blindSpots && s.blindSpots.length > 0) chips.push('<span class="chip warn" data-chip="trust">' + (lang === 'zh' ? '盲区 ' : 'Blind Spots ') + s.blindSpots.length + '</span>');
       if (s.directiveCount > 0) chips.push('<span class="chip dir' + (activeChipFilter === 'directive' ? ' active' : '') + '" data-chip="directive">' + (lang === 'zh' ? '批注 ' : 'Directives ') + s.directiveCount + '</span>');
@@ -1525,6 +1538,17 @@ export function getCanvasHtml(nonce: string): string {
           html += '<ul style="margin:0;padding-left:18px;font-size:12px;">' + s.guardrails.map(g => '<li>' + esc(g) + '</li>').join('') + '</ul>';
         }
 
+        if (s.manifestIssues && s.manifestIssues.length > 0) {
+          html += '<div style="font-weight:600;margin:12px 0 6px;color:var(--red);">' + (lang === 'zh' ? 'Manifest 漂移与校验告警' : 'Manifest Drift Issues') + '</div>';
+          for (const mi of s.manifestIssues) {
+            html += '<div style="font-size:11.5px;color:var(--red);margin-bottom:5px;">[' + esc(mi.domainId) + '] ' + esc(mi.target) + ': ' + esc(mi.message) + '</div>';
+          }
+        }
+        if (s.impactStatus && s.impactStatus !== 'ok' && s.impactReason) {
+          html += '<div style="font-weight:600;margin:12px 0 6px;color:var(--amber);">' + (lang === 'zh' ? 'LSP 影响面状态' : 'LSP Impact Status') + '</div>';
+          html += '<div style="font-size:11.5px;color:var(--muted);">' + esc(s.impactReason) + '</div>';
+        }
+
         el.innerHTML = html;
         return;
       }
@@ -1735,6 +1759,9 @@ export function getCanvasHtml(nonce: string): string {
       positions.clear();
       manualPositions.clear();
       vscode.postMessage({ type: 'setPruneUnchanged', value: pruneUnchanged });
+    });
+    document.getElementById('btnRunImpact').addEventListener('click', () => {
+      vscode.postMessage({ type: 'runImpactAnalysis' });
     });
 
     document.getElementById('btnIndexFiles').addEventListener('click', () => {

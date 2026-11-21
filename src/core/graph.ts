@@ -5,6 +5,8 @@ import {
   ClaimType,
   DiffFileStat,
   GitContext,
+  IndirectImpactReport,
+  ManifestDriftIssue,
   VerificationBadge,
   VerificationSignal,
 } from './types.js';
@@ -27,9 +29,10 @@ export type CanvasNodeKind =
   | 'evidence'
   | 'diff-file'
   | 'file'
+  | 'impact'
   | 'directive';
 
-export type CanvasEdgeKind = 'hierarchy' | 'flow' | 'blocking' | 'directive';
+export type CanvasEdgeKind = 'hierarchy' | 'flow' | 'blocking' | 'impact' | 'directive';
 
 export interface AtlasGraphNode {
   id: string;
@@ -120,16 +123,22 @@ export interface AtlasGraphData {
     guardrails: string[];
     hasBriefing: boolean;
     prunedCount: number;
+    impactCount: number;
+    impactStatus?: IndirectImpactReport['status'];
+    impactReason?: string;
+    manifestIssues: ManifestDriftIssue[];
   };
 }
 
 export function buildAtlasGraph(params: {
   git: GitContext;
   manifest?: AtlasManifest;
+  manifestIssues?: ManifestDriftIssue[];
   diffStats: DiffFileStat[];
   trackedFiles?: string[];
   commits?: BranchCommitInfo[];
   verification?: BriefingVerificationResult;
+  indirectImpact?: IndirectImpactReport;
   directives: AnnotationDirective[];
   mode?: CanvasViewMode;
   baseRef?: string;
@@ -140,10 +149,12 @@ export function buildAtlasGraph(params: {
   const {
     git,
     manifest,
+    manifestIssues = [],
     diffStats,
     trackedFiles = [],
     commits = [],
     verification,
+    indirectImpact,
     directives,
   } = params;
   const mode: CanvasViewMode = params.mode ?? 'hybrid';
@@ -511,7 +522,136 @@ export function buildAtlasGraph(params: {
     }
   }
 
-  // 5. Directives / Canvas Notes
+  // 5. Indirect Impact Nodes (LSP references + LSP unmodified-file errors + Agent-declared impacts)
+  let impactCount = 0;
+
+  if (indirectImpact && indirectImpact.status === 'ok') {
+    for (let i = 0; i < indirectImpact.lspReferences.length; i++) {
+      const refImp = indirectImpact.lspReferences[i];
+      const srcNodeId =
+        pathToNodeId.get(refImp.sourcePath) ||
+        ensureDomain(resolveDomainForPath(refImp.sourcePath).name, resolveDomainForPath(refImp.sourcePath).indexed);
+
+      if (refImp.truncated) {
+        const impId = `impact:lsp-fanout:${i}`;
+        impactCount += 1;
+        const domText = refImp.byDomain
+          .slice(0, 4)
+          .map((d) => `${d.domainName}(${d.fileCount})`)
+          .join(', ');
+        nodes.push({
+          id: impId,
+          parentId: srcNodeId,
+          kind: 'impact',
+          title:
+            lang === 'zh'
+              ? `高扇出引用 · ${refImp.sourceSymbol} (${refImp.totalCallerFiles} 文件)`
+              : `High-Fanout · ${refImp.sourceSymbol} (${refImp.totalCallerFiles} files)`,
+          subtitle: `${refImp.totalCallSites} ${lang === 'zh' ? '处调用（按域折叠）' : 'call sites (collapsed)'}`,
+          body: domText,
+          badge: 'verified',
+          path: refImp.byDomain[0]?.sampleFiles[0],
+          startLine: 1,
+        });
+        edges.push({
+          id: `e:${srcNodeId}->${impId}`,
+          from: srcNodeId,
+          to: impId,
+          kind: 'impact',
+          label: 'LSP',
+        });
+      } else {
+        const uniqueFiles = new Map<string, number>();
+        for (const c of refImp.callers) {
+          if (!uniqueFiles.has(c.path)) uniqueFiles.set(c.path, c.line);
+        }
+        for (const [callerPath, callerLine] of [...uniqueFiles.entries()].slice(0, 6)) {
+          const impId = `impact:lsp:${i}:${callerPath}`;
+          impactCount += 1;
+          nodes.push({
+            id: impId,
+            parentId: srcNodeId,
+            kind: 'impact',
+            title: `${callerPath.split('/').pop() || callerPath}:${callerLine}`,
+            subtitle: `${lang === 'zh' ? '引用了' : 'calls'} ${refImp.sourceSymbol} · ${callerPath}`,
+            badge: 'verified',
+            path: callerPath,
+            defaultDirectivePath: callerPath,
+            startLine: callerLine,
+          });
+          edges.push({
+            id: `e:${srcNodeId}->${impId}`,
+            from: srcNodeId,
+            to: impId,
+            kind: 'impact',
+            label: 'LSP',
+          });
+        }
+      }
+    }
+
+    for (let i = 0; i < Math.min(10, indirectImpact.lspDiagnostics.length); i++) {
+      const diag = indirectImpact.lspDiagnostics[i];
+      const domRes = resolveDomainForPath(diag.path);
+      const parentId =
+        mode === 'briefing' ? rootId : ensureDomain(domRes.name, domRes.indexed);
+      const impId = `impact:diag:${i}`;
+      impactCount += 1;
+      nodes.push({
+        id: impId,
+        parentId,
+        kind: 'impact',
+        title: `${lang === 'zh' ? '未改文件报错' : 'Caller Error'} · ${diag.path.split('/').pop()}:${diag.line}`,
+        subtitle: diag.path,
+        body: diag.message,
+        badge: 'mismatch',
+        path: diag.path,
+        defaultDirectivePath: diag.path,
+        startLine: diag.line,
+      });
+      edges.push({
+        id: `e:${parentId}->${impId}`,
+        from: parentId,
+        to: impId,
+        kind: 'impact',
+        label: lang === 'zh' ? '编译报错' : 'LSP ERR',
+      });
+    }
+  }
+
+  if (mode !== 'atlas' && verification && verification.impacts && verification.impacts.length > 0) {
+    for (const dimp of verification.impacts) {
+      const srcPath = dimp.item.sourceAnchor.path.replace(/\\/g, '/');
+      const tgtPath = dimp.item.targetAnchor.path.replace(/\\/g, '/');
+      const parentId = pathToNodeId.get(srcPath) || rootId;
+      const impId = `impact:declared:${dimp.item.id}`;
+      impactCount += 1;
+      nodes.push({
+        id: impId,
+        parentId,
+        kind: 'impact',
+        title: `[${dimp.item.relation.toUpperCase()}] ${tgtPath.split('/').pop() || tgtPath}`,
+        subtitle: `${tgtPath}${dimp.item.targetAnchor.startLine ? `:${dimp.item.targetAnchor.startLine}` : ''}`,
+        body: dimp.item.description,
+        badge: dimp.badge,
+        path: tgtPath,
+        defaultDirectivePath: tgtPath,
+        startLine: dimp.item.targetAnchor.startLine ?? 1,
+        endLine: dimp.item.targetAnchor.endLine,
+        notes: dimp.notes,
+        fromBriefing: true,
+      });
+      edges.push({
+        id: `e:${parentId}->${impId}`,
+        from: parentId,
+        to: impId,
+        kind: 'impact',
+        label: dimp.item.relation,
+      });
+    }
+  }
+
+  // 6. Directives / Canvas Notes
   const existingNodeIds = new Set(nodes.map((n) => n.id));
   for (const dir of directives) {
     const normPath = dir.path.replace(/\\/g, '/');
@@ -528,6 +668,7 @@ export function buildAtlasGraph(params: {
       }
     }
     const dirId = `dir:${dir.id}`;
+    const statusTag = dir.status ? ` · ${dir.status}` : '';
     nodes.push({
       id: dirId,
       parentId,
@@ -535,8 +676,9 @@ export function buildAtlasGraph(params: {
       directiveId: dir.id,
       directiveKind: dir.kind,
       title: `${dir.kind.toUpperCase()} · ${normPath.split('/').pop() || normPath}${dir.startLine ? `:${dir.startLine}` : ''}`,
-      subtitle: `ref: ${dir.ref}`,
+      subtitle: `ref: ${dir.ref}${statusTag}${dir.isStale ? ' (stale)' : ''}`,
       body: dir.note,
+      badge: dir.status === 'resolved' ? 'verified' : dir.isStale ? 'stale' : undefined,
       path: normPath,
       defaultDirectivePath: normPath,
       startLine: dir.startLine,
@@ -600,7 +742,8 @@ export function buildAtlasGraph(params: {
         Boolean(n.changed) ||
         Boolean(n.fromBriefing) ||
         n.kind === 'directive' ||
-        n.kind === 'blocking';
+        n.kind === 'blocking' ||
+        n.kind === 'impact';
       if (relevant) {
         let cur: AtlasGraphNode | undefined = n;
         while (cur) {
@@ -658,6 +801,10 @@ export function buildAtlasGraph(params: {
       guardrails: manifest?.guardrails ?? [],
       hasBriefing: Boolean(verification),
       prunedCount,
+      impactCount,
+      impactStatus: indirectImpact?.status,
+      impactReason: indirectImpact?.reason,
+      manifestIssues,
     },
   };
 }
