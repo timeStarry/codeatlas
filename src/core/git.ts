@@ -151,6 +151,35 @@ export async function listTrackedFiles(repoRoot: string): Promise<string[]> {
   }
 }
 
+export interface BranchCommitInfo {
+  sha: string;
+  subject: string;
+}
+
+export async function getBranchCommits(
+  repoRoot: string,
+  baseRef?: string,
+  limit = 10
+): Promise<BranchCommitInfo[]> {
+  const args = ['log', `--max-count=${limit}`, '--format=%h%x09%s'];
+  if (baseRef && baseRef !== 'HEAD') {
+    args.push(`${baseRef}..HEAD`);
+  }
+  try {
+    const out = await runGit(repoRoot, args);
+    return out
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [sha, ...rest] = line.split('\t');
+        return { sha, subject: rest.join('\t') };
+      });
+  } catch {
+    return [];
+  }
+}
+
 export async function getDiffStats(
   repoRoot: string,
   baseRef?: string,

@@ -186,20 +186,20 @@ export function getCockpitHtml(nonce: string): string {
 <body>
   <div class="header">
     <div class="title-group">
-      <h2>CodeAtlas Cockpit</h2>
-      <div class="meta" id="gitMeta">Loading Git context...</div>
+      <h2>CodeAtlas 驾驶舱</h2>
+      <div class="meta" id="gitMeta">正在读取 Git 上下文...</div>
     </div>
     <div class="actions">
-      <button id="btnOpenCanvas">Open Canvas</button>
-      <button class="secondary" id="btnLoadBriefing">Verify Briefing</button>
-      <button class="secondary" id="btnRefresh">Refresh</button>
+      <button id="btnOpenCanvas">打开画布</button>
+      <button class="secondary" id="btnLoadBriefing">核验简报</button>
+      <button class="secondary" id="btnRefresh">刷新</button>
     </div>
   </div>
 
   <div class="tabs">
-    <button class="tab active" data-tab="briefing">Causal Briefing</button>
-    <button class="tab" data-tab="delta">Delta &amp; Atlas</button>
-    <button class="tab" data-tab="directives">Directives</button>
+    <button class="tab active" data-tab="briefing">因果简报</button>
+    <button class="tab" data-tab="delta">变更与骨架</button>
+    <button class="tab" data-tab="directives">纠偏指令</button>
   </div>
 
   <div id="tab-briefing"></div>

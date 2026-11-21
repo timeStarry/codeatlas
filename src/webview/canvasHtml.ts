@@ -1,6 +1,6 @@
 export function getCanvasHtml(nonce: string): string {
   return /* html */ `<!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
@@ -40,13 +40,12 @@ export function getCanvasHtml(nonce: string): string {
       overflow: hidden;
       background: var(--bg);
       color: var(--fg);
-      font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, sans-serif);
+      font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Microsoft YaHei", sans-serif);
       font-size: 13px;
       user-select: none;
     }
     .app { display: flex; flex-direction: column; width: 100%; height: 100%; }
 
-    /* Tier 1 Toolbar (Clean, Semantic Context Only) */
     .toolbar {
       display: flex;
       align-items: center;
@@ -61,13 +60,19 @@ export function getCanvasHtml(nonce: string): string {
     }
     .group { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     .brand { font-weight: 700; font-size: 13px; letter-spacing: 0.2px; }
-    .git-pill {
+    .git-pill, .arch-pill {
       font-family: var(--mono);
       font-size: 11px;
       padding: 2px 8px;
       border-radius: 999px;
       background: var(--surface-subtle);
       color: var(--muted);
+    }
+    .arch-pill {
+      font-family: inherit;
+      color: var(--accent);
+      background: rgba(77,166,255,0.12);
+      font-weight: 600;
     }
     .segmented {
       display: inline-flex;
@@ -89,11 +94,7 @@ export function getCanvasHtml(nonce: string): string {
       color: var(--fg);
       font-weight: 600;
     }
-    .search-wrap {
-      position: relative;
-      display: inline-flex;
-      align-items: center;
-    }
+    .search-wrap { position: relative; display: inline-flex; align-items: center; }
     .search-count {
       position: absolute;
       right: 6px;
@@ -103,7 +104,6 @@ export function getCanvasHtml(nonce: string): string {
       pointer-events: none;
     }
 
-    /* Tier 2 Context & Interactive Trust Strip */
     .subbar {
       display: flex;
       align-items: center;
@@ -126,12 +126,7 @@ export function getCanvasHtml(nonce: string): string {
       color: var(--muted);
       min-width: 120px;
     }
-    .crumb {
-      cursor: pointer;
-      color: var(--fg);
-      padding: 1px 5px;
-      border-radius: 3px;
-    }
+    .crumb { cursor: pointer; color: var(--fg); padding: 1px 5px; border-radius: 3px; }
     .crumb:hover { background: var(--surface-subtle); color: var(--accent); }
     .trust-chips { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
     .chip {
@@ -204,6 +199,82 @@ export function getCanvasHtml(nonce: string): string {
     }
 
     .workspace { position: relative; flex: 1; display: flex; overflow: hidden; }
+
+    /* Left Branch Summary Drawer (Scenario C) */
+    .summary-drawer {
+      width: 280px;
+      max-width: 34vw;
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      z-index: 14;
+      flex-shrink: 0;
+      user-select: text;
+    }
+    .summary-drawer.hidden { display: none; }
+    .drawer-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 11px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      font-size: 12.5px;
+    }
+    .drawer-body {
+      padding: 10px 11px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .summary-sec {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      margin: 12px 0 6px;
+      letter-spacing: 0.3px;
+    }
+    .summary-sec:first-child { margin-top: 0; }
+    .summary-item {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 9px;
+      margin-bottom: 6px;
+      cursor: pointer;
+      background: var(--bg);
+      transition: border-color 0.12s;
+    }
+    .summary-item:hover { border-color: var(--accent); }
+    .summary-item-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .summary-item-sub {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 3px;
+      font-family: var(--mono);
+    }
+    .commit-row {
+      font-size: 11.5px;
+      padding: 4px 0;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 6px;
+      align-items: baseline;
+    }
+    .commit-sha {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+
     .viewport {
       position: relative;
       flex: 1;
@@ -221,13 +292,7 @@ export function getCanvasHtml(nonce: string): string {
       width: 1px;
       height: 1px;
     }
-    svg.edges {
-      position: absolute;
-      top: 0;
-      left: 0;
-      overflow: visible;
-      pointer-events: none;
-    }
+    svg.edges { position: absolute; top: 0; left: 0; overflow: visible; pointer-events: none; }
     .edge-path {
       fill: none;
       stroke: rgba(139,148,158,0.45);
@@ -243,16 +308,10 @@ export function getCanvasHtml(nonce: string): string {
     .edge-pill.blocking { stroke: var(--amber); }
     .edge-pill.directive { stroke: var(--purple); }
     .edge-pill.dimmed, .edge-label.dimmed { opacity: 0.14; }
-    .edge-label {
-      fill: var(--muted);
-      font-size: 9.5px;
-      font-weight: 700;
-      font-family: var(--mono);
-    }
+    .edge-label { fill: var(--muted); font-size: 9.5px; font-weight: 700; font-family: var(--mono); }
     .edge-label.blocking { fill: var(--amber); }
     .edge-label.directive { fill: var(--purple); }
 
-    /* Semantic Node Cards — uniform width 262px so edges always anchor cleanly */
     .node {
       position: absolute;
       width: 262px;
@@ -264,30 +323,19 @@ export function getCanvasHtml(nonce: string): string {
       cursor: pointer;
       transition: box-shadow 0.12s, border-color 0.12s, opacity 0.14s;
     }
-    .node:hover {
-      border-color: var(--accent);
-      box-shadow: 0 6px 20px rgba(0,0,0,0.28);
-    }
+    .node:hover { border-color: var(--accent); box-shadow: 0 6px 20px rgba(0,0,0,0.28); }
     .node.selected {
       border-color: var(--accent);
       box-shadow: 0 0 0 2px rgba(77,166,255,0.4), 0 8px 24px rgba(0,0,0,0.34);
     }
     .node.dimmed { opacity: 0.16; }
 
-    .node.kind-root {
-      border: 2px solid var(--accent);
-      background: linear-gradient(145deg, rgba(77,166,255,0.14), var(--panel));
-    }
-    .node.kind-domain {
-      border-top: 3px solid var(--green);
-      background: linear-gradient(180deg, rgba(63,185,80,0.08), var(--panel));
-    }
+    .node.kind-root { border: 2px solid var(--accent); background: linear-gradient(145deg, rgba(77,166,255,0.14), var(--panel)); }
+    .node.kind-domain { border-top: 3px solid var(--green); background: linear-gradient(180deg, rgba(63,185,80,0.08), var(--panel)); }
     .node.kind-entrypoint { border-left: 4px solid #58a6ff; }
+    .node.kind-file { border-left: 4px solid rgba(139,148,158,0.65); background: var(--panel-2); }
     .node.kind-claim { border-left: 4px solid #79c0ff; }
-    .node.kind-evidence {
-      border-left: 4px solid var(--green);
-      background: var(--panel-2);
-    }
+    .node.kind-evidence { border-left: 4px solid var(--green); background: var(--panel-2); }
     .node.kind-blocking {
       border: 1.5px solid rgba(240,136,62,0.75);
       border-left: 5px solid var(--amber);
@@ -301,12 +349,18 @@ export function getCanvasHtml(nonce: string): string {
     }
 
     .node-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-    .node-kind {
+    .node-kind { font-size: 9.5px; letter-spacing: 0.3px; color: var(--muted); font-weight: 700; }
+    .layer-tag {
       font-size: 9.5px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--muted);
-      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: rgba(77,166,255,0.14);
+      color: var(--accent);
+      font-weight: 600;
+      max-width: 150px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .node-title { font-weight: 600; font-size: 12.5px; margin-top: 4px; word-break: break-word; }
     .node-sub {
@@ -346,17 +400,18 @@ export function getCanvasHtml(nonce: string): string {
       margin-top: 7px;
       font-size: 10.5px;
       color: var(--muted);
+      gap: 6px;
     }
-    .quick-jump {
-      opacity: 0;
+    .quick-btn {
       font-size: 10.5px;
       color: var(--accent);
       background: transparent;
       border: 1px solid rgba(77,166,255,0.45);
       padding: 1px 6px;
       border-radius: 3px;
-      transition: opacity 0.12s;
     }
+    .quick-btn:hover { background: rgba(77,166,255,0.15); }
+    .quick-jump { opacity: 0; transition: opacity 0.12s; }
     .node:hover .quick-jump, .node.selected .quick-jump { opacity: 1; }
     .diff-add { color: var(--green); font-family: var(--mono); }
     .diff-del { color: var(--red); font-family: var(--mono); }
@@ -388,8 +443,6 @@ export function getCanvasHtml(nonce: string): string {
       font-weight: 700;
       padding: 1px 6px;
       border-radius: 999px;
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
       flex-shrink: 0;
     }
     .badge-verified { background: rgba(63,185,80,0.2); color: var(--green); }
@@ -398,7 +451,6 @@ export function getCanvasHtml(nonce: string): string {
     .badge-unverified { background: var(--surface-subtle); color: var(--muted); }
     .badge-unknown { background: var(--surface-subtle); color: var(--muted); }
 
-    /* Empty-state Overlay */
     .empty-overlay {
       position: absolute;
       inset: 0;
@@ -420,7 +472,6 @@ export function getCanvasHtml(nonce: string): string {
       box-shadow: 0 10px 30px rgba(0,0,0,0.3);
     }
 
-    /* Inspector Drawer */
     .inspector {
       width: 390px;
       max-width: 46vw;
@@ -477,7 +528,6 @@ export function getCanvasHtml(nonce: string): string {
     .code-line.diff-hunk { color: var(--accent); font-weight: 600; }
     .line-no { color: var(--muted); min-width: 30px; text-align: right; user-select: none; }
 
-    /* Bottom Floating Spatial HUD & Collapsible Legend */
     .hud {
       position: absolute;
       bottom: 12px;
@@ -532,43 +582,51 @@ export function getCanvasHtml(nonce: string): string {
     <div class="toolbar">
       <div class="group">
         <span class="brand">CodeAtlas</span>
-        <span class="git-pill" id="gitPill">Loading...</span>
+        <span class="git-pill" id="gitPill">加载中...</span>
+        <span class="arch-pill" id="archPill" style="display:none;"></span>
         <div class="segmented" id="modeControl">
-          <button data-mode="atlas">Atlas</button>
-          <button data-mode="briefing">Briefing</button>
-          <button data-mode="hybrid" class="active">Hybrid</button>
+          <button data-mode="atlas" id="mAtlas">全景底图</button>
+          <button data-mode="briefing" id="mBriefing">因果简报</button>
+          <button data-mode="hybrid" id="mHybrid" class="active">融合视图</button>
         </div>
-        <select id="briefingSelect" title="Select verified briefing" style="max-width:190px;">
-          <option value="">-- Briefing --</option>
-        </select>
-        <select id="baseRefSelect" title="Diff Base Ref" style="max-width:120px;">
-          <option value="HEAD">vs HEAD</option>
-        </select>
+        <select id="briefingSelect" style="max-width:175px;"></select>
+        <select id="baseRefSelect" style="max-width:115px;"></select>
       </div>
       <div class="group">
+        <button class="secondary" id="btnSummaryToggle">分支摘要</button>
+        <button class="secondary" id="btnPruneToggle">仅看变更: 关</button>
         <div class="search-wrap">
-          <input id="searchInput" placeholder="Search (/)..." style="width:155px;padding-right:42px;" />
+          <input id="searchInput" placeholder="搜索 (/)..." style="width:140px;padding-right:38px;" />
           <span class="search-count" id="searchCount"></span>
         </div>
-        <button class="secondary" id="btnDeltaToggle" title="Toggle Delta Overlay (D)">Delta: OFF</button>
-        <button class="secondary" id="btnFocusToggle" title="Focus selected subtree">Focus: OFF</button>
-        <button class="secondary" id="btnRefresh" title="Refresh Git & re-verify">Refresh</button>
-        <button class="secondary" id="btnCopyDirs" title="Copy directives Markdown for Agent">Export</button>
-        <button id="btnVerifyBriefing">Verify JSON</button>
+        <button class="secondary" id="btnDeltaToggle">变更叠加: 关</button>
+        <button class="secondary" id="btnFocusToggle">聚焦: 关</button>
+        <button class="secondary" id="btnRefresh">刷新</button>
+        <button class="secondary" id="btnCopyDirs">导出指令</button>
+        <button id="btnVerifyBriefing">核验简报</button>
+        <button class="secondary" id="btnLangToggle" style="padding:3px 7px;font-size:11px;">EN</button>
       </div>
     </div>
 
     <div class="stale-banner hidden" id="staleBanner">
       <span id="staleBannerText"></span>
-      <button class="secondary" id="btnReverifyStale" style="padding:2px 8px;font-size:11px;">Re-verify Now</button>
+      <button class="secondary" id="btnReverifyStale" style="padding:2px 8px;font-size:11px;">立即重验</button>
     </div>
 
     <div class="subbar">
-      <div class="breadcrumbs" id="breadcrumbs"><span>Click any node to inspect · Double-click to focus branch</span></div>
+      <div class="breadcrumbs" id="breadcrumbs"></div>
       <div class="trust-chips" id="trustChips"></div>
     </div>
 
     <div class="workspace">
+      <aside class="summary-drawer hidden" id="summaryDrawer">
+        <div class="drawer-header">
+          <span id="summaryDrawerTitle">分支变更摘要</span>
+          <button class="secondary" id="btnCloseSummary" style="padding:1px 7px;">✕</button>
+        </div>
+        <div class="drawer-body" id="summaryBody"></div>
+      </aside>
+
       <div class="viewport" id="viewport">
         <div class="stage" id="stage">
           <svg class="edges" id="edgesSvg"></svg>
@@ -577,52 +635,43 @@ export function getCanvasHtml(nonce: string): string {
 
         <div class="empty-overlay hidden" id="emptyOverlay">
           <div class="empty-card">
-            <strong id="emptyTitle" style="font-size:14px;">No Briefing Loaded</strong>
-            <p id="emptyDesc" style="color:var(--muted);font-size:12px;margin:8px 0 12px;">
-              Load an Agent-submitted Briefing JSON (schema v0.1) to visualize verified claims, code anchors, and explicit blocking forks.
-            </p>
-            <button id="btnEmptyVerify">Verify Briefing JSON</button>
+            <strong id="emptyTitle" style="font-size:14px;"></strong>
+            <p id="emptyDesc" style="color:var(--muted);font-size:12px;margin:8px 0 12px;"></p>
+            <button id="btnEmptyVerify"></button>
           </div>
         </div>
 
         <div class="hud">
-          <button class="secondary" id="btnZoomOut" title="Zoom out" style="padding:1px 7px;">−</button>
+          <button class="secondary" id="btnZoomOut" style="padding:1px 7px;">−</button>
           <span id="zoomLabel" style="min-width:38px;text-align:center;">100%</span>
-          <button class="secondary" id="btnZoomIn" title="Zoom in" style="padding:1px 7px;">+</button>
+          <button class="secondary" id="btnZoomIn" style="padding:1px 7px;">+</button>
           <div class="hud-sep"></div>
-          <button class="secondary" id="btnFitView" title="Fit to screen (F)" style="padding:1px 7px;">Fit</button>
-          <button class="secondary" id="btnAutoLayout" title="Reset tidy layout" style="padding:1px 7px;">Tidy</button>
-          <button class="secondary" id="btnExpandAll" title="Expand all (E)" style="padding:1px 7px;">Expand</button>
-          <button class="secondary" id="btnCollapseDomains" title="Collapse to domains (C)" style="padding:1px 7px;">Collapse</button>
+          <button class="secondary" id="btnFitView" style="padding:1px 7px;">适配</button>
+          <button class="secondary" id="btnAutoLayout" style="padding:1px 7px;">整理</button>
+          <button class="secondary" id="btnExpandAll" style="padding:1px 7px;">展开</button>
+          <button class="secondary" id="btnCollapseDomains" style="padding:1px 7px;">收拢</button>
+          <button class="secondary" id="btnIndexFiles" style="padding:1px 7px;display:none;">展开至文件层</button>
         </div>
 
         <div class="legend-wrap">
-          <div class="legend-popover hidden" id="legendPopover">
-            <div><i class="dot" style="background:var(--green);"></i>Domain / Verified Evidence</div>
-            <div><i class="dot" style="background:#79c0ff;"></i>Briefing Claim</div>
-            <div><i class="dot" style="background:var(--amber);"></i>Explicit Blocking Fork (IF → Outcome)</div>
-            <div><i class="dot" style="background:var(--purple);"></i>Wired Directive / Rework Note</div>
-            <div style="border-top:1px solid var(--border);padding-top:5px;margin-top:2px;font-family:var(--mono);font-size:10px;">
-              / Search · F Fit · 0 100% · D Delta · E/C Expand/Collapse · Enter Jump · Esc Back
-            </div>
-          </div>
-          <button class="secondary" id="btnLegendToggle" title="Legend & Shortcuts" style="padding:3px 9px;font-size:11px;">? Legend</button>
+          <div class="legend-popover hidden" id="legendPopover"></div>
+          <button class="secondary" id="btnLegendToggle" style="padding:3px 9px;font-size:11px;">? 图例</button>
         </div>
       </div>
 
       <aside class="inspector hidden" id="inspector">
         <div class="inspector-header">
-          <strong id="inspTitle" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Inspector</strong>
+          <strong id="inspTitle" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">节点精读</strong>
           <div class="group" style="gap:4px;">
-            <button class="secondary" id="btnInspFocus" style="padding:2px 7px;font-size:11px;">Focus</button>
+            <button class="secondary" id="btnInspFocus" style="padding:2px 7px;font-size:11px;">聚焦</button>
             <button class="secondary" id="btnCloseInsp" style="padding:2px 7px;">✕</button>
           </div>
         </div>
         <div class="inspector-tabs">
-          <button class="insp-tab active" data-itab="overview">Code</button>
-          <button class="insp-tab" data-itab="diff">Diff</button>
-          <button class="insp-tab" data-itab="directive">+ Directive</button>
-          <button class="insp-tab" data-itab="trust">Trust</button>
+          <button class="insp-tab active" data-itab="overview" id="tabCode">源码</button>
+          <button class="insp-tab" data-itab="diff" id="tabDiff">Diff</button>
+          <button class="insp-tab" data-itab="directive" id="tabDir">+ 批注</button>
+          <button class="insp-tab" data-itab="trust" id="tabTrust">可信度</button>
         </div>
         <div class="inspector-content" id="inspContent"></div>
       </aside>
@@ -632,7 +681,111 @@ export function getCanvasHtml(nonce: string): string {
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
 
-    let graph = { mode: 'hybrid', nodes: [], edges: [], summary: {} };
+    const I18N = {
+      zh: {
+        atlas: '全景底图', briefing: '因果简报', hybrid: '融合视图',
+        summaryBtn: '分支摘要', pruneOn: '仅看变更: 开', pruneOff: '仅看变更: 关',
+        searchPh: '搜索 (/)...', deltaOn: '变更叠加: 开', deltaOff: '变更叠加: 关',
+        focusOn: '聚焦: 开', focusOff: '聚焦: 关', refresh: '刷新', exportDir: '导出指令',
+        verifyJson: '核验简报', reverify: '立即重验', langBtn: 'EN',
+        selectBriefing: '-- 选择简报 --', fit: '适配', tidy: '整理', expand: '展开', collapse: '收拢',
+        indexFiles: '展开至文件层', collapseFiles: '收起文件层', legendBtn: '? 图例',
+        summaryTitle: '分支变更摘要', tabCode: '源码', tabDiff: 'Diff', tabDir: '+ 批注', tabTrust: '可信度',
+        inspFocus: '聚焦', defaultCrumb: '点击节点精读源码 · 双击节点聚焦分支 · 点域卡片按需展开文件',
+        openBtn: '打开 ↗', expandDomainFiles: '展开文件', collapseDomainFiles: '收起文件',
+        kind: {
+          root: '仓库快照', domain: '职责域', entrypoint: '业务入口', file: '文件',
+          claim: '因果声明', evidence: '代码证据', blocking: '阻断分叉', 'diff-file': '变更文件', directive: '纠偏批注'
+        },
+        badge: { verified: '已核验', mismatch: '失配', stale: '过期', unverified: '未核验', unknown: '未知' },
+        legendHtml:
+          '<div><i class="dot" style="background:var(--green);"></i>职责域 / 已核验代码证据</div>' +
+          '<div><i class="dot" style="background:#79c0ff;"></i>简报因果声明</div>' +
+          '<div><i class="dot" style="background:var(--amber);"></i>显式阻断分叉 (IF → 结果)</div>' +
+          '<div><i class="dot" style="background:var(--purple);"></i>画布纠偏批注节点</div>' +
+          '<div style="border-top:1px solid var(--border);padding-top:5px;margin-top:2px;font-family:var(--mono);font-size:10px;">/ 搜索 · F 适配 · 0 100% · D 变更叠加 · E/C 展开收拢 · Enter 跳源码 · Esc 返回</div>',
+        emptyBriefingTitle: '尚未加载简报',
+        emptyBriefingDesc: '请在上方选择自动发现的简报，或点击“核验简报”加载 Agent 提交的 JSON（Schema v0.1）。',
+        noGit: '未检测到 Git 仓库',
+        summaryImpacted: '受影响职责域（点击定位并展开）',
+        summaryNoDiff: '当前相对基准无文件改动。',
+        summaryCommits: '本分支提交记录',
+        summaryNoCommits: '相对基准无新增提交。',
+        summaryClaims: '关联简报声明',
+        summaryPruneHint: '开启“仅看变更”可隐藏无关逻辑分支，只保留本次改动与关联影响。',
+        jumpEditor: '在编辑器中打开 (Enter)',
+        loadingSnippet: '正在读取真实源码...',
+        loadingDiff: '正在加载 Git Diff...',
+        noDiffForFile: '当前文件相对所选基准无变更：',
+        notFileNode: '当前节点未绑定具体文件路径。',
+        dirHelp: '向当前节点直接挂接一条约束、疑问或返工指令：',
+        dirPathReq: '必须填写仓库相对路径。',
+        dirPlaceholder: '必填：描述需要 Agent 修复、保留或核验的具体要求...',
+        dirWireBtn: '+ 挂接到画布',
+        dirCopyBtn: '复制 Markdown 指令',
+        delDirBtn: '删除此批注节点',
+        signalsTitle: '验证信号 (Verification Signals)',
+        noSignals: '未附带验证信号（状态：未知）。',
+        blindSpotsTitle: '已声明的盲区 (Blind Spots)',
+        noBlindSpots: '无已声明盲区。',
+        guardrailsTitle: '仓库架构红线 (.atlas/manifest.json)',
+        noGuardrails: '未在 .atlas/manifest.json 中声明红线。',
+        staleText: (t, h) => '简报已过期：目标提交 (' + t + ') 与当前 HEAD (' + h + ') 不一致，请重新核验。'
+      },
+      en: {
+        atlas: 'Atlas', briefing: 'Briefing', hybrid: 'Hybrid',
+        summaryBtn: 'Branch Summary', pruneOn: 'Changed Only: ON', pruneOff: 'Changed Only: OFF',
+        searchPh: 'Search (/)...', deltaOn: 'Delta: ON', deltaOff: 'Delta: OFF',
+        focusOn: 'Focus: ON', focusOff: 'Focus: OFF', refresh: 'Refresh', exportDir: 'Export',
+        verifyJson: 'Verify JSON', reverify: 'Re-verify', langBtn: '中',
+        selectBriefing: '-- Briefing --', fit: 'Fit', tidy: 'Tidy', expand: 'Expand', collapse: 'Collapse',
+        indexFiles: 'Expand to Files', collapseFiles: 'Collapse Files', legendBtn: '? Legend',
+        summaryTitle: 'Branch Summary', tabCode: 'Code', tabDiff: 'Diff', tabDir: '+ Directive', tabTrust: 'Trust',
+        inspFocus: 'Focus', defaultCrumb: 'Click to inspect · Double-click to focus · Click Domain to lazy-expand files',
+        openBtn: 'Open ↗', expandDomainFiles: 'Files', collapseDomainFiles: 'Hide Files',
+        kind: {
+          root: 'Repository', domain: 'Domain', entrypoint: 'Entrypoint', file: 'File',
+          claim: 'Claim', evidence: 'Evidence', blocking: 'Blocking Fork', 'diff-file': 'Changed File', directive: 'Directive'
+        },
+        badge: { verified: 'verified', mismatch: 'mismatch', stale: 'stale', unverified: 'unverified', unknown: 'unknown' },
+        legendHtml:
+          '<div><i class="dot" style="background:var(--green);"></i>Domain / Verified Evidence</div>' +
+          '<div><i class="dot" style="background:#79c0ff;"></i>Briefing Claim</div>' +
+          '<div><i class="dot" style="background:var(--amber);"></i>Explicit Blocking Fork (IF → Outcome)</div>' +
+          '<div><i class="dot" style="background:var(--purple);"></i>Wired Directive Node</div>' +
+          '<div style="border-top:1px solid var(--border);padding-top:5px;margin-top:2px;font-family:var(--mono);font-size:10px;">/ Search · F Fit · 0 100% · D Delta · E/C Expand/Collapse · Enter Jump · Esc Back</div>',
+        emptyBriefingTitle: 'No Briefing Loaded',
+        emptyBriefingDesc: 'Select a discovered briefing above or click Verify JSON to inspect claims and blocking forks.',
+        noGit: 'No Git repository',
+        summaryImpacted: 'Impacted Domains (click to focus)',
+        summaryNoDiff: 'No changed files vs current base ref.',
+        summaryCommits: 'Branch Commits',
+        summaryNoCommits: 'No new commits relative to base ref.',
+        summaryClaims: 'Briefing Claims',
+        summaryPruneHint: 'Toggle "Changed Only" to prune unrelated branches from the Canvas.',
+        jumpEditor: 'Jump to Editor (Enter)',
+        loadingSnippet: 'Loading source preview...',
+        loadingDiff: 'Loading git diff...',
+        noDiffForFile: 'No git diff changes for: ',
+        notFileNode: 'This node is not bound to a specific file path.',
+        dirHelp: 'Wire a Constraint, Question, or Rework node directly to:',
+        dirPathReq: 'File path is required.',
+        dirPlaceholder: 'Required: describe what the Agent must fix, preserve, or verify...',
+        dirWireBtn: '+ Wire to Canvas',
+        dirCopyBtn: 'Copy Markdown',
+        delDirBtn: 'Delete Directive Node',
+        signalsTitle: 'Verification Signals',
+        noSignals: 'No verification signals attached (UNKNOWN).',
+        blindSpotsTitle: 'Declared Blind Spots',
+        noBlindSpots: 'None declared.',
+        guardrailsTitle: 'Repository Guardrails (.atlas/manifest.json)',
+        noGuardrails: 'No guardrails declared.',
+        staleText: (t, h) => 'STALE BRIEFING: Target ref (' + t + ') differs from HEAD (' + h + ').'
+      }
+    };
+
+    let lang = 'zh';
+    let graph = { mode: 'hybrid', nodes: [], edges: [], summary: {}, architecture: null, branchSummary: null };
     let nodeById = new Map();
     let gitCtx = null;
     let baseRef = 'HEAD';
@@ -641,8 +794,10 @@ export function getCanvasHtml(nonce: string): string {
     let lastBriefingKey = '';
     let viewMode = 'hybrid';
     let deltaOverlay = false;
+    let pruneUnchanged = false;
+    let summaryOpen = false;
     let focusMode = false;
-    let activeChipFilter = ''; // '', 'mismatch', 'blocking', 'directive'
+    let activeChipFilter = '';
     let searchQuery = '';
     let searchMatches = [];
     let searchMatchIdx = 0;
@@ -655,6 +810,7 @@ export function getCanvasHtml(nonce: string): string {
     let snippetCache = new Map();
     let diffCache = new Map();
     let edgeRaf = 0;
+    let pendingCenterNodeId = null;
 
     let cam = { x: 60, y: 60, scale: 1 };
 
@@ -667,6 +823,11 @@ export function getCanvasHtml(nonce: string): string {
     const edgesSvg = document.getElementById('edgesSvg');
     const nodesLayer = document.getElementById('nodesLayer');
     const inspector = document.getElementById('inspector');
+    const summaryDrawer = document.getElementById('summaryDrawer');
+
+    function t(key) {
+      return (I18N[lang] && I18N[lang][key]) || I18N.zh[key] || key;
+    }
 
     function esc(s) {
       return String(s ?? '')
@@ -674,6 +835,35 @@ export function getCanvasHtml(nonce: string): string {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
+    }
+
+    function applyStaticTranslations() {
+      document.getElementById('mAtlas').textContent = t('atlas');
+      document.getElementById('mBriefing').textContent = t('briefing');
+      document.getElementById('mHybrid').textContent = t('hybrid');
+      document.getElementById('btnSummaryToggle').textContent = t('summaryBtn');
+      document.getElementById('btnPruneToggle').textContent = pruneUnchanged ? t('pruneOn') : t('pruneOff');
+      document.getElementById('btnPruneToggle').classList.toggle('active', pruneUnchanged);
+      document.getElementById('searchInput').placeholder = t('searchPh');
+      document.getElementById('btnDeltaToggle').textContent = deltaOverlay ? t('deltaOn') : t('deltaOff');
+      document.getElementById('btnFocusToggle').textContent = focusMode ? t('focusOn') : t('focusOff');
+      document.getElementById('btnRefresh').textContent = t('refresh');
+      document.getElementById('btnCopyDirs').textContent = t('exportDir');
+      document.getElementById('btnVerifyBriefing').textContent = t('verifyJson');
+      document.getElementById('btnReverifyStale').textContent = t('reverify');
+      document.getElementById('btnLangToggle').textContent = t('langBtn');
+      document.getElementById('btnFitView').textContent = t('fit');
+      document.getElementById('btnAutoLayout').textContent = t('tidy');
+      document.getElementById('btnExpandAll').textContent = t('expand');
+      document.getElementById('btnCollapseDomains').textContent = t('collapse');
+      document.getElementById('btnLegendToggle').textContent = t('legendBtn');
+      document.getElementById('legendPopover').innerHTML = t('legendHtml');
+      document.getElementById('summaryDrawerTitle').textContent = t('summaryTitle');
+      document.getElementById('tabCode').textContent = t('tabCode');
+      document.getElementById('tabDiff').textContent = t('tabDiff');
+      document.getElementById('tabDir').textContent = t('tabDir');
+      document.getElementById('tabTrust').textContent = t('tabTrust');
+      document.getElementById('btnInspFocus').textContent = t('inspFocus');
     }
 
     function applyCamera() {
@@ -733,10 +923,9 @@ export function getCanvasHtml(nonce: string): string {
     }
 
     function getNodeHeight(id) {
-      return measuredHeights.get(id) || 124;
+      return measuredHeights.get(id) || 128;
     }
 
-    // Overlap-free tidy tree layout using true subtree bounding heights
     function computeTidyLayout(forceReset = false) {
       const childrenMap = getChildrenMap();
       const visible = getVisibleNodeIds();
@@ -868,11 +1057,10 @@ export function getCanvasHtml(nonce: string): string {
       const list = [];
       let expandedAny = false;
       for (const n of graph.nodes) {
-        const hay = (n.title + ' ' + (n.subtitle || '') + ' ' + (n.body || '') + ' ' + (n.path || '')).toLowerCase();
+        const hay = (n.title + ' ' + (n.subtitle || '') + ' ' + (n.body || '') + ' ' + (n.path || '') + ' ' + (n.layer || '')).toLowerCase();
         if (hay.includes(q)) {
           matched.add(n.id);
           list.push(n.id);
-          // Auto-expand collapsed ancestors so matches are visible
           let cur = n.parentId ? nodeById.get(n.parentId) : null;
           while (cur) {
             if (collapsedIds.has(cur.id)) {
@@ -932,7 +1120,7 @@ export function getCanvasHtml(nonce: string): string {
         if (e.label) {
           const mx = (x1 + x2) / 2;
           const my = (y1 + y2) / 2;
-          const pw = e.label.length * 6.5 + 12;
+          const pw = e.label.length * 8 + 14;
           svgHtml += '<rect class="edge-pill ' + esc(e.kind) + (dimmed ? ' dimmed' : '') + '" x="' + (mx - pw / 2) + '" y="' + (my - 9) + '" width="' + pw + '" height="16" rx="8" />';
           svgHtml += '<text class="edge-label ' + esc(e.kind) + (dimmed ? ' dimmed' : '') + '" x="' + mx + '" y="' + (my + 3) + '" text-anchor="middle">' + esc(e.label) + '</text>';
         }
@@ -948,10 +1136,93 @@ export function getCanvasHtml(nonce: string): string {
       });
     }
 
+    function renderBranchSummaryDrawer() {
+      const el = document.getElementById('summaryBody');
+      const bs = graph.branchSummary;
+      if (!bs) {
+        el.innerHTML = '<div style="color:var(--muted);font-size:12px;">' + esc(t('noGit')) + '</div>';
+        return;
+      }
+
+      let html =
+        '<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">' +
+          '<code>' + esc(bs.branch) + '</code> vs <code>' + esc(bs.baseRef) + '</code>' +
+        '</div>' +
+        '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;">' + esc(t('summaryPruneHint')) + '</div>';
+
+      // Impacted Domains
+      html += '<div class="summary-sec">' + esc(t('summaryImpacted')) + ' (' + bs.impactedDomains.length + ')</div>';
+      if (bs.impactedDomains.length === 0) {
+        html += '<div style="font-size:11.5px;color:var(--muted);">' + esc(t('summaryNoDiff')) + '</div>';
+      } else {
+        for (const d of bs.impactedDomains) {
+          html +=
+            '<div class="summary-item" data-jump-node="' + esc(d.nodeId) + '" data-expand-dom="' + esc(d.domainId) + '">' +
+              '<div class="summary-item-top">' +
+                '<span>' + esc(d.name) + '</span>' +
+                '<span><span class="diff-add">+' + d.additions + '</span> <span class="diff-del">-' + d.deletions + '</span></span>' +
+              '</div>' +
+              '<div class="summary-item-sub">' +
+                (d.layer ? esc(d.layer) + ' · ' : '') + d.changedFiles + (lang === 'zh' ? ' 个变更文件' : ' changed files') +
+              '</div>' +
+            '</div>';
+        }
+      }
+
+      // Briefing Claims linked directly to Canvas
+      if (bs.claimItems && bs.claimItems.length > 0) {
+        html += '<div class="summary-sec">' + esc(t('summaryClaims')) + ' (' + bs.claimItems.length + ')</div>';
+        for (const c of bs.claimItems) {
+          html +=
+            '<div class="summary-item" data-jump-node="' + esc(c.nodeId) + '">' +
+              '<div class="summary-item-top">' +
+                '<span>' + esc(c.id + ' · ' + c.title) + '</span>' +
+                '<span class="badge badge-' + esc(c.badge) + '">' + esc((t('badge')[c.badge] || c.badge)) + '</span>' +
+              '</div>' +
+            '</div>';
+        }
+      }
+
+      // Commits on this branch
+      html += '<div class="summary-sec">' + esc(t('summaryCommits')) + ' (' + bs.commits.length + ')</div>';
+      if (bs.commits.length === 0) {
+        html += '<div style="font-size:11.5px;color:var(--muted);">' + esc(t('summaryNoCommits')) + '</div>';
+      } else {
+        for (const cm of bs.commits) {
+          html +=
+            '<div class="commit-row">' +
+              '<span class="commit-sha">' + esc(cm.sha) + '</span>' +
+              '<span>' + esc(cm.subject) + '</span>' +
+            '</div>';
+        }
+      }
+
+      el.innerHTML = html;
+
+      el.querySelectorAll('[data-jump-node]').forEach(item => {
+        item.addEventListener('click', () => {
+          const nid = item.dataset.jumpNode;
+          const domId = item.dataset.expandDom;
+          if (domId) {
+            pendingCenterNodeId = nid;
+            vscode.postMessage({ type: 'expandDomainFiles', domainId: domId });
+          }
+          if (nodeById.has(nid)) {
+            collapsedIds.delete(nid);
+            selectedNodeId = nid;
+            focusMode = true;
+            syncFocusButtons();
+            selectNode(nid);
+            centerOnNode(nid);
+          }
+        });
+      });
+    }
+
     function renderSubbar() {
       const bcEl = document.getElementById('breadcrumbs');
       if (!selectedNodeId || !nodeById.has(selectedNodeId)) {
-        bcEl.innerHTML = '<span>Click any node to inspect · Double-click to focus branch</span>';
+        bcEl.innerHTML = '<span>' + esc(t('defaultCrumb')) + '</span>';
       } else {
         const chain = [];
         let cur = nodeById.get(selectedNodeId);
@@ -973,13 +1244,14 @@ export function getCanvasHtml(nonce: string): string {
 
       const s = graph.summary || {};
       const chips = [];
-      if (s.verified > 0) chips.push('<span class="chip ok" data-chip="trust">Verified ' + s.verified + '</span>');
-      if (s.mismatch > 0) chips.push('<span class="chip err' + (activeChipFilter === 'mismatch' ? ' active' : '') + '" data-chip="mismatch" title="Filter mismatched nodes">Mismatch ' + s.mismatch + '</span>');
-      if (s.stale > 0) chips.push('<span class="chip warn" data-chip="trust">Stale ' + s.stale + '</span>');
-      if (s.blockingCount > 0) chips.push('<span class="chip warn' + (activeChipFilter === 'blocking' ? ' active' : '') + '" data-chip="blocking" title="Filter blocking forks">Guards ' + s.blockingCount + '</span>');
-      if (s.signals && s.signals.length > 0) chips.push('<span class="chip" data-chip="trust" title="Open Verification Signals">Signals ' + s.signals.length + '</span>');
-      if (s.blindSpots && s.blindSpots.length > 0) chips.push('<span class="chip warn" data-chip="trust" title="View Declared Blind Spots">Blind Spots ' + s.blindSpots.length + '</span>');
-      if (s.directiveCount > 0) chips.push('<span class="chip dir' + (activeChipFilter === 'directive' ? ' active' : '') + '" data-chip="directive" title="Filter directive nodes">Directives ' + s.directiveCount + '</span>');
+      if (s.verified > 0) chips.push('<span class="chip ok" data-chip="trust">' + (lang === 'zh' ? '已核验 ' : 'Verified ') + s.verified + '</span>');
+      if (s.mismatch > 0) chips.push('<span class="chip err' + (activeChipFilter === 'mismatch' ? ' active' : '') + '" data-chip="mismatch">' + (lang === 'zh' ? '失配 ' : 'Mismatch ') + s.mismatch + '</span>');
+      if (s.stale > 0) chips.push('<span class="chip warn" data-chip="trust">' + (lang === 'zh' ? '过期 ' : 'Stale ') + s.stale + '</span>');
+      if (s.blockingCount > 0) chips.push('<span class="chip warn' + (activeChipFilter === 'blocking' ? ' active' : '') + '" data-chip="blocking">' + (lang === 'zh' ? '阻断 ' : 'Guards ') + s.blockingCount + '</span>');
+      if (s.signals && s.signals.length > 0) chips.push('<span class="chip" data-chip="trust">' + (lang === 'zh' ? '信号 ' : 'Signals ') + s.signals.length + '</span>');
+      if (s.blindSpots && s.blindSpots.length > 0) chips.push('<span class="chip warn" data-chip="trust">' + (lang === 'zh' ? '盲区 ' : 'Blind Spots ') + s.blindSpots.length + '</span>');
+      if (s.directiveCount > 0) chips.push('<span class="chip dir' + (activeChipFilter === 'directive' ? ' active' : '') + '" data-chip="directive">' + (lang === 'zh' ? '批注 ' : 'Directives ') + s.directiveCount + '</span>');
+      if (s.prunedCount > 0) chips.push('<span class="chip">' + (lang === 'zh' ? '已剪枝 ' : 'Pruned ') + s.prunedCount + '</span>');
 
       const tc = document.getElementById('trustChips');
       tc.innerHTML = chips.join('');
@@ -997,7 +1269,6 @@ export function getCanvasHtml(nonce: string): string {
       });
     }
 
-    // In-place visual patching — NEVER destroys DOM on click/select/focus/search!
     function syncVisualClasses() {
       const focusedSet = getFocusedSet();
       const chipSet = computeFilterSet();
@@ -1013,11 +1284,12 @@ export function getCanvasHtml(nonce: string): string {
       renderSubbar();
     }
 
-    // Rebuild DOM only when graph topology or collapsed set changes
     function buildNodeDom(remeasure = false) {
       const childrenMap = getChildrenMap();
       const visible = getVisibleNodeIds();
       nodesLayer.innerHTML = '';
+      const kindLabels = t('kind');
+      const badgeLabels = t('badge');
 
       for (const n of graph.nodes) {
         if (!visible.has(n.id)) continue;
@@ -1033,7 +1305,7 @@ export function getCanvasHtml(nonce: string): string {
 
         const diffHtml = n.changed && (n.additions !== undefined || n.deletions !== undefined)
           ? '<span><span class="diff-add">+' + (n.additions || 0) + '</span> <span class="diff-del">-' + (n.deletions || 0) + '</span></span>'
-          : (n.changed ? '<span style="color:var(--yellow);">modified</span>' : '<span></span>');
+          : (n.changed ? '<span style="color:var(--yellow);">' + (lang === 'zh' ? '有变更' : 'modified') + '</span>' : '<span></span>');
 
         let middleHtml = '';
         if (n.kind === 'blocking' && n.condition) {
@@ -1046,21 +1318,33 @@ export function getCanvasHtml(nonce: string): string {
           middleHtml = '<div class="node-body">' + esc(n.body) + '</div>';
         }
 
-        const quickActionHtml = n.path
-          ? '<button class="quick-jump" data-jump-path="' + esc(n.path) + '" data-jump-line="' + esc(n.startLine || 1) + '">Open ↗</button>'
-          : (kids.length > 0 ? '<span>' + kids.length + ' items</span>' : '<span></span>');
+        let footerRight = '';
+        if (n.kind === 'domain' && n.canExpandFiles && n.domainId) {
+          const lbl = n.filesExpanded
+            ? t('collapseDomainFiles')
+            : (t('expandDomainFiles') + ' (' + (n.fileCount || 0) + ')');
+          footerRight = '<button class="quick-btn" data-toggle-dom="' + esc(n.domainId) + '">' + esc(lbl) + '</button>';
+        } else if (n.path) {
+          footerRight = '<button class="quick-btn quick-jump" data-jump-path="' + esc(n.path) + '" data-jump-line="' + esc(n.startLine || 1) + '">' + esc(t('openBtn')) + '</button>';
+        } else if (kids.length > 0) {
+          footerRight = '<span>' + kids.length + (lang === 'zh' ? ' 项' : ' items') + '</span>';
+        }
+
+        const topRight = n.badge
+          ? '<span class="badge badge-' + esc(n.badge) + '">' + esc(badgeLabels[n.badge] || n.badge) + '</span>'
+          : (n.layer ? '<span class="layer-tag" title="' + esc(n.layer) + '">' + esc(n.layer) + '</span>' : '');
 
         el.innerHTML =
           '<div class="node-top">' +
-            '<span class="node-kind">' + esc(n.kind) + '</span>' +
-            (n.badge ? '<span class="badge badge-' + esc(n.badge) + '">' + esc(n.badge) + '</span>' : '') +
+            '<span class="node-kind">' + esc(kindLabels[n.kind] || n.kind) + '</span>' +
+            topRight +
           '</div>' +
           '<div class="node-title">' + esc(n.title) + '</div>' +
           (n.subtitle ? '<div class="node-sub" title="' + esc(n.subtitle) + '">' + esc(n.subtitle) + '</div>' : '') +
           middleHtml +
-          '<div class="node-footer">' + diffHtml + quickActionHtml + '</div>';
+          '<div class="node-footer">' + diffHtml + footerRight + '</div>';
 
-        const qj = el.querySelector('.quick-jump');
+        const qj = el.querySelector('[data-jump-path]');
         if (qj) {
           qj.addEventListener('mousedown', (ev) => ev.stopPropagation());
           qj.addEventListener('click', (ev) => {
@@ -1069,10 +1353,20 @@ export function getCanvasHtml(nonce: string): string {
           });
         }
 
+        const domToggle = el.querySelector('[data-toggle-dom]');
+        if (domToggle) {
+          domToggle.addEventListener('mousedown', (ev) => ev.stopPropagation());
+          domToggle.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            pendingCenterNodeId = n.id;
+            collapsedIds.delete(n.id);
+            vscode.postMessage({ type: 'toggleDomainFiles', domainId: domToggle.dataset.toggleDom });
+          });
+        }
+
         if (kids.length > 0) {
           const btn = document.createElement('button');
           btn.className = 'collapse-btn';
-          btn.title = isCollapsed ? 'Expand subtree' : 'Collapse subtree';
           btn.textContent = isCollapsed ? String(kids.length) : '−';
           btn.addEventListener('mousedown', (ev) => ev.stopPropagation());
           btn.addEventListener('click', (ev) => {
@@ -1136,7 +1430,6 @@ export function getCanvasHtml(nonce: string): string {
             changed = true;
           }
         });
-        // Re-layout ONLY non-manually-dragged nodes
         if (changed && manualPositions.size === 0) {
           computeTidyLayout(true);
           nodesLayer.querySelectorAll('.node').forEach(el => {
@@ -1154,7 +1447,7 @@ export function getCanvasHtml(nonce: string): string {
 
     function syncFocusButtons() {
       const btn = document.getElementById('btnFocusToggle');
-      btn.textContent = 'Focus: ' + (focusMode ? 'ON' : 'OFF');
+      btn.textContent = focusMode ? t('focusOn') : t('focusOff');
       btn.classList.toggle('active', focusMode);
       const ibtn = document.getElementById('btnInspFocus');
       if (ibtn) ibtn.classList.toggle('active', focusMode);
@@ -1195,15 +1488,17 @@ export function getCanvasHtml(nonce: string): string {
 
     function renderInspector(node) {
       const el = document.getElementById('inspContent');
-      document.querySelectorAll('.insp-tab').forEach(t => {
-        t.classList.toggle('active', t.dataset.itab === inspectorTab);
+      document.querySelectorAll('.insp-tab').forEach(tb => {
+        tb.classList.toggle('active', tb.dataset.itab === inspectorTab);
       });
+      const kindLabels = t('kind');
+      const badgeLabels = t('badge');
 
       if (inspectorTab === 'trust') {
         const s = graph.summary || {};
-        let html = '<div style="font-weight:600;margin-bottom:6px;">Verification Signals</div>';
+        let html = '<div style="font-weight:600;margin-bottom:6px;">' + esc(t('signalsTitle')) + '</div>';
         if (!s.signals || s.signals.length === 0) {
-          html += '<div style="color:var(--muted);font-size:12px;margin-bottom:12px;">No verification signals attached (status: UNKNOWN).</div>';
+          html += '<div style="color:var(--muted);font-size:12px;margin-bottom:12px;">' + esc(t('noSignals')) + '</div>';
         } else {
           for (const sig of s.signals) {
             const sb = sig.status === 'passed' ? 'verified' : (sig.status === 'failed' ? 'mismatch' : 'unknown');
@@ -1216,16 +1511,16 @@ export function getCanvasHtml(nonce: string): string {
           }
         }
 
-        html += '<div style="font-weight:600;margin:12px 0 6px;color:var(--amber);">Declared Blind Spots</div>';
+        html += '<div style="font-weight:600;margin:12px 0 6px;color:var(--amber);">' + esc(t('blindSpotsTitle')) + '</div>';
         if (!s.blindSpots || s.blindSpots.length === 0) {
-          html += '<div style="color:var(--muted);font-size:12px;margin-bottom:12px;">None declared.</div>';
+          html += '<div style="color:var(--muted);font-size:12px;margin-bottom:12px;">' + esc(t('noBlindSpots')) + '</div>';
         } else {
           html += '<ul style="margin:0 0 12px;padding-left:18px;font-size:12px;">' + s.blindSpots.map(b => '<li>' + esc(b) + '</li>').join('') + '</ul>';
         }
 
-        html += '<div style="font-weight:600;margin:12px 0 6px;">Repository Guardrails (.atlas/manifest.json)</div>';
+        html += '<div style="font-weight:600;margin:12px 0 6px;">' + esc(t('guardrailsTitle')) + '</div>';
         if (!s.guardrails || s.guardrails.length === 0) {
-          html += '<div style="color:var(--muted);font-size:12px;">No guardrails declared in .atlas/manifest.json.</div>';
+          html += '<div style="color:var(--muted);font-size:12px;">' + esc(t('noGuardrails')) + '</div>';
         } else {
           html += '<ul style="margin:0;padding-left:18px;font-size:12px;">' + s.guardrails.map(g => '<li>' + esc(g) + '</li>').join('') + '</ul>';
         }
@@ -1236,19 +1531,19 @@ export function getCanvasHtml(nonce: string): string {
 
       if (inspectorTab === 'diff') {
         if (!node.path) {
-          el.innerHTML = '<div style="color:var(--muted);">This node is not bound to a specific file path.</div>';
+          el.innerHTML = '<div style="color:var(--muted);">' + esc(t('notFileNode')) + '</div>';
           return;
         }
         const diffText = diffCache.get(node.id);
         if (diffText === undefined) {
-          el.innerHTML = '<div style="color:var(--muted);">Loading git diff vs <code>' + esc(baseRef) + '</code>...</div>';
+          el.innerHTML = '<div style="color:var(--muted);">' + esc(t('loadingDiff')) + '</div>';
           return;
         }
         if (!diffText.trim()) {
-          el.innerHTML = '<div style="color:var(--muted);">No git diff changes for <code>' + esc(node.path) + '</code> against <code>' + esc(baseRef) + '</code>.</div>';
+          el.innerHTML = '<div style="color:var(--muted);">' + esc(t('noDiffForFile')) + '<code>' + esc(node.path) + '</code></div>';
           return;
         }
-        let dHtml = '<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Diff vs <code>' + esc(baseRef) + '</code></div><div class="code-box">';
+        let dHtml = '<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">vs <code>' + esc(baseRef) + '</code></div><div class="code-box">';
         for (const line of diffText.split(/\\r?\\n/)) {
           let cls = '';
           if (line.startsWith('+') && !line.startsWith('+++')) cls = ' diff-plus';
@@ -1264,21 +1559,21 @@ export function getCanvasHtml(nonce: string): string {
       if (inspectorTab === 'directive') {
         const defaultPath = node.defaultDirectivePath || node.path || '';
         el.innerHTML =
-          '<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Wire a Constraint, Question, or Rework node directly to <strong>' + esc(node.title) + '</strong>.</div>' +
+          '<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">' + esc(t('dirHelp')) + ' <strong>' + esc(node.title) + '</strong></div>' +
           '<div style="display:flex;gap:6px;margin-bottom:8px;">' +
             '<select id="inspDirKind">' +
-              '<option value="rework">Rework</option>' +
-              '<option value="constraint">Constraint</option>' +
-              '<option value="question">Question</option>' +
+              '<option value="rework">' + (lang === 'zh' ? '返工' : 'Rework') + '</option>' +
+              '<option value="constraint">' + (lang === 'zh' ? '约束红线' : 'Constraint') + '</option>' +
+              '<option value="question">' + (lang === 'zh' ? '疑问' : 'Question') + '</option>' +
             '</select>' +
             '<input id="inspDirPath" value="' + esc(defaultPath) + '" placeholder="relative/path.ts" style="flex:1;" />' +
             '<input id="inspDirLine" type="number" min="1" value="' + esc(node.startLine || 1) + '" style="width:68px;" />' +
           '</div>' +
-          '<textarea id="inspDirNote" rows="4" style="width:100%;" placeholder="Required: describe what the Agent must fix, preserve, or verify..."></textarea>' +
+          '<textarea id="inspDirNote" rows="4" style="width:100%;" placeholder="' + esc(t('dirPlaceholder')) + '"></textarea>' +
           '<div id="dirValidation" style="font-size:11px;color:var(--red);margin-top:4px;min-height:15px;"></div>' +
           '<div style="display:flex;gap:6px;margin-top:6px;">' +
-            '<button id="btnAddCanvasDir" disabled>+ Wire Node to Canvas</button>' +
-            '<button class="secondary" id="btnInspCopyDirs">Copy Markdown</button>' +
+            '<button id="btnAddCanvasDir" disabled>' + esc(t('dirWireBtn')) + '</button>' +
+            '<button class="secondary" id="btnInspCopyDirs">' + esc(t('dirCopyBtn')) + '</button>' +
           '</div>';
 
         const pathInput = document.getElementById('inspDirPath');
@@ -1289,16 +1584,9 @@ export function getCanvasHtml(nonce: string): string {
         function validateForm() {
           const p = pathInput.value.trim();
           const n = noteInput.value.trim();
-          if (!p) {
-            valEl.textContent = 'File path is required.';
-            addBtn.disabled = true;
-          } else if (!n) {
-            valEl.textContent = '';
-            addBtn.disabled = true;
-          } else {
-            valEl.textContent = '';
-            addBtn.disabled = false;
-          }
+          if (!p) { valEl.textContent = t('dirPathReq'); addBtn.disabled = true; }
+          else if (!n) { valEl.textContent = ''; addBtn.disabled = true; }
+          else { valEl.textContent = ''; addBtn.disabled = false; }
         }
         pathInput.addEventListener('input', validateForm);
         noteInput.addEventListener('input', validateForm);
@@ -1330,8 +1618,9 @@ export function getCanvasHtml(nonce: string): string {
       const snippet = snippetCache.get(node.id);
       let html =
         '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">' +
-          '<span class="node-kind">' + esc(node.kind) + '</span>' +
-          (node.badge ? '<span class="badge badge-' + esc(node.badge) + '">' + esc(node.badge) + '</span>' : '') +
+          '<span class="node-kind">' + esc(kindLabels[node.kind] || node.kind) + '</span>' +
+          (node.badge ? '<span class="badge badge-' + esc(node.badge) + '">' + esc(badgeLabels[node.badge] || node.badge) + '</span>' : '') +
+          (node.layer ? '<span class="layer-tag">' + esc(node.layer) + '</span>' : '') +
         '</div>';
 
       if (node.subtitle) {
@@ -1341,7 +1630,7 @@ export function getCanvasHtml(nonce: string): string {
         html +=
           '<div class="blocking-box" style="margin-bottom:10px;">' +
             '<div class="blocking-if">IF: ' + esc(node.condition) + '</div>' +
-            '<div class="blocking-then">OUTCOME: ' + esc(node.outcome || '') + '</div>' +
+            '<div class="blocking-then">→ ' + esc(node.outcome || '') + '</div>' +
           '</div>';
       } else if (node.body) {
         html += '<p style="margin:0 0 10px;">' + esc(node.body) + '</p>';
@@ -1354,13 +1643,13 @@ export function getCanvasHtml(nonce: string): string {
       }
 
       if (node.directiveId) {
-        html += '<div style="margin:8px 0;"><button class="danger" id="btnRemoveDir">Delete This Directive Node</button></div>';
+        html += '<div style="margin:8px 0;"><button class="danger" id="btnRemoveDir">' + esc(t('delDirBtn')) + '</button></div>';
       }
 
       if (node.path) {
         html +=
           '<div style="display:flex;gap:6px;align-items:center;margin:10px 0;">' +
-            '<button id="btnJumpCode">Jump to Editor (Enter)</button>' +
+            '<button id="btnJumpCode">' + esc(t('jumpEditor')) + '</button>' +
             (snippet && snippet.refUsed ? '<span style="font-family:var(--mono);font-size:10.5px;color:var(--muted);">ref: ' + esc(snippet.refUsed) + '</span>' : '') +
           '</div>';
         if (snippet && snippet.error) {
@@ -1376,7 +1665,7 @@ export function getCanvasHtml(nonce: string): string {
           }
           html += '</div>';
         } else {
-          html += '<div style="font-size:11.5px;color:var(--muted);">Loading source preview...</div>';
+          html += '<div style="font-size:11.5px;color:var(--muted);">' + esc(t('loadingSnippet')) + '</div>';
         }
       }
 
@@ -1398,7 +1687,7 @@ export function getCanvasHtml(nonce: string): string {
       }
     }
 
-    // Inspector tabs
+    // Bind UI events
     document.querySelectorAll('.insp-tab').forEach(btn => {
       btn.addEventListener('click', () => {
         inspectorTab = btn.dataset.itab;
@@ -1407,7 +1696,6 @@ export function getCanvasHtml(nonce: string): string {
       });
     });
 
-    // Mode toggle
     document.querySelectorAll('#modeControl button').forEach(btn => {
       btn.addEventListener('click', () => {
         viewMode = btn.dataset.mode;
@@ -1419,16 +1707,45 @@ export function getCanvasHtml(nonce: string): string {
       });
     });
 
-    // Briefing & BaseRef selectors
     document.getElementById('briefingSelect').addEventListener('change', (ev) => {
-      if (ev.target.value) {
-        vscode.postMessage({ type: 'selectBriefing', path: ev.target.value });
-      }
+      if (ev.target.value) vscode.postMessage({ type: 'selectBriefing', path: ev.target.value });
     });
     document.getElementById('baseRefSelect').addEventListener('change', (ev) => {
       if (ev.target.value) {
         baseRef = ev.target.value;
         vscode.postMessage({ type: 'setBaseRef', baseRef });
+      }
+    });
+    document.getElementById('btnLangToggle').addEventListener('click', () => {
+      lang = lang === 'zh' ? 'en' : 'zh';
+      vscode.postMessage({ type: 'setLang', lang });
+    });
+    document.getElementById('btnSummaryToggle').addEventListener('click', () => {
+      summaryOpen = !summaryOpen;
+      summaryDrawer.classList.toggle('hidden', !summaryOpen);
+      document.getElementById('btnSummaryToggle').classList.toggle('active', summaryOpen);
+    });
+    document.getElementById('btnCloseSummary').addEventListener('click', () => {
+      summaryOpen = false;
+      summaryDrawer.classList.add('hidden');
+      document.getElementById('btnSummaryToggle').classList.remove('active');
+    });
+    document.getElementById('btnPruneToggle').addEventListener('click', () => {
+      pruneUnchanged = !pruneUnchanged;
+      positions.clear();
+      manualPositions.clear();
+      vscode.postMessage({ type: 'setPruneUnchanged', value: pruneUnchanged });
+    });
+
+    document.getElementById('btnIndexFiles').addEventListener('click', () => {
+      const domainNodes = graph.nodes.filter(n => n.kind === 'domain' && n.domainId);
+      const anyExpanded = domainNodes.some(n => n.filesExpanded);
+      positions.clear();
+      manualPositions.clear();
+      if (anyExpanded) {
+        vscode.postMessage({ type: 'collapseAllFiles' });
+      } else {
+        vscode.postMessage({ type: 'expandAllFiles', domainIds: domainNodes.map(n => n.domainId) });
       }
     });
 
@@ -1493,7 +1810,7 @@ export function getCanvasHtml(nonce: string): string {
     });
     document.getElementById('btnDeltaToggle').addEventListener('click', (ev) => {
       deltaOverlay = !deltaOverlay;
-      ev.target.textContent = 'Delta: ' + (deltaOverlay ? 'ON' : 'OFF');
+      ev.target.textContent = deltaOverlay ? t('deltaOn') : t('deltaOff');
       ev.target.classList.toggle('active', deltaOverlay);
       syncVisualClasses();
     });
@@ -1540,55 +1857,34 @@ export function getCanvasHtml(nonce: string): string {
       }
     });
 
-    // Layered Esc & Keyboard Shortcuts
     window.addEventListener('keydown', (ev) => {
       const tag = document.activeElement?.tagName;
       const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
       if (ev.key === 'Escape') {
         if (inInput) {
           document.activeElement.blur();
-          if (searchQuery) {
-            searchQuery = '';
-            searchInput.value = '';
-            syncVisualClasses();
-          }
+          if (searchQuery) { searchQuery = ''; searchInput.value = ''; syncVisualClasses(); }
           return;
         }
         if (searchQuery || activeChipFilter) {
-          searchQuery = '';
-          searchInput.value = '';
-          activeChipFilter = '';
-          syncVisualClasses();
+          searchQuery = ''; searchInput.value = ''; activeChipFilter = ''; syncVisualClasses();
         } else if (focusMode) {
-          focusMode = false;
-          syncFocusButtons();
-          syncVisualClasses();
+          focusMode = false; syncFocusButtons(); syncVisualClasses();
         } else if (selectedNodeId) {
-          selectedNodeId = null;
-          inspector.classList.add('hidden');
-          syncVisualClasses();
+          selectedNodeId = null; inspector.classList.add('hidden'); syncVisualClasses();
         }
         return;
       }
       if (inInput) return;
-      if (ev.key === '/') {
-        ev.preventDefault();
-        searchInput.focus();
-      } else if (ev.key === 'f' || ev.key === 'F') {
-        fitView();
-      } else if (ev.key === '0') {
-        zoomAroundViewportCenter(1);
-      } else if (ev.key === 'd' || ev.key === 'D') {
-        document.getElementById('btnDeltaToggle').click();
-      } else if (ev.key === 'e' || ev.key === 'E') {
-        document.getElementById('btnExpandAll').click();
-      } else if (ev.key === 'c' || ev.key === 'C') {
-        document.getElementById('btnCollapseDomains').click();
-      } else if (ev.key === 'Enter' && selectedNodeId) {
+      if (ev.key === '/') { ev.preventDefault(); searchInput.focus(); }
+      else if (ev.key === 'f' || ev.key === 'F') fitView();
+      else if (ev.key === '0') zoomAroundViewportCenter(1);
+      else if (ev.key === 'd' || ev.key === 'D') document.getElementById('btnDeltaToggle').click();
+      else if (ev.key === 'e' || ev.key === 'E') document.getElementById('btnExpandAll').click();
+      else if (ev.key === 'c' || ev.key === 'C') document.getElementById('btnCollapseDomains').click();
+      else if (ev.key === 'Enter' && selectedNodeId) {
         const cur = nodeById.get(selectedNodeId);
-        if (cur && cur.path) {
-          vscode.postMessage({ type: 'openFile', path: cur.path, line: cur.startLine || 1 });
-        }
+        if (cur && cur.path) vscode.postMessage({ type: 'openFile', path: cur.path, line: cur.startLine || 1 });
       }
     });
 
@@ -1600,7 +1896,8 @@ export function getCanvasHtml(nonce: string): string {
         const briefingChanged = incomingBriefing !== lastBriefingKey;
         lastBriefingKey = incomingBriefing;
 
-        // Always invalidate snippet & diff caches on state refresh
+        lang = msg.payload.lang || lang;
+        pruneUnchanged = Boolean(msg.payload.pruneUnchanged);
         snippetCache.clear();
         diffCache.clear();
 
@@ -1615,9 +1912,29 @@ export function getCanvasHtml(nonce: string): string {
         availableBriefings = msg.payload.availableBriefings || [];
         activeBriefingPath = incomingBriefing;
 
-        // Sync dropdowns
+        applyStaticTranslations();
+
+        // Architecture pill + small-project 1-click file expansion button
+        const archPill = document.getElementById('archPill');
+        const indexBtn = document.getElementById('btnIndexFiles');
+        if (graph.architecture) {
+          const a = graph.architecture;
+          archPill.style.display = 'inline-block';
+          archPill.textContent = (lang === 'zh' ? a.patternLabelZh : a.patternLabelEn) + ' · ' + a.totalFiles + (lang === 'zh' ? ' 文件' : ' files');
+          if (a.scale === 'small' && viewMode !== 'briefing') {
+            const anyExp = graph.nodes.some(n => n.kind === 'domain' && n.filesExpanded);
+            indexBtn.style.display = 'inline-block';
+            indexBtn.textContent = anyExp ? t('collapseFiles') : t('indexFiles');
+          } else {
+            indexBtn.style.display = 'none';
+          }
+        } else {
+          archPill.style.display = 'none';
+          indexBtn.style.display = 'none';
+        }
+
         const bSel = document.getElementById('briefingSelect');
-        bSel.innerHTML = '<option value="">-- Briefing --</option>' +
+        bSel.innerHTML = '<option value="">' + esc(t('selectBriefing')) + '</option>' +
           availableBriefings.map(b =>
             '<option value="' + esc(b.path) + '"' + (b.path === activeBriefingPath ? ' selected' : '') + '>' + esc(b.label) + '</option>'
           ).join('');
@@ -1628,35 +1945,38 @@ export function getCanvasHtml(nonce: string): string {
           '<option value="' + esc(r) + '"' + (r === baseRef ? ' selected' : '') + '>vs ' + esc(r) + '</option>'
         ).join('');
 
-        // Stale Banner
         const staleEl = document.getElementById('staleBanner');
         if (graph.summary && graph.summary.isStale) {
           staleEl.classList.remove('hidden');
-          document.getElementById('staleBannerText').textContent =
-            'STALE BRIEFING: Target ref (' + (graph.summary.targetRefClaimed || '?') + ') differs from current HEAD (' + (gitCtx?.shortSha || '?') + ').';
+          document.getElementById('staleBannerText').textContent = t('staleText')(graph.summary.targetRefClaimed || '?', gitCtx?.shortSha || '?');
         } else {
           staleEl.classList.add('hidden');
         }
 
-        // Empty-state overlay for non-git or Briefing mode without briefing
         const emptyEl = document.getElementById('emptyOverlay');
         if (msg.payload.error) {
           emptyEl.classList.remove('hidden');
-          document.getElementById('emptyTitle').textContent = 'Workspace Not Ready';
+          document.getElementById('emptyTitle').textContent = t('noGit');
           document.getElementById('emptyDesc').textContent = msg.payload.error;
           document.getElementById('btnEmptyVerify').style.display = 'none';
         } else if (graph.mode === 'briefing' && !(graph.summary && graph.summary.hasBriefing)) {
           emptyEl.classList.remove('hidden');
-          document.getElementById('emptyTitle').textContent = 'No Briefing Loaded';
-          document.getElementById('emptyDesc').textContent = 'Select a discovered briefing above or click Verify Briefing JSON to inspect verified claims and blocking forks.';
+          document.getElementById('emptyTitle').textContent = t('emptyBriefingTitle');
+          document.getElementById('emptyDesc').textContent = t('emptyBriefingDesc');
+          document.getElementById('btnEmptyVerify').textContent = t('verifyJson');
           document.getElementById('btnEmptyVerify').style.display = 'inline-block';
         } else {
           emptyEl.classList.add('hidden');
         }
 
         document.getElementById('gitPill').textContent = gitCtx
-          ? (gitCtx.branch + ' @ ' + gitCtx.shortSha + ' · ' + graph.nodes.length + ' nodes')
-          : 'No Git repo';
+          ? (gitCtx.branch + ' @ ' + gitCtx.shortSha)
+          : t('noGit');
+
+        // Auto-open Branch Summary if user has changes and it's first load? Keep toggle button badge visible
+        const sumBtn = document.getElementById('btnSummaryToggle');
+        const diffCnt = (graph.summary && graph.summary.changedFiles) || 0;
+        sumBtn.textContent = t('summaryBtn') + (diffCnt > 0 ? ' (' + diffCnt + ')' : '');
 
         const shouldReset = prevCount === 0 || briefingChanged || positions.size === 0;
         if (briefingChanged) {
@@ -1664,14 +1984,12 @@ export function getCanvasHtml(nonce: string): string {
           manualPositions.clear();
           collapsedIds.clear();
         }
-        // Progressive disclosure: auto-collapse on large initial graphs (> 28 nodes)
         if (shouldReset && graph.nodes.length > 28) {
           for (const n of graph.nodes) {
             if (n.kind === 'domain') collapsedIds.add(n.id);
           }
         }
 
-        // Close ghost Inspector if selected node no longer exists
         if (selectedNodeId && !nodeById.has(selectedNodeId)) {
           selectedNodeId = null;
           focusMode = false;
@@ -1679,9 +1997,16 @@ export function getCanvasHtml(nonce: string): string {
           inspector.classList.add('hidden');
         }
 
-        computeTidyLayout(shouldReset);
+        computeTidyLayout(shouldReset || manualPositions.size === 0);
         buildNodeDom(true);
-        if (shouldReset) fitView();
+        renderBranchSummaryDrawer();
+
+        if (pendingCenterNodeId && nodeById.has(pendingCenterNodeId)) {
+          centerOnNode(pendingCenterNodeId);
+          pendingCenterNodeId = null;
+        } else if (shouldReset) {
+          fitView();
+        }
 
         if (selectedNodeId && nodeById.has(selectedNodeId)) {
           selectNode(selectedNodeId);
@@ -1701,6 +2026,7 @@ export function getCanvasHtml(nonce: string): string {
       }
     });
 
+    applyStaticTranslations();
     vscode.postMessage({ type: 'ready' });
   </script>
 </body>

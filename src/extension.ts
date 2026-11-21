@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 import * as crypto from 'node:crypto';
 import {
+  getBranchCommits,
   getDiffStats,
   getFileDiff,
   getGitContext,
@@ -38,6 +39,9 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
   private baseRef = '';
   private viewMode: CanvasViewMode = 'hybrid';
   private didAutoDiscover = false;
+  private expandedDomainIds = new Set<string>();
+  private pruneUnchanged = false;
+  private lang: 'zh' | 'en' = vscode.env.language.toLowerCase().startsWith('zh') ? 'zh' : 'zh';
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -99,6 +103,44 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
             this.baseRef = msg.baseRef;
             await this.pushState();
           }
+          break;
+        case 'setLang':
+          if (msg.lang === 'zh' || msg.lang === 'en') {
+            this.lang = msg.lang;
+            await this.pushState();
+          }
+          break;
+        case 'toggleDomainFiles':
+          if (typeof msg.domainId === 'string' && msg.domainId) {
+            if (this.expandedDomainIds.has(msg.domainId)) {
+              this.expandedDomainIds.delete(msg.domainId);
+            } else {
+              this.expandedDomainIds.add(msg.domainId);
+            }
+            await this.pushState();
+          }
+          break;
+        case 'expandDomainFiles':
+          if (typeof msg.domainId === 'string' && msg.domainId) {
+            this.expandedDomainIds.add(msg.domainId);
+            await this.pushState();
+          }
+          break;
+        case 'expandAllFiles':
+          if (Array.isArray(msg.domainIds)) {
+            for (const id of msg.domainIds) {
+              if (typeof id === 'string') this.expandedDomainIds.add(id);
+            }
+            await this.pushState();
+          }
+          break;
+        case 'collapseAllFiles':
+          this.expandedDomainIds.clear();
+          await this.pushState();
+          break;
+        case 'setPruneUnchanged':
+          this.pruneUnchanged = Boolean(msg.value);
+          await this.pushState();
           break;
         case 'selectBriefing':
           if (typeof msg.path === 'string' && msg.path) {
@@ -460,10 +502,11 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
         return;
       }
 
-      const [diffStats, manifest, trackedFiles] = await Promise.all([
+      const [diffStats, manifest, trackedFiles, commits] = await Promise.all([
         getDiffStats(git.repoRoot, this.baseRef),
         loadAtlasManifest(git.repoRoot),
         listTrackedFiles(git.repoRoot),
+        getBranchCommits(git.repoRoot, this.baseRef),
       ]);
 
       const directives = this.getDirectives();
@@ -477,6 +520,7 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
           manifest: manifest ?? null,
           verification: this.lastVerification ?? null,
           directives,
+          lang: this.lang,
         },
       });
 
@@ -486,10 +530,14 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
           manifest,
           diffStats,
           trackedFiles,
+          commits,
           verification: this.lastVerification,
           directives,
           mode: this.viewMode,
           baseRef: this.baseRef,
+          expandedDomainIds: [...this.expandedDomainIds],
+          pruneUnchanged: this.pruneUnchanged,
+          lang: this.lang,
         });
         this.canvasPanel.webview.postMessage({
           type: 'canvasState',
@@ -499,6 +547,8 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
             graph,
             availableBriefings,
             activeBriefingPath: this.activeBriefingPath,
+            pruneUnchanged: this.pruneUnchanged,
+            lang: this.lang,
           },
         });
       }

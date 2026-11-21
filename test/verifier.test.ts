@@ -7,6 +7,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { verifyBriefing } from '../src/core/verifier.js';
 import { buildAtlasGraph } from '../src/core/graph.js';
+import { analyzeRepositoryArchitecture } from '../src/core/indexer.js';
 import { BriefingReport } from '../src/core/types.js';
 
 const execFileAsync = promisify(execFile);
@@ -284,4 +285,61 @@ test('verifyBriefing flags expectChanged as mismatch when baseRef is specified a
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
   }
+});
+
+test('analyzeRepositoryArchitecture detects DDD layered architecture and supports lazy expansion & branch pruning', () => {
+  const files = [
+    'src/interfaces/http/orderController.ts',
+    'src/application/placeOrder.ts',
+    'src/domain/order.ts',
+    'src/domain/orderItem.ts',
+    'src/infrastructure/pgOrderRepo.ts',
+  ];
+  const arch = analyzeRepositoryArchitecture(files, undefined, 'zh');
+  assert.equal(arch.patternId, 'ddd-layered');
+  assert.equal(arch.scale, 'small');
+  assert.equal(arch.domains.length, 4);
+
+  const domainId = arch.domains.find((d) => d.name === 'src/domain')!.id;
+
+  // Collapsed by default: no L2 'file' nodes
+  const collapsedGraph = buildAtlasGraph({
+    git: {
+      repoRoot: '/tmp/ddd-shop',
+      headSha: 'abc12345',
+      shortSha: 'abc12345',
+      branch: 'feat/order-guard',
+      dirtyCount: 1,
+      worktrees: [],
+      recentRefs: ['main'],
+    },
+    trackedFiles: files,
+    diffStats: [{ path: 'src/domain/order.ts', status: 'M', additions: 12, deletions: 2 }],
+    directives: [],
+    lang: 'zh',
+  });
+  assert.equal(collapsedGraph.nodes.some((n) => n.kind === 'file'), false);
+  assert.equal(collapsedGraph.branchSummary.impactedDomains.length, 1);
+
+  // Lazy expand src/domain: L2 'file' nodes appear
+  const expandedGraph = buildAtlasGraph({
+    git: {
+      repoRoot: '/tmp/ddd-shop',
+      headSha: 'abc12345',
+      shortSha: 'abc12345',
+      branch: 'feat/order-guard',
+      dirtyCount: 1,
+      worktrees: [],
+      recentRefs: ['main'],
+    },
+    trackedFiles: files,
+    diffStats: [{ path: 'src/domain/order.ts', status: 'M', additions: 12, deletions: 2 }],
+    directives: [],
+    expandedDomainIds: [domainId],
+    pruneUnchanged: true,
+    lang: 'zh',
+  });
+  assert.ok(expandedGraph.summary.prunedCount > 0);
+  assert.equal(expandedGraph.nodes.filter((n) => n.kind === 'domain').length, 1);
+  assert.ok(expandedGraph.nodes.some((n) => n.path === 'src/domain/order.ts'));
 });
