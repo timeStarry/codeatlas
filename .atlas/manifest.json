@@ -7,7 +7,7 @@
       "description": "Git snapshot resolution, diff stats, and deterministic claim/anchor verification.",
       "paths": ["src/core"],
       "entrypoints": [
-        { "path": "src/core/verifier.ts", "startLine": 138, "symbol": "verifyBriefing" },
+        { "path": "src/core/verifier.ts", "startLine": 163, "symbol": "verifyBriefing" },
         { "path": "src/core/git.ts", "startLine": 105, "symbol": "getGitContext" }
       ]
     },

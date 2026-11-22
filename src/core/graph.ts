@@ -1504,7 +1504,7 @@ export function buildAtlasGraph(params: {
       impactedDomains,
       briefingTitle: verification?.briefingTitle,
       briefingSummary: verification
-        ? `${lang === 'zh' ? '已核验' : 'Verified'} ${verification.summaryCounts.verified} · ${lang === 'zh' ? '失配' : 'Mismatch'} ${verification.summaryCounts.mismatch + blockingMismatch}`
+        ? `${lang === 'zh' ? '已核验' : 'Verified'} ${verification.summaryCounts.verified} · ${lang === 'zh' ? '不一致' : 'Mismatch'} ${verification.summaryCounts.mismatch + blockingMismatch}`
         : undefined,
       claimItems: claimSummaryItems,
     },

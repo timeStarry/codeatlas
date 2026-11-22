@@ -1,8 +1,36 @@
 import * as esbuild from 'esbuild';
 import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 const watch = process.argv.includes('--watch');
 const buildTest = process.argv.includes('--test');
+
+const CORE_GRAMMAR_WASMS = [
+  'tree-sitter-typescript.wasm',
+  'tree-sitter-tsx.wasm',
+  'tree-sitter-javascript.wasm',
+  'tree-sitter-rust.wasm',
+  'tree-sitter-python.wasm',
+  'tree-sitter-go.wasm',
+  'tree-sitter-java.wasm',
+  'tree-sitter-c.wasm',
+];
+
+function syncTreeSitterGrammars(outDir = 'dist/grammars') {
+  fs.mkdirSync(outDir, { recursive: true });
+  const runtimeWasm = 'node_modules/web-tree-sitter/tree-sitter.wasm';
+  if (fs.existsSync(runtimeWasm)) {
+    fs.copyFileSync(runtimeWasm, path.join(outDir, 'tree-sitter.wasm'));
+  }
+  for (const name of CORE_GRAMMAR_WASMS) {
+    const src = path.join('node_modules/tree-sitter-wasms/out', name);
+    if (fs.existsSync(src)) {
+      fs.copyFileSync(src, path.join(outDir, name));
+    }
+  }
+}
+
+syncTreeSitterGrammars('dist/grammars');
 
 const sharedNodeOptions = {
   bundle: true,

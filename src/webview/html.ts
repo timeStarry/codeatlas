@@ -291,10 +291,10 @@ export function getCockpitHtml(nonce: string): string {
 
     const BADGE_ZH = {
       verified: '✓ 已核验',
-      mismatch: '✕ 失配',
-      stale: '⟳ 过期',
-      unverified: '未核验',
-      unknown: '未知'
+      mismatch: '✕ 不一致',
+      stale: '⟳ 已陈旧',
+      unverified: '待核验',
+      unknown: '未声明'
     };
 
     let state = {
@@ -387,9 +387,9 @@ export function getCockpitHtml(nonce: string): string {
           '<div class="note">目标快照: <code>' + esc(v.targetRefClaimed) + '</code> · 当前 HEAD: <code>' + esc((v.currentHeadSha || 'UNBORN').slice(0, 8)) + '</code>' +
           (v.isStale ? ' <strong style="color:#d29922;">[已过期]</strong>' : '') + '</div>' +
           '<div class="note">已核验 ' + v.summaryCounts.verified +
-            ' · 失配 ' + v.summaryCounts.mismatch +
-            ' · 过期 ' + v.summaryCounts.stale +
-            ' · 未核验 ' + v.summaryCounts.unverified + '</div>' +
+            ' · 不一致 ' + v.summaryCounts.mismatch +
+            ' · 已陈旧 ' + v.summaryCounts.stale +
+            ' · 待核验 ' + v.summaryCounts.unverified + '</div>' +
         '</div>';
 
       if (v.blockingConditions && v.blockingConditions.length > 0) {

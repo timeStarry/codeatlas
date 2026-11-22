@@ -1,6 +1,7 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { classifyFileArtifact, IndexedDomain, RepoArchitecture } from './indexer.js';
+import { extractFileAstFacts } from './astAnalyzer.js';
 import { EvidenceAnchor } from './types.js';
 
 interface ParsedPackageInfo {
@@ -244,6 +245,72 @@ function resolveRelativeImportTarget(
   return undefined;
 }
 
+function resolveAstOrRelativeImport(
+  importerPosix: string,
+  specifier: string,
+  kind: string,
+  trackedSet: Set<string>
+): string | undefined {
+  // 1. Rust `use crate::foo::bar` or `use super::baz` or `mod child;`
+  if (kind === 'rust-use' || kind === 'rust-mod') {
+    const srcMarkerIdx = importerPosix.indexOf('/src/');
+    const crateSrcRoot =
+      srcMarkerIdx >= 0
+        ? importerPosix.slice(0, srcMarkerIdx + 4)
+        : importerPosix.startsWith('src/')
+          ? 'src'
+          : '';
+    const importerDir = path.posix.dirname(importerPosix);
+
+    if (kind === 'rust-mod') {
+      const modName = specifier.trim();
+      const cands = [`${importerDir}/${modName}.rs`, `${importerDir}/${modName}/mod.rs`];
+      return cands.find((c) => trackedSet.has(c));
+    }
+
+    const cleaned = specifier.split('{')[0].replace(/::\*$/, '').replace(/::$/, '').trim();
+    const parts = cleaned.split('::').filter(Boolean);
+    if (parts[0] === 'crate' && crateSrcRoot && parts.length >= 2) {
+      // Try progressive module prefixes (`crate::mod_a::mod_b::Struct` -> `src/mod_a/mod_b.rs` or `src/mod_a.rs`)
+      for (let len = Math.min(parts.length, 4); len >= 2; len--) {
+        const sub = parts.slice(1, len).join('/');
+        const hit = [`${crateSrcRoot}/${sub}.rs`, `${crateSrcRoot}/${sub}/mod.rs`].find((c) =>
+          trackedSet.has(c)
+        );
+        if (hit) return hit;
+      }
+    } else if (parts[0] === 'super' && parts.length >= 2) {
+      const parentDir = path.posix.dirname(importerDir);
+      const modSeg = parts[1];
+      const hit = [`${parentDir}/${modSeg}.rs`, `${parentDir}/${modSeg}/mod.rs`].find((c) =>
+        trackedSet.has(c)
+      );
+      if (hit) return hit;
+    }
+    return undefined;
+  }
+
+  // 2. Python relative imports (`from .engine import x` / `from ..shared import y`)
+  if (kind === 'py-import' && specifier.startsWith('.')) {
+    const m = /^(\.+)(.*)$/.exec(specifier);
+    if (m) {
+      const upCount = Math.max(0, m[1].length - 1);
+      let baseDir = path.posix.dirname(importerPosix);
+      for (let i = 0; i < upCount; i++) baseDir = path.posix.dirname(baseDir);
+      const rest = m[2].replace(/\./g, '/');
+      const joined = rest ? path.posix.normalize(`${baseDir}/${rest}`) : baseDir;
+      const hit = [`${joined}.py`, `${joined}/__init__.py`].find((c) => trackedSet.has(c));
+      if (hit) return hit;
+    }
+  }
+
+  // 3. Relative JS/TS/CJS imports (`./...`, `../...`)
+  if (specifier.startsWith('.')) {
+    return resolveRelativeImportTarget(importerPosix, specifier, trackedSet);
+  }
+  return undefined;
+}
+
 function inferExternalGroup(targetPath: string, arch: RepoArchitecture): { scope: string; title: string } {
   for (const d of arch.domains) {
     const p = d.paths[0]?.replace(/\/+$/, '');
@@ -373,15 +440,42 @@ export async function scanScopeExternalEdges(
     }
   };
 
+  const extractResolvedTargets = async (fileRel: string): Promise<string[]> => {
+    const head = await readHead(fileRel);
+    if (!head) return [];
+
+    // Prefer Tree-sitter AST import extraction so comments & string/HTML templates never produce false edges!
+    const astFacts = await extractFileAstFacts(fileRel, head);
+    if (astFacts) {
+      const out = new Set<string>();
+      for (const imp of astFacts.imports) {
+        const resolved = resolveAstOrRelativeImport(
+          fileRel,
+          imp.specifier,
+          imp.kind,
+          trackedSet
+        );
+        if (resolved && resolved !== fileRel) out.add(resolved);
+      }
+      return [...out];
+    }
+
+    // Fallback regex for languages without a Tree-sitter grammar
+    const out = new Set<string>();
+    REL_IMPORT_RE.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = REL_IMPORT_RE.exec(head)) !== null) {
+      const resolved = resolveRelativeImportTarget(fileRel, m[1], trackedSet);
+      if (resolved && resolved !== fileRel) out.add(resolved);
+    }
+    return [...out];
+  };
+
   await Promise.all([
     ...inScopeCode.map(async (srcFile) => {
-      const head = await readHead(srcFile);
-      if (!head) return;
-      REL_IMPORT_RE.lastIndex = 0;
-      let m: RegExpExecArray | null;
-      while ((m = REL_IMPORT_RE.exec(head)) !== null) {
-        const resolved = resolveRelativeImportTarget(srcFile, m[1], trackedSet);
-        if (resolved && !isInScope(resolved)) {
+      const targets = await extractResolvedTargets(srcFile);
+      for (const resolved of targets) {
+        if (!isInScope(resolved)) {
           const ext = inferExternalGroup(resolved, arch);
           recordEdge({
             direction: 'outbound',
@@ -395,13 +489,9 @@ export async function scanScopeExternalEdges(
       }
     }),
     ...outScopeCode.map(async (callerFile) => {
-      const head = await readHead(callerFile);
-      if (!head) return;
-      REL_IMPORT_RE.lastIndex = 0;
-      let m: RegExpExecArray | null;
-      while ((m = REL_IMPORT_RE.exec(head)) !== null) {
-        const resolved = resolveRelativeImportTarget(callerFile, m[1], trackedSet);
-        if (resolved && isInScope(resolved)) {
+      const targets = await extractResolvedTargets(callerFile);
+      for (const resolved of targets) {
+        if (isInScope(resolved)) {
           const ext = inferExternalGroup(callerFile, arch);
           recordEdge({
             direction: 'inbound',

@@ -10,7 +10,7 @@ export interface CanvasOutboundMessage {
   worktreePath?: string;
   scope?: 'branch' | 'node';
   depth?: 'overview' | 'flow' | 'deep';
-  agentTarget?: 'current' | 'new';
+  agentTarget?: 'auto' | 'current' | 'new';
   scopeRoot?: string;
   storageMode?: 'git-hidden' | 'worktree-excluded' | 'worktree-tracked';
   baseRef?: string;
@@ -271,25 +271,26 @@ function buildAnalyzeChatPrompt(msg: CanvasOutboundMessage, repoPath: string): s
   if (msg.scope === 'branch' && depth !== 'overview') {
     const baseRef = typeof msg.baseRef === 'string' && msg.baseRef ? msg.baseRef : 'HEAD';
     const scopeClause = scopeRoot ? `（限定子目录范围：\`${scopeRoot}\`）` : '';
+    const ctxParams = `worktreePath: "${repoPath}", baseRef: "${baseRef}"${scopeRoot ? `, scopePath: "${scopeRoot}"` : ''}`;
     if (depth === 'flow') {
       return [
-        `请按 **L2 核心链路级** 分析本地仓库 \`${repoPath}\`${scopeClause} 当前分支相对 \`${baseRef}\` 的主要变更流程：`,
-        `1. 调用 \`atlas_get_context\`（\`worktreePath: "${repoPath}"\`）读取当前 Git 状态与架构红线。`,
-        `2. 检查 \`git diff ${baseRef}\` 与改动文件，仅提炼 3–5 条核心业务/调用链变更声明（\`claims[]\`，附精确 1-based \`path / startLine / endLine / symbol\`），无需穷举行级边角守卫。`,
-        `3. 调用 \`atlas_submit_briefing\`（\`worktreePath: "${repoPath}"\`，\`briefing: { schemaVersion: "0.2", depth: "flow", scopePath: "${scopeRoot}", baseRef: "${baseRef}", targetRef: "WORKTREE", ... }\`）提交并修正任何 \`MISMATCH\`。`,
+        `请按 **L2 调用与数据流级** 分析本地仓库 \`${repoPath}\`${scopeClause} 当前分支相对 \`${baseRef}\` 的主要变更链路：`,
+        `1. 调用 \`atlas_get_context\`（\`${ctxParams}\`）读取当前 Git 状态、架构红线及预解析的 Tree-sitter AST 符号行号表（\`astOutline\`）。`,
+        `2. 结合 \`git diff ${baseRef}\` 与改动文件，仅提炼 3–5 条核心调用链变更断言（\`claims[]\`，直接参考 \`astOutline\` 附精确 1-based \`path / startLine / endLine / symbol\`），无需穷举行级边角分支。`,
+        `3. 调用 \`atlas_submit_briefing\`（\`worktreePath: "${repoPath}"\`，\`briefing: { schemaVersion: "0.2", depth: "flow", scopePath: "${scopeRoot}", baseRef: "${baseRef}", targetRef: "WORKTREE", ... }\`）提交并修正任何锚点不一致（\`MISMATCH\`）。`,
         `4. 调用 \`open_atlas\`（\`worktreePath: "${repoPath}"\`）刷新画布。`,
       ].join('\n');
     }
     return [
-      `请按 **L3 深度核验级** 分析本地仓库 \`${repoPath}\`${scopeClause} 当前分支相对 \`${baseRef}\` 的代码变更并生成确定性核验简报：`,
-      `1. 调用 \`atlas_get_context\`（\`worktreePath: "${repoPath}"\`）读取当前 Git 状态、架构红线与待处理批注指令。`,
-      `2. 检查 \`git diff ${baseRef}\` 与相关真实源码，梳理核心变更声明（\`claims[]\`，附精确 1-based \`path / startLine / endLine / symbol\`）、显式阻断条件（\`blockingConditions[]\`）、跨边界间接影响（\`impacts[]\`）、盲区（\`blindSpots[]\`）与验证信号（\`verificationSignals[]\`）。`,
-      `3. 调用 \`atlas_submit_briefing\`（\`worktreePath: "${repoPath}"\`，\`schemaVersion: "0.2"\`，\`depth: "deep"\`，\`baseRef: "${baseRef}"\`，\`targetRef: "WORKTREE"\`）提交简报；若返回任何 \`MISMATCH\`，请核对真实源码修正后重提直至通过。`,
+      `请按 **L3 守卫与影响核验级** 分析本地仓库 \`${repoPath}\`${scopeClause} 当前分支相对 \`${baseRef}\` 的代码变更并生成确定性核验简报：`,
+      `1. 调用 \`atlas_get_context\`（\`${ctxParams}\`）读取 Git 状态、架构红线、待办批注及 Tree-sitter AST 符号与守卫条件表（\`astOutline\`）。`,
+      `2. 检查 \`git diff ${baseRef}\` 与相关真实源码，梳理核心变更断言（\`claims[]\`，附精确 1-based \`path / startLine / endLine / symbol\`）、前置守卫条件（\`blockingConditions[]\`）、跨模块影响（\`impacts[]\`）、盲区（\`blindSpots[]\`）与验证信号（\`verificationSignals[]\`）。`,
+      `3. 调用 \`atlas_submit_briefing\`（\`worktreePath: "${repoPath}"\`，\`schemaVersion: "0.2"\`，\`depth: "deep"\`，\`baseRef: "${baseRef}"\`，\`targetRef: "WORKTREE"\`）提交简报；若返回任何不一致（\`MISMATCH\`），请核对真实源码修正后重提直至通过。`,
       `4. 核验通过后调用 \`open_atlas\`（\`worktreePath: "${repoPath}"\`，\`mode: "hybrid"\`）刷新当前 CodeAtlas 画布面板。`,
     ].join('\n');
   }
 
-  const title = typeof msg.title === 'string' && msg.title ? msg.title : (scopeRoot || '目标目录');
+  const title = typeof msg.title === 'string' && msg.title ? msg.title : (scopeRoot || '目标模块');
   const kind = typeof msg.kind === 'string' && msg.kind ? msg.kind : 'module';
   const relPath =
     typeof msg.path === 'string' && msg.path ? msg.path : scopeRoot;
@@ -297,28 +298,28 @@ function buildAnalyzeChatPrompt(msg: CanvasOutboundMessage, repoPath: string): s
 
   if (depth === 'overview') {
     return [
-      `请按 **L1 概览导览级（快速轻量）** 梳理本地仓库 \`${repoPath}\` 中的「${targetDesc}」，原地回填模块与各子文件的职责说明：`,
-      `1. **控制阅读深度**：只查看「${relPath || '根目录'}」下的目录结构与各源码文件头部导出/核心定义，**不要逐行深抠边角逻辑**。`,
+      `请按 **L1 模块职责概览级（快速轻量）** 梳理本地仓库 \`${repoPath}\` 中的「${targetDesc}」，原地回填模块与各子文件的职责说明：`,
+      `1. **控制阅读深度**：可调用 \`atlas_get_context\`（\`worktreePath: "${repoPath}", scopePath: "${relPath}"\`）直接获取预提取的 AST 符号表，或仅查看「${relPath || '根目录'}」下的目录结构与导出定义，**不要逐行深抠边角逻辑**。`,
       `2. 调用 \`atlas_submit_outline\`（\`worktreePath: "${repoPath}"\`），提交 \`outline\`（\`schemaVersion: "0.2"\`，\`scopePath: "${relPath}"\`，\`targetRef: "WORKTREE"\`，\`title\`，1–2 句整体职责 \`summary\`，建议优先阅读的入口文件 \`recommendedEntry\`，以及 \`children: [{ path, summary, role }]\` 为该目录下的每个主要文件/子目录写一句 35 字以内的精炼职责说明；所有 \`path\` 必须为仓库真实相对路径）。`,
-      `3. 若返回路径失配请立即修正重提；核验通过后调用 \`open_atlas\`（\`worktreePath: "${repoPath}"\`）将职责导览直接刷新回画布节点上。`,
+      `3. 若返回路径不一致请立即修正重提；核验通过后调用 \`open_atlas\`（\`worktreePath: "${repoPath}"\`）将职责概览直接刷新回画布节点上。`,
     ].join('\n');
   }
 
   if (depth === 'flow') {
     return [
-      `请按 **L2 调用链路级** 分析本地仓库 \`${repoPath}\` 中的 ${kind}「${targetDesc}」：`,
-      `1. 调用 \`atlas_get_context\`（\`worktreePath: "${repoPath}"\`）查看上下文。`,
-      `2. 阅读「${targetDesc}」内的核心源码文件，聚焦梳理 **3–5 条主干协作流程 / 数据流 / 调用链**（\`claims[]\`，每条附精确 1-based \`path / startLine / endLine / symbol\`），无需罗列琐碎的边角异常分支。`,
-      `3. 调用 \`atlas_submit_briefing\`（\`worktreePath: "${repoPath}"\`，\`briefing\` 中设 \`schemaVersion: "0.2"\`、\`depth: "flow"\`、\`scopePath: "${relPath}"\`、\`targetRef: "WORKTREE"\`）；若有 \`MISMATCH\` 核对修正后重提。`,
+      `请按 **L2 调用与数据流级** 分析本地仓库 \`${repoPath}\` 中的 ${kind}「${targetDesc}」：`,
+      `1. 调用 \`atlas_get_context\`（\`worktreePath: "${repoPath}", scopePath: "${relPath}"\`）读取上下文与预提取的 Tree-sitter AST 符号行号表（\`astOutline\`）。`,
+      `2. 阅读「${targetDesc}」内的核心源码文件，聚焦梳理 **3–5 条主干调用链 / 数据流**（\`claims[]\`，参考 \`astOutline\` 附精确 1-based \`path / startLine / endLine / symbol\`），无需罗列琐碎边角分支。`,
+      `3. 调用 \`atlas_submit_briefing\`（\`worktreePath: "${repoPath}"\`，\`briefing\` 中设 \`schemaVersion: "0.2"\`、\`depth: "flow"\`、\`scopePath: "${relPath}"\`、\`targetRef: "WORKTREE"\`）；若有不一致（\`MISMATCH\`）核对修正后重提。`,
       `4. 核验通过后调用 \`open_atlas\`（\`worktreePath: "${repoPath}"\`，\`mode: "hybrid"\`）刷新画布。`,
     ].join('\n');
   }
 
   return [
-    `请按 **L3 深度边界核验级** 分析本地仓库 \`${repoPath}\` 中的 ${kind}「${targetDesc}」并生成完整核验简报：`,
-    `1. 调用 \`atlas_get_context\`（\`worktreePath: "${repoPath}"\`）读取当前 Git 状态、架构红线与待处理批注指令。`,
-    `2. 深入阅读「${targetDesc}」的真实源码文件，梳理核心调用链声明（\`claims[]\`，每条附精确 1-based \`path / startLine / endLine / symbol\`）、显式阻断/边界保护条件（\`blockingConditions[]\`）、跨模块耦合影响（\`impacts[]\`）、架构盲区（\`blindSpots[]\`）与验证信号（\`verificationSignals[]\`）。`,
-    `3. 调用 \`atlas_submit_briefing\`（\`worktreePath: "${repoPath}"\`，\`briefing\` 设 \`schemaVersion: "0.2"\`、\`depth: "deep"\`、\`scopePath: "${relPath}"\`、\`targetRef: "WORKTREE"\`）；若返回任何 \`MISMATCH\`，核对真实源码修正后重提直至通过。`,
+    `请按 **L3 守卫与影响核验级** 分析本地仓库 \`${repoPath}\` 中的 ${kind}「${targetDesc}」并生成完整核验简报：`,
+    `1. 调用 \`atlas_get_context\`（\`worktreePath: "${repoPath}", scopePath: "${relPath}"\`）读取 Git 状态、架构红线及预提取的 Tree-sitter AST 符号与守卫条件表（\`astOutline\`）。`,
+    `2. 深入阅读「${targetDesc}」的真实源码文件，梳理核心调用链断言（\`claims[]\`，附精确 1-based \`path / startLine / endLine / symbol\`）、前置守卫条件（\`blockingConditions[]\`）、跨模块耦合影响（\`impacts[]\`）、架构盲区（\`blindSpots[]\`）与验证信号（\`verificationSignals[]\`）。`,
+    `3. 调用 \`atlas_submit_briefing\`（\`worktreePath: "${repoPath}"\`，\`briefing\` 设 \`schemaVersion: "0.2"\`、\`depth: "deep"\`、\`scopePath: "${relPath}"\`、\`targetRef: "WORKTREE"\`）；若返回任何不一致（\`MISMATCH\`），核对真实源码修正后重提直至通过。`,
     `4. 核验通过后调用 \`open_atlas\`（\`worktreePath: "${repoPath}"\`，\`mode: "hybrid"\`）刷新当前 CodeAtlas 画布面板。`,
   ].join('\n');
 }
@@ -654,7 +655,8 @@ async function handleCanvasMessage(msg: CanvasOutboundMessage): Promise<void> {
       return;
     }
 
-    const useNewSession = msg.agentTarget === 'new';
+    // In 'auto' (default) or 'new', read-only L1-L3 analysis runs in an isolated background session so current chat stays clean!
+    const useNewSession = msg.agentTarget !== 'current';
     const label =
       msg.scope === 'branch'
         ? `Diff vs ${typeof msg.baseRef === 'string' && msg.baseRef ? msg.baseRef : 'HEAD'}`
@@ -759,6 +761,7 @@ async function handleCanvasMessage(msg: CanvasOutboundMessage): Promise<void> {
 
     if (!app.getHostCapabilities()?.message) return;
 
+    // In 'auto' (default) or 'current', code rework & interactive Q&A run in the current session (with context separation via updateModelContext)!
     const useNewSession = msg.agentTarget === 'new';
     const kindLabel =
       msg.directiveKind === 'rework'
@@ -774,7 +777,7 @@ async function handleCanvasMessage(msg: CanvasOutboundMessage): Promise<void> {
         : `3. 在对话中给出解答后，同步调用 \`atlas_ack_directive\`（\`worktreePath: "${currentWorktreePath}"\`，\`id: "${createdId}"\`，\`expectedRevision: ${createdRev}\`，\`agentId: "antigravity"\`，\`summary\` 填入精炼结论）将解答写回该画布批注节点，并调用 \`open_atlas\` 刷新画布。`
       : `3. 处理完成后调用 \`open_atlas\`（\`worktreePath: "${currentWorktreePath}"\`）刷新画布。`;
 
-    const prompt = [
+    const fullPrompt = [
       `【CodeAtlas ${kindLabel}】针对本地仓库 \`${currentWorktreePath}\` 的节点「${msg.title || loc}」：`,
       `- 代码锚点：\`${loc}\`${ctxLine}`,
       `- 详情描述：${msg.note || ''}`,
@@ -785,6 +788,29 @@ async function handleCanvasMessage(msg: CanvasOutboundMessage): Promise<void> {
       ackLine,
     ].join('\n');
 
+    let outboundPrompt = fullPrompt;
+    if (!useNewSession && Boolean(app.getHostCapabilities()?.updateModelContext)) {
+      try {
+        const hiddenMeta = [
+          `[CodeAtlas Directive Execution Context]`,
+          `- worktreePath: "${currentWorktreePath}"`,
+          `- targetNode: ${msg.title || loc}`,
+          `- anchor: ${loc}`,
+          ...(msg.contextBody ? [`- nodeSummary: ${msg.contextBody}`] : []),
+          ...(createdId
+            ? [`- directiveId: "${createdId}", expectedRevision: ${createdRev}, agentId: "antigravity"`]
+            : []),
+          `- Workflow: 1) Read real source at ${loc}; 2) Apply code changes (if rework) or verify/answer (if question/constraint); ${ackLine.replace(/^3\.\s*/, '3) ')}`,
+        ].join('\n');
+        await app.updateModelContext({
+          content: [{ type: 'text', text: hiddenMeta }],
+        });
+        outboundPrompt = `【CodeAtlas ${kindLabel} · \`${loc}\`】${msg.note || ''}`;
+      } catch {
+        outboundPrompt = fullPrompt;
+      }
+    }
+
     const baselineStamp = lastKnownStateStamp;
     dispatchToCanvas({
       type: 'analyzeStatus',
@@ -792,13 +818,13 @@ async function handleCanvasMessage(msg: CanvasOutboundMessage): Promise<void> {
         running: true,
         label: useNewSession
           ? `已在独立后台会话发送${kindLabel}，解答后自动回写画布...`
-          : `正在向当前会话发送${kindLabel}...`,
+          : `已发送${kindLabel}至当前对话窗口...`,
       },
     });
     try {
       const reqParams = {
         role: 'user' as const,
-        content: [{ type: 'text' as const, text: prompt }],
+        content: [{ type: 'text' as const, text: outboundPrompt }],
         ...(useNewSession
           ? { _meta: { 'com.google.antigravity/message': { target: 'new' } } }
           : {}),
@@ -825,7 +851,7 @@ async function handleCanvasMessage(msg: CanvasOutboundMessage): Promise<void> {
   if (msg.type === 'dispatchDirectives') {
     if (!currentWorktreePath || !app.getHostCapabilities()?.message) return;
     const useNewSession = msg.agentTarget === 'new';
-    const prompt = [
+    const fullPrompt = [
       `请处理我在仓库 \`${currentWorktreePath}\` 的 CodeAtlas 画布上提交的全部待办评审批注（代码疑问 / 修改要求 / 架构约束）：`,
       `1. 调用 \`atlas_fetch_directives\`（\`worktreePath: "${currentWorktreePath}"\`，\`claim: true\`，\`agentId: "antigravity"\`）获取所有待处理批注。`,
       `2. 逐条阅读对应文件与行号的真实源码：`,
@@ -834,6 +860,23 @@ async function handleCanvasMessage(msg: CanvasOutboundMessage): Promise<void> {
       `   - 对 \`constraint\`（架构约束）：确认代码符合约束后调用 \`atlas_ack_directive\` 记录确认结论（或同步写入 manifest \`guardrails\`）。`,
       `3. 全部处理完毕后调用 \`open_atlas\`（\`worktreePath: "${currentWorktreePath}"\`）刷新画布状态。`,
     ].join('\n');
+
+    let outboundPrompt = fullPrompt;
+    if (!useNewSession && Boolean(app.getHostCapabilities()?.updateModelContext)) {
+      try {
+        await app.updateModelContext({
+          content: [
+            {
+              type: 'text',
+              text: `[CodeAtlas Batch Directives Context]\nworktreePath: "${currentWorktreePath}"\nInstructions:\n${fullPrompt}`,
+            },
+          ],
+        });
+        outboundPrompt = `请处理我在仓库 \`${currentWorktreePath}\` 的 CodeAtlas 画布上挂接的全部待办批注，并在完成后刷新画布。`;
+      } catch {
+        outboundPrompt = fullPrompt;
+      }
+    }
 
     const baselineStamp = lastKnownStateStamp;
     dispatchToCanvas({
@@ -848,7 +891,7 @@ async function handleCanvasMessage(msg: CanvasOutboundMessage): Promise<void> {
     try {
       const reqParams = {
         role: 'user' as const,
-        content: [{ type: 'text' as const, text: prompt }],
+        content: [{ type: 'text' as const, text: outboundPrompt }],
         ...(useNewSession
           ? { _meta: { 'com.google.antigravity/message': { target: 'new' } } }
           : {}),

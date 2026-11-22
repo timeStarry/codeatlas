@@ -14,6 +14,8 @@ import { getCanvasHtml } from '../src/webview/canvasHtml.js';
 import { getCockpitHtml } from '../src/webview/html.js';
 import { getFileIconsClientJs } from '../src/webview/fileIcons.js';
 import { discoverCandidateRepos, listDirectoryEntries } from '../src/core/repoPicker.js';
+import { extractFileAstFacts } from '../src/core/astAnalyzer.js';
+import { verifyBriefing } from '../src/core/verifier.js';
 
 const execFileAsync = promisify(execFile);
 const MCP_SERVER_SCRIPT = path.resolve(__dirname, '..', 'dist', 'mcp-server.js');
@@ -298,11 +300,14 @@ test('Canvas & Cockpit HTML scripts compile cleanly, omit decorative side-stripe
     assert.equal(vscodeHtml.includes(banned), false, `VS Code Canvas HTML must not contain ${banned}`);
   }
 
-  // Ensure unified opaque popover tokens, blocking busy overlay, and background session target toggle exist
+  // Ensure unified opaque popover tokens, blocking busy overlay, dual-track session router, and idiomatic SE terms exist
   assert.ok(mcpHtml.includes('--popover-bg:'), 'Canvas CSS must define opaque --popover-bg token');
   assert.ok(mcpHtml.includes('id="customSelectPopover"'), 'Unified custom dropdown popover must exist');
   assert.ok(mcpHtml.includes('id="canvasBusyScrim"') && mcpHtml.includes('id="topBusyBar"'), 'Blocking busy UI must exist');
-  assert.ok(mcpHtml.includes('data-agent-target="new"'), 'Background Agent session toggle must exist');
+  assert.ok(mcpHtml.includes('data-agent-target="auto"'), 'Smart dual-track Agent session option must exist');
+  assert.ok(mcpHtml.includes('✕ 不一致'), 'Canvas should use idiomatic 不一致 instead of 失配');
+  assert.equal(mcpHtml.includes('失配'), false, 'Canvas HTML must not contain 失配');
+  assert.equal(cockpitHtml.includes('失配'), false, 'Cockpit HTML must not contain 失配');
 
   // Compile every inline <script> block with Node vm.Script to catch any syntax/escaping bugs
   for (const [label, html] of [
@@ -620,5 +625,111 @@ test('Repository folder discovery, inline directory browsing, and example briefi
   } finally {
     await client.close();
     await fs.rm(workspaceParent, { recursive: true, force: true });
+  }
+});
+
+test('Tree-sitter WASM AST analyzer extracts exact TS/Rust symbol spans, ignores comment/string pseudo-imports, catches AST span drift in verifier, and enriches atlas_get_context', async () => {
+  // 1. TypeScript AST extraction (ignoring fake imports inside comments & template strings)
+  const tsSource = [
+    '// import { ghost } from "./comment-fake.js";',
+    'import { helper } from "./real-dep.js";',
+    'const tpl = `import { nope } from "./template-fake.js"`;',
+    'export interface ScoreOptions {',
+    '  cap: number;',
+    '}',
+    'export function evaluateScore(val: number, opts: ScoreOptions): number {',
+    '  if (val < 0) return 0;',
+    '  return Math.min(val, opts.cap) + helper();',
+    '}',
+    '// Line 11: comment mentioning evaluateScore far away from declaration',
+    '// Line 12: padding',
+    '// Line 13: padding',
+    '// Line 14: padding',
+    '// Line 15: padding',
+    '// Line 16: padding',
+    '// Line 17: evaluateScore mentioned only in trailing comment',
+  ].join('\n');
+
+  const tsFacts = await extractFileAstFacts('src/score.ts', tsSource);
+  assert.ok(tsFacts, 'TypeScript AST facts must be extracted');
+  assert.deepEqual(
+    tsFacts.imports.map((i) => i.specifier),
+    ['./real-dep.js'],
+    'Tree-sitter must extract real imports and ignore comments/template literals'
+  );
+  const fnSym = tsFacts.symbols.find((s) => s.name === 'evaluateScore');
+  assert.ok(fnSym);
+  assert.equal(fnSym.startLine, 7);
+  assert.equal(fnSym.endLine, 10);
+  assert.equal(tsFacts.guardClauses.length, 1);
+  assert.equal(tsFacts.guardClauses[0].line, 8);
+  assert.equal(tsFacts.guardClauses[0].outcomeKind, 'return');
+
+  // 2. Rust AST extraction (use crate::..., pub struct, impl, pub async fn, guard clause)
+  const rsSource = [
+    'use crate::ipc::Bridge;',
+    'pub struct RuntimeState {',
+    '    pub closed: bool,',
+    '}',
+    'pub async fn dispatch_rpc(st: &RuntimeState) -> Result<(), String> {',
+    '    if st.closed {',
+    '        return Err("closed".to_string());',
+    '    }',
+    '    Ok(())',
+    '}',
+  ].join('\n');
+  const rsFacts = await extractFileAstFacts('crates/app/src/lib.rs', rsSource);
+  assert.ok(rsFacts, 'Rust AST facts must be extracted');
+  assert.ok(rsFacts.imports.some((i) => i.specifier.includes('crate::ipc::Bridge')));
+  assert.ok(rsFacts.symbols.some((s) => s.name === 'RuntimeState' && s.kind === 'struct' && s.startLine === 2));
+  assert.ok(rsFacts.symbols.some((s) => s.name === 'dispatch_rpc' && s.kind === 'function' && s.startLine === 5 && s.endLine === 10));
+  assert.equal(rsFacts.guardClauses.length, 1);
+
+  // 3. Verifier catches comment-only mention far from real AST symbol span & atlas_get_context returns astOutline
+  const { dir: repoDir } = await createTempGitRepo();
+  await fs.writeFile(path.join(repoDir, 'src', 'core', 'score.ts'), tsSource, 'utf-8');
+  await git(repoDir, ['add', '.']);
+  await git(repoDir, ['commit', '-m', 'add score.ts']);
+
+  const client = new McpStdioClient(repoDir);
+  try {
+    // Claiming evaluateScore at L17 (where only a comment mentions it!) MUST fail AST span check!
+    const badVer = await verifyBriefing(repoDir, {
+      schemaVersion: '0.2',
+      title: 'Comment-spoofed anchor check',
+      targetRef: 'WORKTREE',
+      summary: 'Test AST span enforcement',
+      claims: [
+        {
+          id: 'C1',
+          title: 'Spoofed line',
+          statement: 'Points at comment instead of AST function',
+          claimType: 'fact',
+          anchors: [{ path: 'src/core/score.ts', startLine: 17, endLine: 17, symbol: 'evaluateScore' }],
+        },
+      ],
+    });
+    assert.equal(badVer.overallBadge, 'mismatch', 'AST span check must reject comment-only mention far from declaration');
+    assert.ok(
+      badVer.claims[0].anchors[0].notes.some((n) => n.includes('L7-L10')),
+      'Mismatch diagnostic must report exact AST declaration span L7-L10'
+    );
+
+    // MCP atlas_get_context with scopePath returns pre-extracted astOutline
+    await client.request('initialize', { protocolVersion: '2024-11-05', capabilities: {} });
+    const ctxRes = await client.request('tools/call', {
+      name: 'atlas_get_context',
+      arguments: { worktreePath: repoDir, scopePath: 'src/core' },
+    });
+    assert.ok(!ctxRes.isError);
+    const parsedCtx = JSON.parse(ctxRes.content[0].text);
+    assert.ok(Array.isArray(parsedCtx.astOutline) && parsedCtx.astOutline.length >= 2);
+    const scoreOutline = parsedCtx.astOutline.find((f: any) => f.path === 'src/core/score.ts');
+    assert.ok(scoreOutline);
+    assert.ok(scoreOutline.symbols.some((s: any) => s.name === 'evaluateScore' && s.startLine === 7 && s.endLine === 10));
+    assert.equal(scoreOutline.guardClauses.length, 1);
+  } finally {
+    await client.close();
+    await fs.rm(repoDir, { recursive: true, force: true });
   }
 });

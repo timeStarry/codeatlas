@@ -10,6 +10,7 @@ import {
   VerificationBadge,
 } from './types.js';
 import { getDiffStats, getGitContext, readFileAtRef, resolveRef } from './git.js';
+import { extractFileAstFacts } from './astAnalyzer.js';
 
 function normalizePosix(p: string): string {
   return p.replace(/\\/g, '/').replace(/^\.\//, '');
@@ -63,7 +64,31 @@ export async function verifyAnchor(
   const windowText = lines.slice(searchStart, searchEnd + 1).join('\n');
 
   if (anchor.symbol) {
-    if (windowText.includes(anchor.symbol)) {
+    const astFacts = await extractFileAstFacts(posixPath, content);
+    const bareSym = anchor.symbol.split(/::|\./).pop() || anchor.symbol;
+    const astCandidates = astFacts
+      ? astFacts.symbols.filter((s) => s.name === anchor.symbol || s.name === bareSym)
+      : [];
+
+    if (astCandidates.length > 0 && lineRangeValid) {
+      const claimStart = anchor.startLine ?? 1;
+      const claimEnd = anchor.endLine ?? claimStart;
+      // Check if any AST declaration span overlaps or is within +-5 lines of the claimed span
+      const hit = astCandidates.find(
+        (s) => claimStart <= s.endLine + 5 && claimEnd >= s.startLine - 5
+      );
+      if (hit) {
+        symbolMatched = true;
+      } else {
+        symbolMatched = false;
+        const locs = astCandidates
+          .map((s) => `L${s.startLine}-L${s.endLine} (${s.kind})`)
+          .join(', ');
+        notes.push(
+          `AST symbol "${anchor.symbol}" is declared at ${locs}, not near claimed L${claimStart}-L${claimEnd}.`
+        );
+      }
+    } else if (windowText.includes(anchor.symbol) || (bareSym && windowText.includes(bareSym))) {
       symbolMatched = true;
     } else if (content.includes(anchor.symbol)) {
       symbolMatched = false;

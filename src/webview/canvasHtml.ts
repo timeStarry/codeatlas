@@ -1737,19 +1737,26 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     </div>
 
     <div class="more-menu hidden" id="moreMenu">
-      <div class="more-sec-label mcp-only analyze-action" id="lblSessionTargetSec">Agent 执行会话</div>
-      <button class="mcp-only analyze-action" data-agent-target="new" id="btnTargetNew">
-        <span class="storage-check" id="chkTargetNew">✓</span>
+      <div class="more-sec-label mcp-only analyze-action" id="lblSessionTargetSec">Agent 会话路由策略</div>
+      <button class="mcp-only analyze-action" data-agent-target="auto" id="btnTargetAuto">
+        <span class="storage-check" id="chkTargetAuto">✓</span>
         <span class="menu-item-col">
-          <strong id="lblTargetNew">独立后台会话（推荐）</strong>
-          <span class="agent-menu-desc" id="descTargetNew">在后台新会话执行分析，不打断当前对话上下文</span>
+          <strong id="lblTargetAuto">按意图自动分流（推荐）</strong>
+          <span class="agent-menu-desc" id="descTargetAuto">只读分析(L1-L3)走后台新会话，提问与改码走当前会话</span>
+        </span>
+      </button>
+      <button class="mcp-only analyze-action" data-agent-target="new" id="btnTargetNew">
+        <span class="storage-check" id="chkTargetNew"></span>
+        <span class="menu-item-col">
+          <strong id="lblTargetNew">始终独立后台会话</strong>
+          <span class="agent-menu-desc" id="descTargetNew">所有分析与批注均在后台新会话执行，绝不打断当前聊天</span>
         </span>
       </button>
       <button class="mcp-only analyze-action" data-agent-target="current" id="btnTargetCurrent">
         <span class="storage-check" id="chkTargetCurrent"></span>
         <span class="menu-item-col">
-          <strong id="lblTargetCurrent">当前对话窗口</strong>
-          <span class="agent-menu-desc" id="descTargetCurrent">将分析指令直接发入当前对话流以便实时查看</span>
+          <strong id="lblTargetCurrent">始终当前对话窗口</strong>
+          <span class="agent-menu-desc" id="descTargetCurrent">所有指令均发入当前会话流以便实时查看推理过程</span>
         </span>
       </button>
       <div class="more-sep mcp-only analyze-action"></div>
@@ -1848,9 +1855,10 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         busyScope: '正在切换局部作用域并扫描跨边界引用...',
         busySync: '正在同步仓库与核验状态...',
         batchDispatchFmt: (n) => '📌 待办批注 (' + n + ') · 🚀 批量提交',
-        sessionTargetSec: 'Agent 执行会话模式',
-        targetNew: '独立后台会话（推荐）', targetNewDesc: '新建后台会话执行分析并自动刷新，不打断当前对话上下文',
-        targetCurrent: '当前对话窗口', targetCurrentDesc: '将分析指令直接发入当前会话流以便实时查看推理过程',
+        sessionTargetSec: 'Agent 会话路由策略',
+        targetAuto: '按意图自动分流（推荐）', targetAutoDesc: '只读分析(L1-L3)走后台新会话，提问与改码走当前会话',
+        targetNew: '始终独立后台会话', targetNewDesc: '所有分析与批注均在后台新会话执行，不打断当前聊天',
+        targetCurrent: '始终当前对话窗口', targetCurrentDesc: '所有指令均发入当前会话流以便实时查看推理过程',
         storageSec: 'Git 元数据存储模式',
         stHidden: 'Git 元数据区 (.git/codeatlas)', stHiddenDesc: '默认保持工作区洁净 (Working Tree Clean)，不改 .gitignore',
         stExcluded: '本地排除目录 (.git/info/exclude)', stExcludedDesc: '生成工作区 .atlas/ 清单，写入 info/exclude 仅本机忽略',
@@ -1879,7 +1887,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           claim: '行为断言', evidence: '代码锚点', blocking: '守卫条件', 'diff-file': '变更文件',
           impact: '跨模块影响', directive: '评审批注', 'external-dep': '外部依赖引用'
         },
-        badge: { verified: '✓ 已核验', mismatch: '✕ 失配', stale: '⟳ 陈旧', unverified: '待核验', unknown: '未声明' },
+        badge: { verified: '✓ 已核验', mismatch: '✕ 不一致', stale: '⟳ 陈旧', unverified: '待核验', unknown: '未声明' },
         legendHtml:
           '<div><i class="dot" style="background:rgba(140,150,168,0.65);"></i>正交折线：仓库目录与模块包含层级 (Containment)</div>' +
           '<div><i class="dot" style="background:#4da6ff;"></i>蓝色实线：调用流 / 模块依赖 / 行为断言锚定</div>' +
@@ -1943,9 +1951,10 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         busyScope: 'Updating scope root & scanning external refs...',
         busySync: 'Synchronizing repository state...',
         batchDispatchFmt: (n) => '📌 Pending Notes (' + n + ') · 🚀 Dispatch All',
-        sessionTargetSec: 'Agent Session Mode',
-        targetNew: 'Background Session (Recommended)', targetNewDesc: 'Run in a new background session without interrupting current chat',
-        targetCurrent: 'Current Conversation', targetCurrentDesc: 'Send prompt directly into the active chat stream',
+        sessionTargetSec: 'Agent Session Routing',
+        targetAuto: 'Smart Dual-Track (Recommended)', targetAutoDesc: 'Read-only L1-L3 in background; Q&A and rework in current chat',
+        targetNew: 'Always Background Session', targetNewDesc: 'Run all requests in a separate background session',
+        targetCurrent: 'Always Current Conversation', targetCurrentDesc: 'Send all prompts directly into the active chat stream',
         storageSec: 'Git Metadata Storage',
         stHidden: 'Git Metadata (.git/codeatlas)', stHiddenDesc: 'Keep working tree clean; zero changes to .gitignore',
         stExcluded: 'Local Exclude (.git/info/exclude)', stExcludedDesc: 'Write .atlas/ in worktree, ignored locally via info/exclude',
@@ -2014,7 +2023,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     };
 
     let lang = 'zh';
-    let agentTarget = 'new';
+    let agentTarget = 'auto';
     let currentDirKind = 'question';
     let isCanvasBusy = false;
     let busyWatchdog = null;
@@ -2510,6 +2519,10 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     function syncStorageMenu() {
       const sesSec = document.getElementById('lblSessionTargetSec');
       if (sesSec) sesSec.textContent = t('sessionTargetSec');
+      const tAuto = document.getElementById('lblTargetAuto');
+      if (tAuto) tAuto.textContent = t('targetAuto');
+      const dAuto = document.getElementById('descTargetAuto');
+      if (dAuto) dAuto.textContent = t('targetAutoDesc');
       const tNew = document.getElementById('lblTargetNew');
       if (tNew) tNew.textContent = t('targetNew');
       const dNew = document.getElementById('descTargetNew');
@@ -2518,6 +2531,8 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       if (tCur) tCur.textContent = t('targetCurrent');
       const dCur = document.getElementById('descTargetCurrent');
       if (dCur) dCur.textContent = t('targetCurrentDesc');
+      const cAuto = document.getElementById('chkTargetAuto');
+      if (cAuto) cAuto.textContent = agentTarget === 'auto' ? '✓' : '';
       const cNew = document.getElementById('chkTargetNew');
       if (cNew) cNew.textContent = agentTarget === 'new' ? '✓' : '';
       const cCur = document.getElementById('chkTargetCurrent');
@@ -3161,7 +3176,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       const s = graph.summary || {};
       const chips = [];
       if (s.verified > 0) chips.push('<span class="chip ok" data-chip="trust">' + (lang === 'zh' ? '✓ 已核验 ' : '✓ Verified ') + s.verified + '</span>');
-      if (s.mismatch > 0) chips.push('<span class="chip err' + (activeChipFilter === 'mismatch' ? ' active' : '') + '" data-chip="mismatch">' + (lang === 'zh' ? '✕ 失配 ' : '✕ Mismatch ') + s.mismatch + '</span>');
+      if (s.mismatch > 0) chips.push('<span class="chip err' + (activeChipFilter === 'mismatch' ? ' active' : '') + '" data-chip="mismatch">' + (lang === 'zh' ? '✕ 不一致 ' : '✕ Mismatch ') + s.mismatch + '</span>');
       if (s.stale > 0) chips.push('<span class="chip warn" data-chip="trust">' + (lang === 'zh' ? '⟳ 陈旧 ' : '⟳ Stale ') + s.stale + '</span>');
       if (s.blockingCount > 0) chips.push('<span class="chip warn' + (activeChipFilter === 'blocking' ? ' active' : '') + '" data-chip="blocking">' + (lang === 'zh' ? '守卫 ' : 'Guards ') + s.blockingCount + '</span>');
       if (s.impactCount > 0) chips.push('<span class="chip' + (activeChipFilter === 'impact' ? ' active' : '') + '" style="color:var(--cyan);background:rgba(57,197,207,0.14);" data-chip="impact">' + (lang === 'zh' ? '跨模块影响 ' : 'Impact ') + s.impactCount + '</span>');
@@ -4193,7 +4208,8 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     document.querySelectorAll('[data-agent-target]').forEach(btn => {
       btn.addEventListener('click', (ev) => {
         ev.stopPropagation();
-        agentTarget = btn.dataset.agentTarget === 'current' ? 'current' : 'new';
+        const v = btn.dataset.agentTarget;
+        agentTarget = v === 'current' || v === 'new' ? v : 'auto';
         syncStorageMenu();
         moreMenu.classList.add('hidden');
       });

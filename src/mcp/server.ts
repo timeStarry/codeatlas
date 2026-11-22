@@ -18,6 +18,7 @@ import {
 } from '../core/manifest.js';
 import { analyzeRepositoryArchitecture } from '../core/indexer.js';
 import { enrichArchitectureWithWorkspace, scanScopeExternalEdges } from '../core/workspace.js';
+import { buildAstOutlineForFiles } from '../core/astAnalyzer.js';
 import { AtlasGraphData, buildAtlasGraph, CanvasViewMode } from '../core/graph.js';
 import { verifyBriefing } from '../core/verifier.js';
 import {
@@ -595,13 +596,22 @@ const TOOLS = [
   {
     name: 'atlas_get_context',
     description:
-      'Read repository Git state, .atlas/manifest.json architectural domains & guardrails, manifest drift checks, active briefing summary, and open directives.',
+      'Read repository Git state, .atlas/manifest.json architectural domains & guardrails, manifest drift checks, Tree-sitter AST symbol/import/guard outline (exact 1-based line spans), active briefing summary, and open directives.',
     inputSchema: {
       type: 'object',
       properties: {
         worktreePath: {
           type: 'string',
           description: 'Absolute path to the target Git worktree directory.',
+        },
+        scopePath: {
+          type: 'string',
+          description:
+            'Optional relative module/directory or file path (e.g. "src/core" or "crates/aster-app") to pre-extract exact Tree-sitter AST symbol spans and guard clauses.',
+        },
+        baseRef: {
+          type: 'string',
+          description: 'Optional Git base ref (e.g. "HEAD~1") to extract AST symbols for modified files.',
         },
       },
     },
@@ -1170,16 +1180,42 @@ async function handleToolCall(
   const repoRoot = await resolveTargetRepo(args.worktreePath);
 
   if (name === 'atlas_get_context') {
-    const [gitContext, manifestResult, latestBriefing, openDirectives] = await Promise.all([
+    const scopePath =
+      typeof args.scopePath === 'string'
+        ? args.scopePath.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+|\/+$/g, '')
+        : '';
+    const baseRefArg = typeof args.baseRef === 'string' && args.baseRef ? args.baseRef : '';
+
+    const [gitContext, manifestResult, latestBriefing, openDirectives, tracked] = await Promise.all([
       getGitContext(repoRoot),
       loadAtlasManifestResult(repoRoot),
       loadLatestBriefingRecord(repoRoot),
       listDirectives(repoRoot, false),
+      listTrackedFiles(repoRoot),
     ]);
     const manifestVerification =
       manifestResult.status === 'ok'
         ? await verifyManifest(repoRoot, manifestResult.manifest)
         : undefined;
+
+    let candidateAstFiles: string[] = [];
+    if (scopePath) {
+      candidateAstFiles = tracked.filter(
+        (f) => f === scopePath || f.startsWith(`${scopePath}/`)
+      );
+    } else {
+      const effectiveBase = baseRefArg || gitContext.recentRefs[0] || 'HEAD';
+      try {
+        const diff = await getDiffStats(repoRoot, effectiveBase);
+        candidateAstFiles = diff.map((d) => d.path);
+      } catch {
+        candidateAstFiles = [];
+      }
+    }
+    const astOutline =
+      candidateAstFiles.length > 0
+        ? await buildAstOutlineForFiles(repoRoot, candidateAstFiles, 24)
+        : [];
 
     return {
       content: [
@@ -1190,6 +1226,7 @@ async function handleToolCall(
               gitContext,
               manifestResult,
               manifestVerification,
+              astOutline,
               latestBriefingSummary: latestBriefing
                 ? {
                     id: latestBriefing.id,
