@@ -425,6 +425,7 @@ export function buildAtlasGraph(params: {
   };
 
   const normTracked = trackedFiles.map((f) => normalizeCleanPath(f));
+  const trackedSet = new Set(normTracked);
   const activeTracked = scopeRoot ? normTracked.filter(isInScope) : normTracked;
   const activeDiffStats = scopeRoot
     ? diffStats.filter((d) => isInScope(d.path))
@@ -579,14 +580,23 @@ export function buildAtlasGraph(params: {
     domainNodeIds.set(name, id);
     const isExpanded = expandedDomains.has(domIdKey);
     const fileCount = indexed?.fileCount ?? 0;
-    const canonicalScope = normalizeCleanPath(indexed?.paths[0] ?? (scopeRoot && name !== '(root)' ? `${scopeRoot}/${name}` : name));
+    const rawFirstPath = normalizeCleanPath(
+      indexed?.paths[0] ?? (scopeRoot && name !== '(root)' ? `${scopeRoot}/${name}` : name)
+    );
+    const dirScopeCandidate =
+      indexed?.paths
+        .map((p) => normalizeCleanPath(p))
+        .find((p) => p && p !== '(root)' && !trackedSet.has(p)) ??
+      (rawFirstPath && rawFirstPath !== '(root)' && !trackedSet.has(rawFirstPath)
+        ? rawFirstPath
+        : '');
 
     nodes.push({
       id,
       parentId: rootId,
       kind: 'domain',
       domainId: domIdKey,
-      scopePath: canonicalScope && canonicalScope !== '(root)' ? canonicalScope : undefined,
+      scopePath: dirScopeCandidate || undefined,
       title: name,
       layer: indexed?.layer,
       isSupport: indexed?.isSupport,
@@ -601,7 +611,7 @@ export function buildAtlasGraph(params: {
       fileCount,
       canExpandFiles: fileCount > 0,
       filesExpanded: isExpanded,
-      defaultDirectivePath: canonicalScope || indexed?.files[0],
+      defaultDirectivePath: rawFirstPath || indexed?.files[0],
     });
     edges.push({
       id: `e:${rootId}->${id}`,
@@ -1346,6 +1356,15 @@ export function buildAtlasGraph(params: {
     }
 
     const keyPath = normalizeCleanPath(n.scopePath ?? n.path ?? '');
+    const domainExtraPaths =
+      n.kind === 'domain' && n.domainId
+        ? (domainById.get(n.domainId)?.paths ?? []).map((p) => normalizeCleanPath(p))
+        : [];
+    const candidateKeys = [
+      keyPath,
+      normalizeCleanPath(n.defaultDirectivePath),
+      ...domainExtraPaths,
+    ].filter(Boolean);
     let depth: CompletedDepth = 'none';
 
     if (n.kind === 'root') {
@@ -1361,13 +1380,17 @@ export function buildAtlasGraph(params: {
       continue;
     }
 
-    if (keyPath && outlineByScope.has(keyPath)) {
-      const rec = outlineByScope.get(keyPath)!;
+    const matchedOutlineKey = candidateKeys.find((k) => outlineByScope.has(k));
+    if (matchedOutlineKey) {
+      const rec = outlineByScope.get(matchedOutlineKey)!;
       n.body = rec.outline.summary;
       depth = 'overview';
     }
-    if (keyPath && roleByPath.has(keyPath)) {
-      const info = roleByPath.get(keyPath)!;
+    const matchedRoleKey = keyPath && roleByPath.has(keyPath)
+      ? keyPath
+      : candidateKeys.find((k) => roleByPath.has(k));
+    if (matchedRoleKey) {
+      const info = roleByPath.get(matchedRoleKey)!;
       n.roleSummary = info.summary;
       if (info.isRecommended) n.isRecommendedEntry = true;
       if ((n.kind === 'domain' || n.kind === 'folder') && depth === 'none') {
@@ -1375,10 +1398,12 @@ export function buildAtlasGraph(params: {
       }
     }
 
-    if (keyPath && verification) {
-      const hasClaimInScope =
-        briefingTargetScope === keyPath ||
-        [...briefingCoveredPaths].some((p) => p === keyPath || p.startsWith(`${keyPath}/`));
+    if (candidateKeys.length > 0 && verification) {
+      const hasClaimInScope = candidateKeys.some(
+        (ck) =>
+          briefingTargetScope === ck ||
+          [...briefingCoveredPaths].some((p) => p === ck || p.startsWith(`${ck}/`))
+      );
       if (hasClaimInScope) {
         depth = hasDeepBriefingGuards ? 'deep' : 'flow';
       }

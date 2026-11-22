@@ -45,6 +45,12 @@ import {
   ModuleOutlineReport,
   StorageMode,
 } from '../core/types.js';
+import {
+  discoverCandidateRepos,
+  DiscoveredRepoItem,
+  listDirectoryEntries,
+  openNativeFolderDialog,
+} from '../core/repoPicker.js';
 import { getCanvasHtml } from '../webview/canvasHtml.js';
 
 export const APP_URI = 'ui://codeatlas/app.html';
@@ -61,6 +67,7 @@ interface JsonRpcRequest {
 interface DiscoveredBriefing {
   label: string;
   path: string;
+  isExample?: boolean;
 }
 
 interface RepoUiSession {
@@ -87,8 +94,21 @@ const defaultCliRepo = cliRepoArgIdx >= 0 ? process.argv[cliRepoArgIdx + 1] : un
 
 const sessionsByRepo = new Map<string, RepoUiSession>();
 let lastActiveRepoRoot = '';
+const recentRepoRoots: string[] = [];
 let globalFallbackMode: CanvasViewMode = 'hybrid';
 let globalFallbackLang: 'zh' | 'en' = 'zh';
+
+function recordRecentRepo(repoRoot: string): void {
+  const clean = path.resolve(repoRoot);
+  const existingIdx = recentRepoRoots.findIndex((p) =>
+    process.platform === 'win32'
+      ? p.toLowerCase() === clean.toLowerCase()
+      : p === clean
+  );
+  if (existingIdx >= 0) recentRepoRoots.splice(existingIdx, 1);
+  recentRepoRoots.unshift(clean);
+  if (recentRepoRoots.length > 15) recentRepoRoots.length = 15;
+}
 
 function getSession(repoRoot: string): RepoUiSession {
   const key = path.normalize(repoRoot);
@@ -219,7 +239,7 @@ async function discoverBriefings(repoRoot: string): Promise<DiscoveredBriefing[]
         const fullPath = path.join(examplesDir, entry.name);
         if (await isValidBriefingFile(fullPath)) {
           const rel = path.relative(repoRoot, fullPath).replace(/\\/g, '/');
-          candidates.push({ label: rel, path: fullPath });
+          candidates.push({ label: rel, path: fullPath, isExample: true });
         }
       }
     }
@@ -263,13 +283,14 @@ function buildEmptyCanvasPayload(params: {
   mode: CanvasViewMode;
   lang: 'zh' | 'en';
   worktreePath: string;
+  discoveredRepos?: DiscoveredRepoItem[];
   error?: string;
 }): Record<string, unknown> {
-  const { mode, lang, worktreePath } = params;
+  const { mode, lang, worktreePath, discoveredRepos = [] } = params;
   const defaultPrompt =
     lang === 'zh'
-      ? '请在左上角输入本地 Git 仓库路径（例如 D:\\Project\\aster）并点击「切换仓库」。'
-      : 'Enter a local Git repository path in the top bar and click Load Repo.';
+      ? '请点击左上角仓库胶囊直接选择本地仓库 / 文件夹，或输入 Git 仓库路径。'
+      : 'Click the repository pill in the top bar to select a local folder or Git repository.';
   return {
     git: null,
     baseRef: 'HEAD',
@@ -304,6 +325,7 @@ function buildEmptyCanvasPayload(params: {
     },
     availableBriefings: [],
     activeBriefingPath: '',
+    discoveredRepos,
     pruneUnchanged: false,
     showSupportAssets: false,
     lang,
@@ -318,21 +340,23 @@ async function buildRepoCanvasPayload(repoRoot: string): Promise<{
 }> {
   const session = getSession(repoRoot);
   const git = await getGitContext(repoRoot);
+  recordRecentRepo(git.repoRoot);
 
   if (!session.baseRef || !git.recentRefs.includes(session.baseRef)) {
     session.baseRef = git.recentRefs[0] || 'HEAD';
   }
 
   const availableBriefings = await discoverBriefings(git.repoRoot);
-  if (!session.userSelectedBriefing && availableBriefings.length > 0) {
-    session.activeBriefingPath = availableBriefings[0].path;
+  const defaultNonExample = availableBriefings.find((b) => !b.isExample);
+  if (!session.userSelectedBriefing) {
+    session.activeBriefingPath = defaultNonExample?.path ?? '';
   } else if (
     session.activeBriefingPath &&
     !availableBriefings.some((b) => b.path === session.activeBriefingPath)
   ) {
-    // Keep custom path if still readable, otherwise fallback to newest discovered briefing
+    // Keep custom path if still readable, otherwise fallback to newest non-example briefing
     if (!(await isValidBriefingFile(session.activeBriefingPath))) {
-      session.activeBriefingPath = availableBriefings[0]?.path ?? '';
+      session.activeBriefingPath = defaultNonExample?.path ?? '';
       session.userSelectedBriefing = false;
     }
   }
@@ -342,16 +366,29 @@ async function buildRepoCanvasPayload(repoRoot: string): Promise<{
     session.activeBriefingPath
   );
 
-  const [diffStats, manifestRes, trackedFiles, commits, directives, repoCfg, outlines] =
-    await Promise.all([
-      getDiffStats(git.repoRoot, session.baseRef),
-      loadAtlasManifestResult(git.repoRoot),
-      listTrackedFiles(git.repoRoot),
-      getBranchCommits(git.repoRoot, session.baseRef),
-      listDirectives(git.repoRoot, true),
-      loadRepoConfig(git.repoRoot),
-      loadAllOutlines(git.repoRoot),
-    ]);
+  const [
+    diffStats,
+    manifestRes,
+    trackedFiles,
+    commits,
+    directives,
+    repoCfg,
+    outlines,
+    discoveredRepos,
+  ] = await Promise.all([
+    getDiffStats(git.repoRoot, session.baseRef),
+    loadAtlasManifestResult(git.repoRoot),
+    listTrackedFiles(git.repoRoot),
+    getBranchCommits(git.repoRoot, session.baseRef),
+    listDirectives(git.repoRoot, true),
+    loadRepoConfig(git.repoRoot),
+    loadAllOutlines(git.repoRoot),
+    discoverCandidateRepos({
+      currentRepoRoot: git.repoRoot,
+      extraRoots: defaultCliRepo ? [path.dirname(path.resolve(defaultCliRepo))] : [],
+      recentPaths: recentRepoRoots,
+    }),
+  ]);
 
   const manifest = manifestRes.status === 'ok' ? manifestRes.manifest : undefined;
   let manifestIssues: ManifestDriftIssue[] = [];
@@ -412,6 +449,7 @@ async function buildRepoCanvasPayload(repoRoot: string): Promise<{
     graph: g,
     availableBriefings,
     activeBriefingPath: session.activeBriefingPath,
+    discoveredRepos,
     pruneUnchanged: session.pruneUnchanged,
     showSupportAssets: session.showSupportAssets,
     lang: session.lang,
@@ -641,10 +679,15 @@ async function handleOpenAtlas(args: Record<string, unknown>): Promise<ToolCallR
 
   const resolved = await resolveOptionalRepoForUi(args.worktreePath);
   if (!resolved.repoRoot) {
+    const discoveredRepos = await discoverCandidateRepos({
+      recentPaths: recentRepoRoots,
+      extraRoots: defaultCliRepo ? [path.dirname(path.resolve(defaultCliRepo))] : [],
+    });
     const emptyPayload = buildEmptyCanvasPayload({
       mode: globalFallbackMode,
       lang: globalFallbackLang,
       worktreePath: resolved.attemptedPath ?? '',
+      discoveredRepos,
       error: resolved.error,
     });
     const msg =
@@ -803,6 +846,59 @@ async function handleAtlasAppAction(args: Record<string, unknown>): Promise<Tool
 
   const resolved = await resolveOptionalRepoForUi(candidatePath);
 
+  if (action === 'browseDirectory') {
+    const reqDir = typeof payloadObj.dirPath === 'string' ? payloadObj.dirPath : undefined;
+    const fallbackStart = resolved.repoRoot
+      ? path.dirname(resolved.repoRoot)
+      : lastActiveRepoRoot
+        ? path.dirname(lastActiveRepoRoot)
+        : process.cwd();
+    const listing = await listDirectoryEntries(reqDir, fallbackStart);
+    return {
+      content: [{ type: 'text', text: `Listed directory ${listing.currentPath || 'drives'}.` }],
+      structuredContent: { type: 'dirListing', listing, payload: listing },
+    };
+  }
+
+  if (action === 'pickWorktreeDialog') {
+    const startDir = resolved.repoRoot
+      ? path.dirname(resolved.repoRoot)
+      : lastActiveRepoRoot
+        ? path.dirname(lastActiveRepoRoot)
+        : process.cwd();
+    const picked = await openNativeFolderDialog(startDir);
+    if (!picked) {
+      return {
+        content: [{ type: 'text', text: 'Folder selection cancelled.' }],
+        structuredContent: { type: 'pickCancelled', cancelled: true },
+      };
+    }
+    const pickedRepo = await tryGetRepoRoot(picked);
+    if (pickedRepo) {
+      lastActiveRepoRoot = pickedRepo;
+      const { payload, summaryText } = await buildRepoCanvasPayload(pickedRepo);
+      return {
+        content: [{ type: 'text', text: summaryText }],
+        structuredContent: payload,
+      };
+    }
+    const listing = await listDirectoryEntries(picked, startDir);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Selected folder "${picked}" is not a Git repository; opened child directory browser.`,
+        },
+      ],
+      structuredContent: {
+        type: 'dirListing',
+        listing,
+        nonRepoNotice: picked,
+        payload: { ...listing, nonRepoNotice: picked },
+      },
+    };
+  }
+
   if (action === 'requestSnippet') {
     const session = resolved.repoRoot ? getSession(resolved.repoRoot) : undefined;
     return handleSnippetAction(resolved.repoRoot, session, payloadObj);
@@ -822,10 +918,15 @@ async function handleAtlasAppAction(args: Record<string, unknown>): Promise<Tool
     ) {
       globalFallbackMode = payloadObj.mode;
     }
+    const discoveredRepos = await discoverCandidateRepos({
+      recentPaths: recentRepoRoots,
+      extraRoots: defaultCliRepo ? [path.dirname(path.resolve(defaultCliRepo))] : [],
+    });
     const emptyPayload = buildEmptyCanvasPayload({
       mode: globalFallbackMode,
       lang: globalFallbackLang,
       worktreePath: resolved.attemptedPath ?? '',
+      discoveredRepos,
       error: resolved.error,
     });
     return {

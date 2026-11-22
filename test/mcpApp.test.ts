@@ -13,6 +13,7 @@ import { listDirectives } from '../src/core/store.js';
 import { getCanvasHtml } from '../src/webview/canvasHtml.js';
 import { getCockpitHtml } from '../src/webview/html.js';
 import { getFileIconsClientJs } from '../src/webview/fileIcons.js';
+import { discoverCandidateRepos, listDirectoryEntries } from '../src/core/repoPicker.js';
 
 const execFileAsync = promisify(execFile);
 const MCP_SERVER_SCRIPT = path.resolve(__dirname, '..', 'dist', 'mcp-server.js');
@@ -510,5 +511,107 @@ test('Storage isolation (.git/codeatlas vs .git/info/exclude), Scope Root + exte
   } finally {
     await client.close();
     await fs.rm(repoDir, { recursive: true, force: true });
+  }
+});
+
+test('Repository folder discovery, inline directory browsing, and example briefing non-auto-activation', async () => {
+  const workspaceParent = realpathSync.native(
+    await fs.mkdtemp(path.join(os.tmpdir(), 'codeatlas-repos-parent-'))
+  );
+  const repoA = path.join(workspaceParent, 'alpha-repo');
+  const repoB = path.join(workspaceParent, 'beta-repo');
+  const plainFolder = path.join(workspaceParent, 'docs-notes');
+
+  await fs.mkdir(repoA, { recursive: true });
+  await fs.mkdir(repoB, { recursive: true });
+  await fs.mkdir(plainFolder, { recursive: true });
+
+  for (const r of [repoA, repoB]) {
+    await git(r, ['init', '-b', 'main']);
+    await git(r, ['config', 'user.email', 'test@codeatlas.local']);
+    await git(r, ['config', 'user.name', 'CodeAtlas Test']);
+    await fs.writeFile(path.join(r, 'index.ts'), 'export const ok = true;\n', 'utf-8');
+    // Put a mismatched example briefing under examples/ to verify it is NOT auto-selected
+    await fs.mkdir(path.join(r, 'examples'), { recursive: true });
+    await fs.writeFile(
+      path.join(r, 'examples', 'sample-briefing.json'),
+      JSON.stringify({
+        schemaVersion: '0.2',
+        title: 'Demo Only Sample',
+        targetRef: 'WORKTREE',
+        summary: 'Sample demo file',
+        claims: [
+          {
+            id: 'C1',
+            title: 'Nonexistent demo file',
+            statement: 'Demo claim',
+            claimType: 'fact',
+            anchors: [{ path: 'nonexistent.ts', startLine: 1, endLine: 2 }],
+          },
+        ],
+      }),
+      'utf-8'
+    );
+    await git(r, ['add', '.']);
+    await git(r, ['commit', '-m', 'init']);
+  }
+
+  const client = new McpStdioClient(plainFolder);
+  try {
+    await client.request('initialize', { protocolVersion: '2024-11-05', capabilities: {} });
+
+    // 1. Direct repoPicker unit checks: sibling discovery & directory listing sorting Git repos first
+    const discovered = await discoverCandidateRepos({ currentRepoRoot: repoA });
+    assert.ok(discovered.some((d) => path.normalize(d.path) === path.normalize(repoA) && d.isCurrent));
+    assert.ok(
+      discovered.some((d) => path.normalize(d.path) === path.normalize(repoB) && d.branch === 'main'),
+      'Sibling Git repo must be auto-discovered with branch name'
+    );
+
+    const listing = await listDirectoryEntries(workspaceParent);
+    assert.equal(listing.entries.length, 3);
+    assert.equal(listing.entries[0].isGitRepo, true, 'Git repos should sort ahead of plain folders');
+    assert.equal(listing.entries[1].isGitRepo, true);
+    assert.equal(listing.entries[2].name, 'docs-notes');
+    assert.equal(listing.entries[2].isGitRepo, false);
+
+    // 2. MCP browseDirectory action works even before any repository is active
+    const browseRes = await client.request('tools/call', {
+      name: 'atlas_app_action',
+      arguments: {
+        action: 'browseDirectory',
+        payload: { type: 'browseDirectory', dirPath: workspaceParent },
+      },
+    });
+    assert.ok(!browseRes.isError);
+    assert.equal(browseRes.structuredContent.type, 'dirListing');
+    assert.equal(browseRes.structuredContent.listing.entries.length, 3);
+
+    // 3. Opening repoA populates discoveredRepos AND does NOT auto-activate examples/sample-briefing.json!
+    const openRes = await client.request('tools/call', {
+      name: 'open_atlas',
+      arguments: { worktreePath: repoA },
+    });
+    assert.ok(!openRes.isError);
+    assert.equal(
+      openRes.structuredContent.activeBriefingPath,
+      '',
+      'examples/*.json must not be auto-activated by default'
+    );
+    assert.equal(openRes.structuredContent.graph.summary.hasBriefing, false);
+    assert.ok(
+      openRes.structuredContent.availableBriefings.some((b: any) =>
+        b.label.includes('examples/sample-briefing.json')
+      ),
+      'examples/*.json should still appear in dropdown for manual selection'
+    );
+    assert.ok(
+      openRes.structuredContent.discoveredRepos.some(
+        (r: any) => path.normalize(r.path) === path.normalize(repoB)
+      )
+    );
+  } finally {
+    await client.close();
+    await fs.rm(workspaceParent, { recursive: true, force: true });
   }
 });

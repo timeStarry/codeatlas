@@ -8,6 +8,7 @@ import {
   getFileDiff,
   getGitContext,
   getGitStateDir,
+  getRepoRoot,
   listTrackedFiles,
   readFileAtRef,
 } from './core/git.js';
@@ -55,6 +56,11 @@ import {
   ManifestDriftIssue,
   StorageMode,
 } from './core/types.js';
+import {
+  discoverCandidateRepos,
+  DiscoveredRepoItem,
+  listDirectoryEntries,
+} from './core/repoPicker.js';
 import { getCockpitHtml } from './webview/html.js';
 import { getCanvasHtml } from './webview/canvasHtml.js';
 
@@ -63,6 +69,7 @@ const LEGACY_DIRECTIVES_KEY = 'codeatlas.directives.v1';
 interface DiscoveredBriefing {
   label: string;
   path: string;
+  isExample?: boolean;
 }
 
 class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
@@ -70,6 +77,8 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
 
   private view?: vscode.WebviewView;
   private canvasPanel?: vscode.WebviewPanel;
+  private overrideRepoRoot = '';
+  private recentRepoRoots: string[] = [];
   private lastVerification?: BriefingVerificationResult;
   private lastBriefingDepth?: 'flow' | 'deep';
   private lastBriefingScopePath?: string;
@@ -343,6 +352,24 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
         case 'copyNodePrompt':
           await this.copyNodePromptToClipboard(msg);
           break;
+        case 'setWorktreePath':
+          if (typeof msg.worktreePath === 'string' && msg.worktreePath.trim()) {
+            await this.switchActiveRepository(msg.worktreePath.trim());
+          }
+          break;
+        case 'browseDirectory': {
+          const curRoot = this.getWorkspaceRoot();
+          const fallbackDir = curRoot ? path.dirname(curRoot) : undefined;
+          const listing = await listDirectoryEntries(
+            typeof msg.dirPath === 'string' ? msg.dirPath : undefined,
+            fallbackDir
+          );
+          await webview.postMessage({ type: 'dirListing', payload: listing });
+          break;
+        }
+        case 'pickWorktreeDialog':
+          await this.pickRepositoryFolder(webview);
+          break;
         case 'setScopeRoot':
           this.scopeRoot =
             typeof msg.scopeRoot === 'string'
@@ -381,7 +408,71 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
   }
 
   private getWorkspaceRoot(): string | undefined {
-    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    return this.overrideRepoRoot || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  }
+
+  private recordRecentRepo(repoRoot: string): void {
+    const clean = path.resolve(repoRoot);
+    const idx = this.recentRepoRoots.findIndex((p) =>
+      process.platform === 'win32' ? p.toLowerCase() === clean.toLowerCase() : p === clean
+    );
+    if (idx >= 0) this.recentRepoRoots.splice(idx, 1);
+    this.recentRepoRoots.unshift(clean);
+    if (this.recentRepoRoots.length > 15) this.recentRepoRoots.length = 15;
+  }
+
+  private async switchActiveRepository(targetPath: string): Promise<void> {
+    try {
+      const repoRoot = await getRepoRoot(targetPath);
+      this.overrideRepoRoot = repoRoot;
+      this.recordRecentRepo(repoRoot);
+      this.scopeRoot = '';
+      this.baseRef = '';
+      this.activeBriefingPath = '';
+      this.lastVerification = undefined;
+      this.lastBriefingDepth = undefined;
+      this.lastBriefingScopePath = undefined;
+      this.lastIndirectImpact = undefined;
+      this.didAutoDiscover = false;
+      this.expandedDomainIds.clear();
+      this.expandedFolderIds.clear();
+      this.stateWatcher?.dispose();
+      this.stateWatcher = undefined;
+      await this.pushState();
+    } catch (err) {
+      vscode.window.showWarningMessage(
+        this.lang === 'zh'
+          ? `无法切换至 Git 仓库 "${targetPath}": ${err instanceof Error ? err.message : String(err)}`
+          : `Cannot open Git repository "${targetPath}": ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
+  private async pickRepositoryFolder(webview: vscode.Webview): Promise<void> {
+    const curRoot = this.getWorkspaceRoot();
+    const defaultDir = curRoot ? path.dirname(curRoot) : undefined;
+    const picked = await vscode.window.showOpenDialog({
+      canSelectFolders: true,
+      canSelectFiles: false,
+      canSelectMany: false,
+      defaultUri: defaultDir ? vscode.Uri.file(defaultDir) : undefined,
+      openLabel: this.lang === 'zh' ? '选择 Git 仓库' : 'Select Git Repo',
+    });
+    if (!picked || picked.length === 0) {
+      await webview.postMessage({ type: 'pickWorktreeDone' });
+      return;
+    }
+    const chosenPath = picked[0].fsPath;
+    try {
+      const repoRoot = await getRepoRoot(chosenPath);
+      await this.switchActiveRepository(repoRoot);
+    } catch {
+      const listing = await listDirectoryEntries(chosenPath, defaultDir);
+      await webview.postMessage({
+        type: 'dirListing',
+        payload: { ...listing, nonRepoNotice: chosenPath },
+      });
+    }
   }
 
   private async runIndirectImpactAnalysis(): Promise<void> {
@@ -454,7 +545,7 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
             const fullPath = path.join(dir, entry.name);
             if (await this.isValidBriefingFile(fullPath)) {
               const rel = path.relative(repoRoot, fullPath).replace(/\\/g, '/');
-              candidates.push({ label: rel, path: fullPath });
+              candidates.push({ label: rel, path: fullPath, isExample: true });
             }
           }
         }
@@ -1062,7 +1153,7 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private postEmptyOrErrorState(errorMsg?: string): void {
+  private postEmptyOrErrorState(errorMsg?: string, discoveredRepos: DiscoveredRepoItem[] = []): void {
     this.view?.webview.postMessage({
       type: 'state',
       payload: {
@@ -1083,6 +1174,8 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
         graph: { mode: this.viewMode, nodes: [], edges: [], summary: {} },
         availableBriefings: [],
         activeBriefingPath: '',
+        discoveredRepos,
+        worktreePath: this.overrideRepoRoot || '',
         error: errorMsg,
         lang: this.lang,
       },
@@ -1091,13 +1184,19 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
 
   public async pushState(): Promise<void> {
     const workspaceRoot = this.getWorkspaceRoot();
+    const vsFolders = (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
     if (!workspaceRoot) {
-      this.postEmptyOrErrorState('Open a folder containing a Git repository.');
+      const discovered = await discoverCandidateRepos({
+        extraRoots: vsFolders.map((f) => path.dirname(f)),
+        recentPaths: this.recentRepoRoots,
+      });
+      this.postEmptyOrErrorState('Open or select a folder containing a Git repository.', discovered);
       return;
     }
 
     try {
       const git = await getGitContext(workspaceRoot);
+      this.recordRecentRepo(git.repoRoot);
       await this.migrateLegacyDirectivesOnce(git.repoRoot);
       await this.ensureStateWatcher(git.repoRoot);
 
@@ -1106,22 +1205,36 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
       }
 
       const availableBriefings = await this.discoverBriefings(git.repoRoot);
-      if (!this.didAutoDiscover && !this.lastVerification && availableBriefings.length > 0) {
+      const defaultNonExample = availableBriefings.find((b) => !b.isExample);
+      if (!this.didAutoDiscover && !this.lastVerification && defaultNonExample) {
         this.didAutoDiscover = true;
-        await this.verifyBriefingFile(availableBriefings[0].path, true);
+        await this.verifyBriefingFile(defaultNonExample.path, true);
         return;
       }
 
-      const [diffStats, manifestRes, trackedFiles, commits, directives, repoCfg, outlines] =
-        await Promise.all([
-          getDiffStats(git.repoRoot, this.baseRef),
-          loadAtlasManifestResult(git.repoRoot),
-          listTrackedFiles(git.repoRoot),
-          getBranchCommits(git.repoRoot, this.baseRef),
-          listDirectives(git.repoRoot, true),
-          loadRepoConfig(git.repoRoot),
-          loadAllOutlines(git.repoRoot),
-        ]);
+      const [
+        diffStats,
+        manifestRes,
+        trackedFiles,
+        commits,
+        directives,
+        repoCfg,
+        outlines,
+        discoveredRepos,
+      ] = await Promise.all([
+        getDiffStats(git.repoRoot, this.baseRef),
+        loadAtlasManifestResult(git.repoRoot),
+        listTrackedFiles(git.repoRoot),
+        getBranchCommits(git.repoRoot, this.baseRef),
+        listDirectives(git.repoRoot, true),
+        loadRepoConfig(git.repoRoot),
+        loadAllOutlines(git.repoRoot),
+        discoverCandidateRepos({
+          currentRepoRoot: git.repoRoot,
+          extraRoots: vsFolders.flatMap((f) => [f, path.dirname(f)]),
+          recentPaths: this.recentRepoRoots,
+        }),
+      ]);
 
       const manifest = manifestRes.status === 'ok' ? manifestRes.manifest : undefined;
       let manifestIssues: ManifestDriftIssue[] = [];
@@ -1193,6 +1306,8 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
             graph,
             availableBriefings,
             activeBriefingPath: this.activeBriefingPath,
+            discoveredRepos,
+            worktreePath: git.repoRoot,
             pruneUnchanged: this.pruneUnchanged,
             showSupportAssets: this.showSupportAssets,
             lang: this.lang,

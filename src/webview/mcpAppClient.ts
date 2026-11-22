@@ -337,6 +337,81 @@ async function handleCanvasMessage(msg: CanvasOutboundMessage): Promise<void> {
     currentWorktreePath = msg.worktreePath.trim();
   }
 
+  if (msg.type === 'browseDirectory') {
+    try {
+      const result = await withToolSlot(() =>
+        app.callServerTool({
+          name: 'atlas_app_action',
+          arguments: {
+            worktreePath: currentWorktreePath || undefined,
+            action: 'browseDirectory',
+            payload: msg,
+          },
+        })
+      );
+      const data = extractStructured(result as ToolResultLike);
+      const listing =
+        data?.listing && typeof data.listing === 'object'
+          ? (data.listing as Record<string, unknown>)
+          : data?.payload && typeof data.payload === 'object'
+            ? (data.payload as Record<string, unknown>)
+            : data ?? { entries: [], error: 'Empty directory response.' };
+      dispatchToCanvas({ type: 'dirListing', payload: listing });
+    } catch (err) {
+      dispatchToCanvas({
+        type: 'dirListing',
+        payload: {
+          currentPath: '',
+          parentPath: null,
+          entries: [],
+          currentIsGitRepo: false,
+          error: err instanceof Error ? err.message : String(err),
+        },
+      });
+    }
+    return;
+  }
+
+  if (msg.type === 'pickWorktreeDialog') {
+    try {
+      const result = await withToolSlot(() =>
+        app.callServerTool({
+          name: 'atlas_app_action',
+          arguments: {
+            worktreePath: currentWorktreePath || undefined,
+            action: 'pickWorktreeDialog',
+            payload: msg,
+          },
+        })
+      );
+      const data = extractStructured(result as ToolResultLike);
+      if (!data || data.type === 'pickCancelled' || data.cancelled) {
+        dispatchToCanvas({ type: 'pickWorktreeDone' });
+        return;
+      }
+      if (data.type === 'dirListing') {
+        const listing =
+          data.payload && typeof data.payload === 'object'
+            ? (data.payload as Record<string, unknown>)
+            : data.listing && typeof data.listing === 'object'
+              ? { ...(data.listing as Record<string, unknown>), nonRepoNotice: data.nonRepoNotice }
+              : data;
+        dispatchToCanvas({ type: 'dirListing', payload: listing });
+        return;
+      }
+      const statePayload = unwrapCanvasState(data);
+      updateWorktreeFromData(data);
+      updateWorktreeFromData(statePayload);
+      dispatchToCanvas({ type: 'canvasState', payload: statePayload });
+    } catch (err) {
+      dispatchToCanvas({
+        type: 'canvasState',
+        payload: buildErrorCanvasState(err instanceof Error ? err.message : String(err)),
+      });
+    }
+    return;
+  }
+
   if (STATE_ACTIONS.has(msg.type)) {
     try {
       const result = await withToolSlot(() =>

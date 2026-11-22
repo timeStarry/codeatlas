@@ -8,7 +8,7 @@
       "paths": ["src/core"],
       "entrypoints": [
         { "path": "src/core/verifier.ts", "startLine": 138, "symbol": "verifyBriefing" },
-        { "path": "src/core/git.ts", "startLine": 63, "symbol": "getGitContext" }
+        { "path": "src/core/git.ts", "startLine": 105, "symbol": "getGitContext" }
       ]
     },
     {
@@ -17,7 +17,7 @@
       "description": "VS Code extension activation, webview bridge, LSP impact provider, source navigation, and local state watcher.",
       "paths": ["src/extension.ts", "src/webview", "src/lsp"],
       "entrypoints": [
-        { "path": "src/extension.ts", "startLine": 1022, "symbol": "activate" }
+        { "path": "src/extension.ts", "startLine": 1325, "symbol": "activate" }
       ]
     },
     {

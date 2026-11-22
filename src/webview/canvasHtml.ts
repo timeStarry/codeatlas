@@ -156,21 +156,189 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       position: absolute;
       top: calc(100% + 6px);
       left: 0;
-      width: 340px;
-      max-width: 86vw;
+      width: 392px;
+      max-width: 90vw;
       background: var(--panel-2);
       border: 1px solid var(--border-strong);
-      border-radius: 8px;
+      border-radius: 9px;
       padding: 10px;
-      box-shadow: 0 10px 28px rgba(0,0,0,0.38);
+      box-shadow: 0 12px 32px rgba(0,0,0,0.42);
       z-index: 45;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
     }
     .repo-popover.hidden { display: none; }
+    .repo-popover-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
     .repo-popover-label {
       font-size: 11px;
-      font-weight: 600;
+      font-weight: 700;
       color: var(--muted);
-      margin-bottom: 6px;
+      letter-spacing: 0.2px;
+    }
+    .repo-quick-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .repo-quick-actions button {
+      flex: 1;
+      height: 28px;
+      font-size: 11.5px;
+      font-weight: 600;
+    }
+    .repo-sec-title {
+      font-size: 10.5px;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .repo-discovered-list, .repo-dir-list {
+      max-height: 184px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--bg);
+      padding: 3px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .repo-disc-row, .repo-dir-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 5px 8px;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background 0.12s;
+      text-align: left;
+    }
+    .repo-disc-row:hover, .repo-dir-row:hover {
+      background: var(--surface-hover);
+    }
+    .repo-disc-row.is-current {
+      background: rgba(77,166,255,0.12);
+      border: 1px solid rgba(77,166,255,0.32);
+    }
+    .repo-disc-main {
+      min-width: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    .repo-disc-top {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+    .repo-disc-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--fg);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .repo-disc-path {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .repo-branch-tag {
+      font-family: var(--mono);
+      font-size: 9.5px;
+      padding: 0 5px;
+      border-radius: 4px;
+      background: var(--surface-subtle);
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+    .repo-git-tag {
+      font-size: 9.5px;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: rgba(63,185,80,0.16);
+      color: var(--green);
+      flex-shrink: 0;
+    }
+    .repo-dir-browser {
+      border: 1px solid var(--border-strong);
+      border-radius: 7px;
+      background: var(--panel);
+      padding: 7px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .repo-dir-browser.hidden { display: none; }
+    .repo-dir-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 5px;
+      flex-wrap: wrap;
+    }
+    .repo-drives-bar {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    .drive-chip {
+      height: 20px;
+      padding: 0 6px;
+      font-family: var(--mono);
+      font-size: 10.5px;
+      border-radius: 4px;
+      background: var(--surface-subtle);
+      color: var(--fg);
+      border: 1px solid var(--border);
+    }
+    .drive-chip:hover { border-color: var(--accent); color: var(--accent); }
+    .drive-chip.active {
+      background: rgba(77,166,255,0.16);
+      border-color: var(--accent);
+      color: var(--accent);
+      font-weight: 700;
+    }
+    .repo-cur-dir {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      color: var(--muted);
+      background: var(--surface-subtle);
+      padding: 3px 7px;
+      border-radius: 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .repo-notice {
+      font-size: 10.5px;
+      color: var(--amber);
+      background: rgba(240,136,62,0.12);
+      border: 1px solid rgba(240,136,62,0.32);
+      border-radius: 5px;
+      padding: 4px 7px;
     }
     .worktree-bar {
       display: flex;
@@ -1279,20 +1447,34 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           </svg>
           CodeAtlas
         </span>
-        ${isMcpApp ? `<div class="repo-wrap">
-          <button class="git-pill" id="btnRepoToggle" title="点击切换本地 Git 仓库路径">
+        <div class="repo-wrap">
+          <button class="git-pill" id="btnRepoToggle" title="点击选择或切换本地 Git 仓库">
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="5" cy="4.5" r="1.7" stroke="currentColor" stroke-width="1.4"/><circle cx="5" cy="11.5" r="1.7" stroke="currentColor" stroke-width="1.4"/><circle cx="11.5" cy="7.5" r="1.7" stroke="currentColor" stroke-width="1.4"/><path d="M5 6.2v3.6M9.8 7.5H7.2A2.2 2.2 0 0 1 5 5.3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
             <span id="gitPill">加载中...</span>
             <span style="opacity:0.6;font-size:9px;">▾</span>
           </button>
           <div class="repo-popover hidden" id="repoPopover">
-            <div class="repo-popover-label" id="lblSwitchRepo">本地 Git 仓库路径</div>
-            <div class="worktree-bar" id="worktreeBar">
-              <input id="worktreeInput" class="worktree-input" value="${initialWorktreeAttr}" placeholder="输入本地 Git 仓库路径 (如 D:\\Project\\aster)..." />
-              <button id="btnSetWorktree">切换仓库</button>
+            <div class="repo-popover-head">
+              <div class="repo-popover-label" id="lblSwitchRepo">选择或切换本地 Git 仓库</div>
+            </div>
+            <div class="repo-quick-actions">
+              <button id="btnPickRepoDialog">📁 选择本地文件夹...</button>
+              <button class="secondary" id="btnToggleInlineBrowser">📂 浏览目录</button>
+            </div>
+            <div class="repo-dir-browser hidden" id="inlineDirBrowser"></div>
+            <div id="discoveredReposSec" style="display:none;">
+              <div class="repo-sec-title"><span id="lblDiscoveredRepos">已发现 / 最近仓库</span></div>
+              <div class="repo-discovered-list" id="discoveredReposList"></div>
+            </div>
+            <div>
+              <div class="repo-sec-title"><span id="lblManualPath">或直接输入路径</span></div>
+              <div class="worktree-bar" id="worktreeBar">
+                <input id="worktreeInput" class="worktree-input" value="${initialWorktreeAttr}" placeholder="输入本地 Git 仓库路径 (如 D:\\Project\\aster)..." />
+                <button class="secondary" id="btnSetWorktree">切换</button>
+              </div>
             </div>
           </div>
-        </div>` : `<span class="git-pill" id="gitPill">加载中...</span>`}
+        </div>
         <select id="baseRefSelect" style="max-width:112px;"></select>
       </div>
 
@@ -1434,7 +1616,10 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           <div class="empty-card">
             <strong id="emptyTitle" style="font-size:14px;"></strong>
             <p id="emptyDesc" style="color:var(--muted);font-size:12px;margin:8px 0 12px;"></p>
-            <button id="btnEmptyVerify"></button>
+            <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+              <button id="btnEmptyPickRepo" style="display:none;">📁 选择本地文件夹...</button>
+              <button id="btnEmptyVerify"></button>
+            </div>
           </div>
         </div>
 
@@ -1498,9 +1683,15 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     const I18N = {
       zh: {
         atlas: '全景底图', briefing: '因果简报', hybrid: '融合视图',
-        switchRepoTitle: '本地 Git 仓库路径',
-        loadRepoBtn: '切换仓库', worktreePh: '输入本地 Git 仓库路径 (如 D:\\\\Project\\\\aster)...',
-        mcpNoRepoDesc: '请点击左上角仓库胶囊输入本地 Git 仓库路径（如 D:\\\\Project\\\\aster）。',
+        switchRepoTitle: '选择或切换本地 Git 仓库',
+        pickRepoDialogBtn: '📁 选择本地文件夹...', pickRepoWaiting: '⏳ 请在弹窗中选择...',
+        browseInlineBtn: '📂 浏览目录', browseInlineClose: '📂 收起目录',
+        discoveredReposTitle: '已发现 / 最近仓库（点击即切）', manualPathTitle: '或粘贴仓库路径',
+        upDirBtn: '⬆ 上级', openThisRepoBtn: '✓ 打开此仓库', currentRepoTag: '当前',
+        dirLoading: '正在读取目录列表...', dirEmpty: '此目录下没有子文件夹。',
+        nonRepoPickedFmt: (p) => '所选目录并非 Git 仓库根，请从下方子目录中选择仓库：' + p,
+        loadRepoBtn: '切换', worktreePh: '输入本地 Git 仓库路径 (如 D:\\\\Project\\\\aster)...',
+        mcpNoRepoDesc: '点击下方按钮或左上角仓库胶囊，可直接选择本地文件夹、浏览目录或从已发现仓库中一键切换。',
         analyzeBranchBtn: '⚡ 分析分支', analyzeScopeBtn: '⚡ 概览当前根',
         depthBtnOverview: '⚡ 概览职责', depthBtnFlow: '⚡ 解析链路', depthBtnDeep: '⚡ 深度核验',
         depthL1Title: 'L1 · 概览职责（默认推荐）', depthL1Desc: '快速标注目录与各子文件一句话职责，原地回填不加冗余卡片',
@@ -1574,9 +1765,15 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       },
       en: {
         atlas: 'Atlas', briefing: 'Briefing', hybrid: 'Hybrid',
-        switchRepoTitle: 'Local Git Repository Path',
+        switchRepoTitle: 'Select or Switch Git Repository',
+        pickRepoDialogBtn: '📁 Select Local Folder...', pickRepoWaiting: '⏳ Waiting for dialog...',
+        browseInlineBtn: '📂 Browse Tree', browseInlineClose: '📂 Hide Tree',
+        discoveredReposTitle: 'Discovered & Recent Repos', manualPathTitle: 'Or Enter Path Manually',
+        upDirBtn: '⬆ Up', openThisRepoBtn: '✓ Open Repo', currentRepoTag: 'active',
+        dirLoading: 'Reading directory...', dirEmpty: 'No subdirectories found.',
+        nonRepoPickedFmt: (p) => 'Not a Git root; pick a child Git repository inside: ' + p,
         loadRepoBtn: 'Switch', worktreePh: 'Local Git repo path (e.g. D:\\\\Project\\\\aster)...',
-        mcpNoRepoDesc: 'Click the repository pill in the top-left corner and enter a local Git repo path.',
+        mcpNoRepoDesc: 'Click below or open the top-left repository pill to select a folder, browse directories, or pick a discovered repo.',
         analyzeBranchBtn: '⚡ Analyze Branch', analyzeScopeBtn: '⚡ Tour Scope',
         depthBtnOverview: '⚡ L1 Overview', depthBtnFlow: '⚡ L2 Call Flow', depthBtnDeep: '⚡ L3 Deep Audit',
         depthL1Title: 'L1 · Role Overview (Default)', depthL1Desc: 'Hydrate module & child files in-place with 1-sentence roles',
@@ -1660,6 +1857,11 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     let storageMode = 'git-hidden';
     let availableBriefings = [];
     let activeBriefingPath = '';
+    let discoveredRepos = [];
+    let dirBrowserOpen = false;
+    let dirListingState = null;
+    let dirBrowserLoading = false;
+    let pickingDialog = false;
     let lastBriefingKey = '';
     let lastScopeKey = '';
     let viewMode = 'hybrid';
@@ -2046,6 +2248,22 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       document.getElementById('mHybrid').textContent = t('hybrid');
       const lblRepo = document.getElementById('lblSwitchRepo');
       if (lblRepo) lblRepo.textContent = t('switchRepoTitle');
+      const pickBtn = document.getElementById('btnPickRepoDialog');
+      if (pickBtn) {
+        pickBtn.textContent = pickingDialog ? t('pickRepoWaiting') : t('pickRepoDialogBtn');
+        pickBtn.disabled = pickingDialog;
+      }
+      const emptyPickBtn = document.getElementById('btnEmptyPickRepo');
+      if (emptyPickBtn) {
+        emptyPickBtn.textContent = pickingDialog ? t('pickRepoWaiting') : t('pickRepoDialogBtn');
+        emptyPickBtn.disabled = pickingDialog;
+      }
+      const inlineBtn = document.getElementById('btnToggleInlineBrowser');
+      if (inlineBtn) inlineBtn.textContent = dirBrowserOpen ? t('browseInlineClose') : t('browseInlineBtn');
+      const lblDisc = document.getElementById('lblDiscoveredRepos');
+      if (lblDisc) lblDisc.textContent = t('discoveredReposTitle');
+      const lblMan = document.getElementById('lblManualPath');
+      if (lblMan) lblMan.textContent = t('manualPathTitle');
       const wtBtn = document.getElementById('btnSetWorktree');
       if (wtBtn) wtBtn.textContent = t('loadRepoBtn');
       const wtInput = document.getElementById('worktreeInput');
@@ -3430,6 +3648,10 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     const repoPopover = document.getElementById('repoPopover');
     const wtInputEl = document.getElementById('worktreeInput');
     const wtBtnEl = document.getElementById('btnSetWorktree');
+    const pickRepoDialogBtn = document.getElementById('btnPickRepoDialog');
+    const emptyPickRepoBtn = document.getElementById('btnEmptyPickRepo');
+    const toggleInlineBrowserBtn = document.getElementById('btnToggleInlineBrowser');
+    const inlineDirBrowserEl = document.getElementById('inlineDirBrowser');
     const moreMenu = document.getElementById('moreMenu');
 
     function closePopovers() {
@@ -3439,25 +3661,10 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       if (repoPopover && gitCtx) repoPopover.classList.add('hidden');
     }
 
-    if (repoToggleBtn && repoPopover) {
-      repoToggleBtn.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        if (moreMenu) moreMenu.classList.add('hidden');
-        depthPopover.classList.add('hidden');
-        nodeCtxMenu.classList.add('hidden');
-        repoPopover.classList.toggle('hidden');
-        if (!repoPopover.classList.contains('hidden') && wtInputEl) {
-          wtInputEl.focus();
-          wtInputEl.select();
-        }
-      });
-      repoPopover.addEventListener('click', (ev) => ev.stopPropagation());
-    }
-
-    function submitWorktreeSwitch() {
-      if (!wtInputEl) return;
-      const val = wtInputEl.value.trim();
+    function switchToRepoPath(nextPath) {
+      const val = String(nextPath || '').trim();
       if (!val) return;
+      if (wtInputEl) wtInputEl.value = val;
       if (repoPopover) repoPopover.classList.add('hidden');
       positions.clear();
       manualPositions.clear();
@@ -3465,6 +3672,173 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       selectedNodeId = null;
       inspector.classList.add('hidden');
       hostApi.postMessage({ type: 'setWorktreePath', worktreePath: val });
+    }
+
+    function requestBrowseDir(dirPath) {
+      dirBrowserOpen = true;
+      dirBrowserLoading = true;
+      if (inlineDirBrowserEl) inlineDirBrowserEl.classList.remove('hidden');
+      applyStaticTranslations();
+      renderInlineDirBrowser();
+      hostApi.postMessage({ type: 'browseDirectory', dirPath: dirPath || '' });
+    }
+
+    function renderDiscoveredRepos() {
+      const sec = document.getElementById('discoveredReposSec');
+      const listEl = document.getElementById('discoveredReposList');
+      if (!sec || !listEl) return;
+      if (!Array.isArray(discoveredRepos) || discoveredRepos.length === 0) {
+        sec.style.display = 'none';
+        return;
+      }
+      sec.style.display = 'block';
+      listEl.innerHTML = discoveredRepos.map(r => {
+        const curCls = r.isCurrent ? ' is-current' : '';
+        return '<div class="repo-disc-row' + curCls + '" data-pick-repo="' + esc(r.path) + '">' +
+          '<div class="repo-disc-main">' +
+            '<div class="repo-disc-top">' +
+              '<span class="repo-disc-name">📦 ' + esc(r.name) + '</span>' +
+              (r.branch ? '<span class="repo-branch-tag">' + esc(r.branch) + '</span>' : '') +
+              (r.isCurrent ? '<span class="repo-git-tag">' + esc(t('currentRepoTag')) + '</span>' : '') +
+            '</div>' +
+            '<div class="repo-disc-path">' + esc(r.path) + '</div>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+
+      listEl.querySelectorAll('[data-pick-repo]').forEach(row => {
+        row.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          switchToRepoPath(row.dataset.pickRepo);
+        });
+      });
+    }
+
+    function renderInlineDirBrowser() {
+      if (!inlineDirBrowserEl) return;
+      inlineDirBrowserEl.classList.toggle('hidden', !dirBrowserOpen);
+      if (!dirBrowserOpen) return;
+
+      if (dirBrowserLoading && !dirListingState) {
+        inlineDirBrowserEl.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:6px;">' + esc(t('dirLoading')) + '</div>';
+        return;
+      }
+      const st = dirListingState || { currentPath: '', parentPath: null, entries: [], drives: [], currentIsGitRepo: false };
+      let html = '';
+
+      if (st.nonRepoNotice) {
+        html += '<div class="repo-notice">' + esc(t('nonRepoPickedFmt')(st.nonRepoNotice)) + '</div>';
+      }
+
+      html += '<div class="repo-dir-nav">';
+      if (st.parentPath) {
+        html += '<button class="secondary" style="height:22px;padding:0 7px;font-size:10.5px;" data-browse-dir="' + esc(st.parentPath) + '">' + esc(t('upDirBtn')) + '</button>';
+      } else {
+        html += '<span></span>';
+      }
+      if (Array.isArray(st.drives) && st.drives.length > 0) {
+        html += '<div class="repo-drives-bar">' + st.drives.map(d => {
+          const isAct = st.currentPath && st.currentPath.toUpperCase().indexOf(d.toUpperCase()) === 0;
+          return '<button class="drive-chip' + (isAct ? ' active' : '') + '" data-browse-dir="' + esc(d) + '">' + esc(d.replace('\\\\', '')) + '</button>';
+        }).join('') + '</div>';
+      }
+      html += '</div>';
+
+      if (st.currentPath) {
+        html += '<div class="repo-cur-dir">' +
+          '<span style="overflow:hidden;text-overflow:ellipsis;">' + esc(st.currentPath) + '</span>' +
+          (st.currentIsGitRepo ? '<button style="height:20px;padding:0 7px;font-size:10.5px;" data-select-repo="' + esc(st.currentPath) + '">' + esc(t('openThisRepoBtn')) + '</button>' : '') +
+        '</div>';
+      }
+
+      if (st.error) {
+        html += '<div style="color:var(--red);font-size:11px;padding:4px;">' + esc(st.error) + '</div>';
+      }
+
+      const entries = Array.isArray(st.entries) ? st.entries : [];
+      if (entries.length === 0 && !st.error) {
+        html += '<div style="font-size:11px;color:var(--muted);padding:6px;">' + esc(t('dirEmpty')) + '</div>';
+      } else if (entries.length > 0) {
+        html += '<div class="repo-dir-list">' + entries.map(ent => {
+          if (ent.isGitRepo) {
+            return '<div class="repo-dir-row" data-select-repo="' + esc(ent.path) + '">' +
+              '<span style="display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;">📦 ' + esc(ent.name) + '</span>' +
+              '<span style="display:flex;align-items:center;gap:4px;flex-shrink:0;">' +
+                '<span class="repo-git-tag">Git</span>' +
+                '<button class="secondary" style="height:20px;padding:0 5px;font-size:10px;" title="进入子目录" data-drill-sub="' + esc(ent.path) + '">▸</button>' +
+              '</span>' +
+            '</div>';
+          }
+          return '<div class="repo-dir-row" data-browse-dir="' + esc(ent.path) + '">' +
+            '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg);">📁 ' + esc(ent.name) + '</span>' +
+            '<span style="color:var(--muted);font-size:10px;">▸</span>' +
+          '</div>';
+        }).join('') + '</div>';
+      }
+
+      inlineDirBrowserEl.innerHTML = html;
+
+      inlineDirBrowserEl.querySelectorAll('[data-browse-dir]').forEach(el => {
+        el.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          requestBrowseDir(el.dataset.browseDir);
+        });
+      });
+      inlineDirBrowserEl.querySelectorAll('[data-drill-sub]').forEach(el => {
+        el.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          requestBrowseDir(el.dataset.drillSub);
+        });
+      });
+      inlineDirBrowserEl.querySelectorAll('[data-select-repo]').forEach(el => {
+        el.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          switchToRepoPath(el.dataset.selectRepo);
+        });
+      });
+    }
+
+    function triggerNativeRepoDialog(ev) {
+      if (ev) ev.stopPropagation();
+      if (pickingDialog) return;
+      pickingDialog = true;
+      applyStaticTranslations();
+      hostApi.postMessage({ type: 'pickWorktreeDialog' });
+    }
+
+    if (pickRepoDialogBtn) pickRepoDialogBtn.addEventListener('click', triggerNativeRepoDialog);
+    if (emptyPickRepoBtn) emptyPickRepoBtn.addEventListener('click', triggerNativeRepoDialog);
+    if (toggleInlineBrowserBtn) {
+      toggleInlineBrowserBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        if (dirBrowserOpen) {
+          dirBrowserOpen = false;
+          applyStaticTranslations();
+          renderInlineDirBrowser();
+        } else {
+          requestBrowseDir(dirListingState ? dirListingState.currentPath : '');
+        }
+      });
+    }
+
+    if (repoToggleBtn && repoPopover) {
+      repoToggleBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        if (moreMenu) moreMenu.classList.add('hidden');
+        depthPopover.classList.add('hidden');
+        nodeCtxMenu.classList.add('hidden');
+        repoPopover.classList.toggle('hidden');
+        if (!repoPopover.classList.contains('hidden')) {
+          renderDiscoveredRepos();
+          renderInlineDirBrowser();
+        }
+      });
+      repoPopover.addEventListener('click', (ev) => ev.stopPropagation());
+    }
+
+    function submitWorktreeSwitch() {
+      if (!wtInputEl) return;
+      switchToRepoPath(wtInputEl.value);
     }
     if (wtBtnEl) wtBtnEl.addEventListener('click', submitWorktreeSwitch);
     if (wtInputEl) {
@@ -3794,6 +4168,8 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         nodeById = new Map(graph.nodes.map(n => [n.id, n]));
         availableBriefings = msg.payload.availableBriefings || [];
         activeBriefingPath = incomingBriefing;
+        discoveredRepos = Array.isArray(msg.payload.discoveredRepos) ? msg.payload.discoveredRepos : [];
+        pickingDialog = false;
 
         if (wtInputEl) {
           const incomingWt = msg.payload.worktreePath || (gitCtx && gitCtx.repoRoot) || '';
@@ -3807,6 +4183,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         }
 
         applyStaticTranslations();
+        renderDiscoveredRepos();
 
         const needsManifest = Boolean(gitCtx && graph.architecture && !graph.architecture.hasManifest);
         const initBtn = document.getElementById('btnInitManifest');
@@ -3858,31 +4235,36 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         }
 
         const emptyEl = document.getElementById('emptyOverlay');
+        const emptyPickEl = document.getElementById('btnEmptyPickRepo');
         if (msg.payload.error) {
           emptyEl.classList.remove('hidden');
           document.getElementById('emptyTitle').textContent = t('noGit');
           document.getElementById('emptyDesc').textContent = msg.payload.error;
           document.getElementById('btnEmptyVerify').style.display = 'none';
+          if (emptyPickEl) emptyPickEl.style.display = 'inline-flex';
         } else if (!gitCtx && isMcpAppHost) {
           emptyEl.classList.remove('hidden');
           document.getElementById('emptyTitle').textContent = t('noGit');
           document.getElementById('emptyDesc').textContent = t('mcpNoRepoDesc');
           document.getElementById('btnEmptyVerify').style.display = 'none';
+          if (emptyPickEl) emptyPickEl.style.display = 'inline-flex';
         } else if (graph.mode === 'briefing' && !(graph.summary && graph.summary.hasBriefing)) {
           emptyEl.classList.remove('hidden');
           document.getElementById('emptyTitle').textContent = t('emptyBriefingTitle');
           document.getElementById('emptyDesc').textContent = t('emptyBriefingDesc');
           document.getElementById('btnEmptyVerify').textContent = t('verifyJson');
           document.getElementById('btnEmptyVerify').style.display = isMcpAppHost ? 'none' : 'inline-flex';
+          if (emptyPickEl) emptyPickEl.style.display = 'none';
         } else {
           emptyEl.classList.add('hidden');
+          if (emptyPickEl) emptyPickEl.style.display = 'none';
         }
 
         const repoShort = gitCtx && gitCtx.repoRoot
           ? (gitCtx.repoRoot.split(/[\\\\/]/).filter(Boolean).pop() + ' · ')
           : '';
         document.getElementById('gitPill').textContent = gitCtx
-          ? ((isMcpAppHost ? repoShort : '') + gitCtx.branch + '@' + gitCtx.shortSha)
+          ? (repoShort + gitCtx.branch + '@' + gitCtx.shortSha)
           : t('noGit');
 
         const topologyKey = graph.nodes.map(n => n.id + '@' + (n.parentId || '') + ':' + (n.roleSummary || '')).join('|');
@@ -3955,6 +4337,17 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           const cur = nodeById.get(selectedNodeId);
           if (cur) renderInspector(cur);
         }
+      } else if (msg.type === 'dirListing') {
+        pickingDialog = false;
+        dirBrowserLoading = false;
+        dirBrowserOpen = true;
+        dirListingState = msg.payload || null;
+        if (repoPopover) repoPopover.classList.remove('hidden');
+        applyStaticTranslations();
+        renderInlineDirBrowser();
+      } else if (msg.type === 'pickWorktreeDone') {
+        pickingDialog = false;
+        applyStaticTranslations();
       }
     });
 
