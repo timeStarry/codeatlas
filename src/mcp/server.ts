@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import {
   getBranchCommits,
+  getChangedLinesForFiles,
   getDiffStats,
   getFileDiff,
   getGitContext,
@@ -18,7 +19,11 @@ import {
 } from '../core/manifest.js';
 import { analyzeRepositoryArchitecture } from '../core/indexer.js';
 import { enrichArchitectureWithWorkspace, scanScopeExternalEdges } from '../core/workspace.js';
-import { buildAstOutlineForFiles } from '../core/astAnalyzer.js';
+import {
+  buildAstOutlineForFiles,
+  CuratedFileSymbols,
+  extractCuratedSymbolsForFiles,
+} from '../core/astAnalyzer.js';
 import { AtlasGraphData, buildAtlasGraph, CanvasViewMode } from '../core/graph.js';
 import { verifyBriefing } from '../core/verifier.js';
 import {
@@ -77,6 +82,7 @@ interface RepoUiSession {
   scopeRoot: string;
   expandedDomainIds: Set<string>;
   expandedFolderIds: Set<string>;
+  expandedFilePaths: Set<string>;
   pruneUnchanged: boolean;
   showSupportAssets: boolean;
   activeBriefingPath: string;
@@ -121,6 +127,7 @@ function getSession(repoRoot: string): RepoUiSession {
       scopeRoot: '',
       expandedDomainIds: new Set<string>(),
       expandedFolderIds: new Set<string>(),
+      expandedFilePaths: new Set<string>(),
       pruneUnchanged: false,
       showSupportAssets: false,
       activeBriefingPath: '',
@@ -335,6 +342,38 @@ function buildEmptyCanvasPayload(params: {
   };
 }
 
+function collectAnchoredLinesByFile(
+  verification: BriefingVerificationResult | undefined,
+  directives: AnnotationDirective[]
+): Map<string, Set<number>> {
+  const map = new Map<string, Set<number>>();
+  const mark = (rawPath?: string, line?: number) => {
+    if (!rawPath || !line || line < 1) return;
+    const clean = rawPath.replace(/\\/g, '/').replace(/^\.\//, '');
+    let set = map.get(clean);
+    if (!set) {
+      set = new Set<number>();
+      map.set(clean, set);
+    }
+    set.add(line);
+  };
+  for (const d of directives) {
+    mark(d.path, d.startLine);
+  }
+  if (verification) {
+    for (const c of verification.claims) {
+      for (const a of c.claim.anchors) mark(a.path, a.startLine);
+    }
+    for (const b of verification.blockingConditions) {
+      mark(b.item.anchor?.path, b.item.anchor?.startLine);
+    }
+    for (const imp of verification.impacts ?? []) {
+      mark(imp.item.sourceAnchor.path, imp.item.sourceAnchor.startLine);
+    }
+  }
+  return map;
+}
+
 async function buildRepoCanvasPayload(repoRoot: string): Promise<{
   payload: Record<string, unknown>;
   summaryText: string;
@@ -413,7 +452,29 @@ async function buildRepoCanvasPayload(repoRoot: string): Promise<{
     ? await scanScopeExternalEdges(git.repoRoot, trackedFiles, session.scopeRoot, arch)
     : [];
 
-  const makeGraph = (expandedDom: string[], expandedFold: string[]): AtlasGraphData =>
+  let fileSymbols: Map<string, CuratedFileSymbols> | undefined;
+  if (session.expandedFilePaths.size > 0) {
+    const expFiles = [...session.expandedFilePaths];
+    const changedLinesByFile = await getChangedLinesForFiles(
+      git.repoRoot,
+      session.baseRef,
+      expFiles,
+      diffStats
+    );
+    const anchoredLinesByFile = collectAnchoredLinesByFile(verification, directives);
+    fileSymbols = await extractCuratedSymbolsForFiles({
+      repoRoot: git.repoRoot,
+      files: expFiles,
+      changedLinesByFile,
+      anchoredLinesByFile,
+    });
+  }
+
+  const makeGraph = (
+    expandedDom: string[],
+    expandedFold: string[],
+    expandedFiles: string[]
+  ): AtlasGraphData =>
     buildAtlasGraph({
       git,
       manifest,
@@ -435,12 +496,18 @@ async function buildRepoCanvasPayload(repoRoot: string): Promise<{
       baseRef: session.baseRef,
       expandedDomainIds: expandedDom,
       expandedFolderIds: expandedFold,
+      expandedFilePaths: expandedFiles,
+      fileSymbols,
       pruneUnchanged: session.pruneUnchanged,
       showSupportAssets: session.showSupportAssets,
       lang: session.lang,
     });
 
-  let graph = makeGraph([...session.expandedDomainIds], [...session.expandedFolderIds]);
+  let graph = makeGraph(
+    [...session.expandedDomainIds],
+    [...session.expandedFolderIds],
+    [...session.expandedFilePaths]
+  );
 
   const assemblePayload = (g: AtlasGraphData): Record<string, unknown> => ({
     git,
@@ -459,10 +526,11 @@ async function buildRepoCanvasPayload(repoRoot: string): Promise<{
 
   let payload = assemblePayload(graph);
   if (Buffer.byteLength(JSON.stringify(payload), 'utf-8') > MAX_TOOL_RESULT_BYTES) {
-    // Collapse expanded folders/domains so CallToolResult stays strictly below 1 MiB
+    // Collapse expanded folders/domains/symbols so CallToolResult stays strictly below 1 MiB
     session.expandedFolderIds.clear();
     session.expandedDomainIds.clear();
-    graph = makeGraph([], []);
+    session.expandedFilePaths.clear();
+    graph = makeGraph([], [], []);
     payload = assemblePayload(graph);
   }
 
@@ -557,6 +625,12 @@ const TOOLS = [
           type: 'string',
           description:
             'Optional relative directory path (e.g. "src/core" or "crates/aster-app") to focus as the Canvas view root. Pass "" to reset to full repository root.',
+        },
+        expandFiles: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'Optional list of repository-relative file paths (e.g. ["src/core/verifier.ts"]) whose structured Tree-sitter AST Symbol sub-layer should be expanded on open.',
         },
       },
     },
@@ -739,6 +813,32 @@ async function handleOpenAtlas(args: Record<string, unknown>): Promise<ToolCallR
   if (typeof args.scopeRoot === 'string') {
     session.scopeRoot = args.scopeRoot.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
   }
+  if (Array.isArray(args.expandFiles)) {
+    const tracked = await listTrackedFiles(resolved.repoRoot);
+    const manifestRes = await loadAtlasManifestResult(resolved.repoRoot);
+    const arch = analyzeRepositoryArchitecture(
+      tracked,
+      manifestRes.status === 'ok' ? manifestRes.manifest : undefined,
+      session.lang
+    );
+    for (const raw of args.expandFiles) {
+      if (typeof raw !== 'string' || !raw.trim()) continue;
+      const clean = raw.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+|\/+$/g, '');
+      if (!clean) continue;
+      session.expandedFilePaths.add(clean);
+      for (const dom of arch.domains) {
+        if (
+          dom.files.includes(clean) ||
+          dom.paths.some((dp) => {
+            const p0 = dp.replace(/\\/g, '/').replace(/\/+$/, '');
+            return p0 && (clean === p0 || clean.startsWith(`${p0}/`));
+          })
+        ) {
+          session.expandedDomainIds.add(dom.id);
+        }
+      }
+    }
+  }
 
   const { payload, summaryText } = await buildRepoCanvasPayload(resolved.repoRoot);
   return {
@@ -792,7 +892,8 @@ async function handleSnippetAction(
 
     const allLines = content.split(/\r?\n/);
     const start = Math.max(1, (startLine ?? 1) - 4);
-    const end = Math.min(allLines.length, (endLine ?? startLine ?? 1) + 8);
+    const cappedTargetEnd = endLine ? Math.min(endLine, (startLine ?? 1) + 90) : (startLine ?? 1);
+    const end = Math.min(allLines.length, cappedTargetEnd + 8);
     const hlStart = startLine ?? 1;
     const hlEnd = endLine ?? hlStart;
 
@@ -986,6 +1087,7 @@ async function handleAtlasAppAction(args: Record<string, unknown>): Promise<Tool
       session.scopeRoot = nextScope === '(root)' || nextScope === '.' ? '' : nextScope;
       session.expandedDomainIds.clear();
       session.expandedFolderIds.clear();
+      session.expandedFilePaths.clear();
       break;
     }
 
@@ -1063,6 +1165,7 @@ async function handleAtlasAppAction(args: Record<string, unknown>): Promise<Tool
     case 'collapseAllFiles': {
       session.expandedDomainIds.clear();
       session.expandedFolderIds.clear();
+      session.expandedFilePaths.clear();
       break;
     }
 
@@ -1073,6 +1176,19 @@ async function handleAtlasAppAction(args: Record<string, unknown>): Promise<Tool
           session.expandedFolderIds.delete(folderId);
         } else {
           session.expandedFolderIds.add(folderId);
+        }
+      }
+      break;
+    }
+
+    case 'toggleFileSymbols': {
+      const rawPath = typeof payloadObj.path === 'string' ? payloadObj.path : '';
+      const cleanPath = rawPath.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+|\/+$/g, '');
+      if (cleanPath) {
+        if (session.expandedFilePaths.has(cleanPath)) {
+          session.expandedFilePaths.delete(cleanPath);
+        } else {
+          session.expandedFilePaths.add(cleanPath);
         }
       }
       break;

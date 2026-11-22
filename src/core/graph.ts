@@ -22,6 +22,12 @@ import {
 import { BranchCommitInfo } from './git.js';
 import { StoredOutlineRecord } from './store.js';
 import { ScopeBoundaryItem } from './workspace.js';
+import {
+  AstSymbolKind,
+  CuratedFileSymbols,
+  CuratedSymbolMember,
+  detectAstLanguage,
+} from './astAnalyzer.js';
 
 export type CanvasViewMode = 'hybrid' | 'atlas' | 'briefing';
 
@@ -30,6 +36,7 @@ export type CanvasNodeKind =
   | 'domain'
   | 'folder'
   | 'entrypoint'
+  | 'symbol'
   | 'claim'
   | 'blocking'
   | 'evidence'
@@ -75,6 +82,14 @@ export interface AtlasGraphNode {
   fileCount?: number;
   canExpandFiles?: boolean;
   filesExpanded?: boolean;
+  canExpandSymbols?: boolean;
+  symbolsExpanded?: boolean;
+  symbolKind?: AstSymbolKind;
+  signature?: string;
+  symbolExported?: boolean;
+  guardCount?: number;
+  symbolGuards?: Array<{ line: number; condition: string; outcomeKind: string }>;
+  symbolMembers?: CuratedSymbolMember[];
   isSummary?: boolean;
   isSupport?: boolean;
   claimType?: ClaimType;
@@ -387,6 +402,8 @@ export function buildAtlasGraph(params: {
   baseRef?: string;
   expandedDomainIds?: string[];
   expandedFolderIds?: string[];
+  expandedFilePaths?: string[];
+  fileSymbols?: Map<string, CuratedFileSymbols>;
   pruneUnchanged?: boolean;
   showSupportAssets?: boolean;
   lang?: 'zh' | 'en';
@@ -411,6 +428,8 @@ export function buildAtlasGraph(params: {
   const scopeRoot = normalizeCleanPath(params.scopeRoot);
   const expandedDomains = new Set(params.expandedDomainIds ?? []);
   const expandedFolders = new Set(params.expandedFolderIds ?? []);
+  const expandedFiles = new Set((params.expandedFilePaths ?? []).map(normalizeCleanPath));
+  const fileSymbols = params.fileSymbols;
   const pruneUnchanged = Boolean(params.pruneUnchanged);
   const showSupportAssets = Boolean(params.showSupportAssets);
   const hasManifest = params.hasManifest ?? Boolean(manifest);
@@ -623,7 +642,16 @@ export function buildAtlasGraph(params: {
   };
 
   const pathToNodeId = new Map<string, string>();
+  const symbolOwnerByPath = new Map<string, string>();
   const folderNodeByPathPrefix = new Map<string, string>();
+
+  const registerSymbolCapableFileNode = (normPath: string, nodeId: string): boolean => {
+    if (!normPath || symbolOwnerByPath.has(normPath) || !detectAstLanguage(normPath)) {
+      return false;
+    }
+    symbolOwnerByPath.set(normPath, nodeId);
+    return true;
+  };
 
   const emitFileListUnderParent = (
     parentId: string,
@@ -636,6 +664,7 @@ export function buildAtlasGraph(params: {
       if (pathToNodeId.has(f)) continue;
       const fileNodeId = `file:${f}`;
       const diff = diffMap.get(f);
+      const canSym = registerSymbolCapableFileNode(f, fileNodeId);
       nodes.push({
         id: fileNodeId,
         parentId,
@@ -648,6 +677,8 @@ export function buildAtlasGraph(params: {
         changed: Boolean(diff),
         additions: diff?.additions,
         deletions: diff?.deletions,
+        canExpandSymbols: canSym,
+        symbolsExpanded: canSym && expandedFiles.has(f),
       });
       edges.push({
         id: `e:${parentId}->${fileNodeId}`,
@@ -690,6 +721,7 @@ export function buildAtlasGraph(params: {
         const epId = `ep:${d.id}:${ep.path}:${ep.symbol ?? ep.startLine ?? 1}`;
         const normPath = normalizeCleanPath(ep.path);
         const diff = diffMap.get(normPath);
+        const canSym = registerSymbolCapableFileNode(normPath, epId);
         nodes.push({
           id: epId,
           parentId: domId,
@@ -703,6 +735,8 @@ export function buildAtlasGraph(params: {
           changed: Boolean(diff),
           additions: diff?.additions,
           deletions: diff?.deletions,
+          canExpandSymbols: canSym,
+          symbolsExpanded: canSym && expandedFiles.has(normPath),
         });
         edges.push({
           id: `e:${domId}->${epId}`,
@@ -919,15 +953,276 @@ export function buildAtlasGraph(params: {
         pathToNodeId.set(normPath, evId);
       }
     }
+  }
 
-    // 3. Explicit Blocking Conditions
+  // 3. Changed files from Git Diff + Explicitly Expanded Files
+  if (mode !== 'briefing') {
+    const MAX_DIFF_NODES = 30;
+    const shownDiffs = activeDiffStats.slice(0, MAX_DIFF_NODES);
+    for (const d of shownDiffs) {
+      const normPath = normalizeCleanPath(d.path);
+      if (pathToNodeId.has(normPath)) continue;
+      let parentId = rootId;
+      if (effectiveDomains.length > 0) {
+        const resolved = resolveDomainForPath(normPath);
+        const domId = resolved.indexed || !scopeRoot ? ensureDomain(resolved.name, resolved.indexed) : rootId;
+        parentId = folderNodeByPathPrefix.get(normPath) || domId;
+      }
+      const diffId = `diff:${normPath}`;
+      const canSym = registerSymbolCapableFileNode(normPath, diffId);
+      nodes.push({
+        id: diffId,
+        parentId,
+        kind: 'diff-file',
+        title: normPath.split('/').pop() || normPath,
+        subtitle: `[${d.status}] ${normPath}`,
+        path: normPath,
+        defaultDirectivePath: normPath,
+        startLine: 1,
+        changed: true,
+        additions: d.additions,
+        deletions: d.deletions,
+        canExpandSymbols: canSym,
+        symbolsExpanded: canSym && expandedFiles.has(normPath),
+      });
+      edges.push({
+        id: `e:${parentId}->${diffId}`,
+        from: parentId,
+        to: diffId,
+        kind: 'hierarchy',
+      });
+      pathToNodeId.set(normPath, diffId);
+    }
+
+    // Ensure any explicitly symbol-expanded file is materialized even if beyond the 25-file cap
+    for (const expPath of expandedFiles) {
+      if (!expPath || !isInScope(expPath) || symbolOwnerByPath.has(expPath)) continue;
+      if (!trackedSet.has(expPath) && !diffMap.has(expPath)) continue;
+      let parentId = rootId;
+      if (effectiveDomains.length > 0) {
+        const resolved = resolveDomainForPath(expPath);
+        const domId =
+          resolved.indexed || !scopeRoot ? ensureDomain(resolved.name, resolved.indexed) : rootId;
+        parentId = folderNodeByPathPrefix.get(expPath) || domId;
+      }
+      const fileNodeId = `file:${expPath}`;
+      const diff = diffMap.get(expPath);
+      const canSym = registerSymbolCapableFileNode(expPath, fileNodeId);
+      nodes.push({
+        id: fileNodeId,
+        parentId,
+        kind: diff ? 'diff-file' : 'file',
+        title: expPath.split('/').pop() || expPath,
+        subtitle: diff ? `[${diff.status}] ${expPath}` : expPath,
+        path: expPath,
+        defaultDirectivePath: expPath,
+        startLine: 1,
+        changed: Boolean(diff),
+        additions: diff?.additions,
+        deletions: diff?.deletions,
+        canExpandSymbols: canSym,
+        symbolsExpanded: canSym,
+      });
+      edges.push({
+        id: `e:${parentId}->${fileNodeId}`,
+        from: parentId,
+        to: fileNodeId,
+        kind: 'hierarchy',
+      });
+      if (!pathToNodeId.has(expPath)) {
+        pathToNodeId.set(expPath, fileNodeId);
+      }
+    }
+
+    if (activeDiffStats.length > MAX_DIFF_NODES) {
+      const overflowId = 'diff:overflow';
+      const extra = activeDiffStats.length - MAX_DIFF_NODES;
+      nodes.push({
+        id: overflowId,
+        parentId: rootId,
+        kind: 'diff-file',
+        isSummary: true,
+        title: lang === 'zh' ? `+${extra} 个更多变更文件` : `+${extra} more changed files`,
+        subtitle: `${activeDiffStats.length} ${lang === 'zh' ? '个变更文件总计' : 'changed files total'}`,
+        changed: true,
+      });
+      edges.push({
+        id: `e:${rootId}->${overflowId}`,
+        from: rootId,
+        to: overflowId,
+        kind: 'hierarchy',
+      });
+    }
+  }
+
+  // 4. Structured File Sub-Level AST Symbol Layer (`File -> Symbol`, default collapsed)
+  const emittedSymbolsByPath = new Map<
+    string,
+    Array<{
+      nodeId: string;
+      name: string;
+      shortName: string;
+      startLine: number;
+      endLine: number;
+    }>
+  >();
+
+  if (mode !== 'briefing' && expandedFiles.size > 0 && fileSymbols) {
+    for (const [normPath, ownerNodeId] of symbolOwnerByPath.entries()) {
+      if (!expandedFiles.has(normPath)) continue;
+      const curated = fileSymbols.get(normPath);
+      if (!curated) continue;
+
+      const list: Array<{
+        nodeId: string;
+        name: string;
+        shortName: string;
+        startLine: number;
+        endLine: number;
+      }> = [];
+
+      if (curated.symbols.length === 0) {
+        const emptySymId = `sym-empty:${ownerNodeId}`;
+        nodes.push({
+          id: emptySymId,
+          parentId: ownerNodeId,
+          kind: 'symbol',
+          isSummary: true,
+          title: lang === 'zh' ? '无顶层符号声明' : 'No top-level symbols',
+          subtitle: normPath,
+        });
+        edges.push({
+          id: `e:${ownerNodeId}->${emptySymId}`,
+          from: ownerNodeId,
+          to: emptySymId,
+          kind: 'hierarchy',
+        });
+        continue;
+      }
+
+      for (const sym of curated.symbols) {
+        const symNodeId = `sym:${normPath}:${sym.name}:${sym.startLine}`;
+        const lineRange =
+          sym.endLine && sym.endLine !== sym.startLine
+            ? `L${sym.startLine}-${sym.endLine}`
+            : `L${sym.startLine}`;
+        const subtitle = sym.signature ? `${sym.signature} · ${lineRange}` : lineRange;
+        nodes.push({
+          id: symNodeId,
+          parentId: ownerNodeId,
+          kind: 'symbol',
+          title: sym.name,
+          subtitle,
+          path: normPath,
+          defaultDirectivePath: normPath,
+          startLine: sym.startLine,
+          endLine: sym.endLine,
+          symbol: sym.name,
+          symbolKind: sym.kind,
+          signature: sym.signature,
+          symbolExported: sym.exported,
+          changed: sym.changed,
+          guardCount: sym.guards.length,
+          symbolGuards: sym.guards.map((g) => ({
+            line: g.line,
+            condition: g.condition,
+            outcomeKind: g.outcomeKind,
+          })),
+          symbolMembers: sym.members,
+        });
+        edges.push({
+          id: `e:${ownerNodeId}->${symNodeId}`,
+          from: ownerNodeId,
+          to: symNodeId,
+          kind: 'hierarchy',
+        });
+        list.push({
+          nodeId: symNodeId,
+          name: sym.name,
+          shortName: sym.name.split('.').pop() || sym.name,
+          startLine: sym.startLine,
+          endLine: sym.endLine,
+        });
+      }
+
+      if (curated.hiddenCount > 0) {
+        const ovId = `sym-overflow:${ownerNodeId}`;
+        nodes.push({
+          id: ovId,
+          parentId: ownerNodeId,
+          kind: 'symbol',
+          isSummary: true,
+          title:
+            lang === 'zh'
+              ? `+${curated.hiddenCount} 个内部辅助符号`
+              : `+${curated.hiddenCount} internal symbols`,
+          subtitle:
+            lang === 'zh'
+              ? `共 ${curated.totalCount} 个 AST 符号（可用 / 搜索）`
+              : `${curated.totalCount} AST symbols total`,
+        });
+        edges.push({
+          id: `e:${ownerNodeId}->${ovId}`,
+          from: ownerNodeId,
+          to: ovId,
+          kind: 'hierarchy',
+        });
+      }
+
+      emittedSymbolsByPath.set(normPath, list);
+    }
+  }
+
+  /**
+   * Dynamic Causal Edge Sink-Down: when a file's AST Symbol Layer is expanded,
+   * automatically attaches line/symbol-anchored Guards, Impacts, and Directives
+   * to the tightest enclosing `symbol` node instead of the parent `file` node.
+   */
+  const resolveAnchorParentId = (
+    normPath: string,
+    line?: number,
+    symbolName?: string
+  ): string | undefined => {
+    if (!normPath) return undefined;
+    const syms = emittedSymbolsByPath.get(normPath);
+    if (syms && syms.length > 0) {
+      if (line && line >= 1) {
+        let bestId: string | undefined;
+        let bestSpan = Infinity;
+        for (const s of syms) {
+          if (line >= s.startLine && line <= s.endLine) {
+            const span = s.endLine - s.startLine;
+            if (span < bestSpan) {
+              bestSpan = span;
+              bestId = s.nodeId;
+            }
+          }
+        }
+        if (bestId) return bestId;
+      }
+      if (symbolName) {
+        const cleanSym = symbolName.split('::').pop()?.split('.').pop() || symbolName;
+        const matched = syms.find(
+          (s) => s.name === symbolName || s.shortName === symbolName || s.shortName === cleanSym
+        );
+        if (matched) return matched.nodeId;
+      }
+    }
+    return symbolOwnerByPath.get(normPath) ?? pathToNodeId.get(normPath);
+  };
+
+  // 4b. Explicit Blocking Conditions (sunk to enclosing symbol when expanded)
+  if (mode !== 'atlas' && verification) {
     for (const b of verification.blockingConditions) {
       const bPath = normalizeCleanPath(b.item.anchor?.path);
       if (scopeRoot && bPath && !isInScope(bPath)) continue;
 
       let parentId = rootId;
-      if (bPath && pathToNodeId.has(bPath)) {
-        parentId = pathToNodeId.get(bPath)!;
+      const anchoredTarget = bPath
+        ? resolveAnchorParentId(bPath, b.item.anchor?.startLine, b.item.anchor?.symbol)
+        : undefined;
+      if (anchoredTarget) {
+        parentId = anchoredTarget;
       } else if (mode !== 'briefing' && bPath && effectiveDomains.length > 0) {
         const resolved = resolveDomainForPath(bPath);
         if (resolved.indexed || !scopeRoot) {
@@ -967,62 +1262,6 @@ export function buildAtlasGraph(params: {
     }
   }
 
-  // 4. Changed files from Git Diff
-  if (mode !== 'briefing') {
-    const MAX_DIFF_NODES = 30;
-    const shownDiffs = activeDiffStats.slice(0, MAX_DIFF_NODES);
-    for (const d of shownDiffs) {
-      const normPath = normalizeCleanPath(d.path);
-      if (pathToNodeId.has(normPath)) continue;
-      let parentId = rootId;
-      if (effectiveDomains.length > 0) {
-        const resolved = resolveDomainForPath(normPath);
-        const domId = resolved.indexed || !scopeRoot ? ensureDomain(resolved.name, resolved.indexed) : rootId;
-        parentId = folderNodeByPathPrefix.get(normPath) || domId;
-      }
-      const diffId = `diff:${normPath}`;
-      nodes.push({
-        id: diffId,
-        parentId,
-        kind: 'diff-file',
-        title: normPath.split('/').pop() || normPath,
-        subtitle: `[${d.status}] ${normPath}`,
-        path: normPath,
-        defaultDirectivePath: normPath,
-        startLine: 1,
-        changed: true,
-        additions: d.additions,
-        deletions: d.deletions,
-      });
-      edges.push({
-        id: `e:${parentId}->${diffId}`,
-        from: parentId,
-        to: diffId,
-        kind: 'hierarchy',
-      });
-      pathToNodeId.set(normPath, diffId);
-    }
-    if (activeDiffStats.length > MAX_DIFF_NODES) {
-      const overflowId = 'diff:overflow';
-      const extra = activeDiffStats.length - MAX_DIFF_NODES;
-      nodes.push({
-        id: overflowId,
-        parentId: rootId,
-        kind: 'diff-file',
-        isSummary: true,
-        title: lang === 'zh' ? `+${extra} 个更多变更文件` : `+${extra} more changed files`,
-        subtitle: `${activeDiffStats.length} ${lang === 'zh' ? '个变更文件总计' : 'changed files total'}`,
-        changed: true,
-      });
-      edges.push({
-        id: `e:${rootId}->${overflowId}`,
-        from: rootId,
-        to: overflowId,
-        kind: 'hierarchy',
-      });
-    }
-  }
-
   // 5. Indirect Impact Nodes
   let impactCount = 0;
 
@@ -1030,12 +1269,13 @@ export function buildAtlasGraph(params: {
     for (let i = 0; i < indirectImpact.lspReferences.length; i++) {
       const refImp = indirectImpact.lspReferences[i];
       if (!isInScope(refImp.sourcePath)) continue;
+      const normSrc = normalizeCleanPath(refImp.sourcePath);
       const srcNodeId =
-        pathToNodeId.get(normalizeCleanPath(refImp.sourcePath)) ||
+        resolveAnchorParentId(normSrc, refImp.sourceLine, refImp.sourceSymbol) ||
         (effectiveDomains.length > 0
           ? ensureDomain(
-              resolveDomainForPath(normalizeCleanPath(refImp.sourcePath)).name,
-              resolveDomainForPath(normalizeCleanPath(refImp.sourcePath)).indexed
+              resolveDomainForPath(normSrc).name,
+              resolveDomainForPath(normSrc).indexed
             )
           : rootId);
 
@@ -1134,7 +1374,12 @@ export function buildAtlasGraph(params: {
       const srcPath = normalizeCleanPath(dimp.item.sourceAnchor.path);
       const tgtPath = normalizeCleanPath(dimp.item.targetAnchor.path);
       if (scopeRoot && !isInScope(srcPath) && !isInScope(tgtPath)) continue;
-      const parentId = pathToNodeId.get(srcPath) || rootId;
+      const parentId =
+        resolveAnchorParentId(
+          srcPath,
+          dimp.item.sourceAnchor.startLine,
+          dimp.item.sourceAnchor.symbol
+        ) || rootId;
       const impId = `impact:declared:${dimp.item.id}`;
       impactCount += 1;
       nodes.push({
@@ -1163,14 +1408,22 @@ export function buildAtlasGraph(params: {
     }
   }
 
-  // 6. Directives / Canvas Q&A & Notes
+  // 6. Directives / Canvas Q&A & Notes (sunk to enclosing symbol when line-anchored & file expanded)
   const existingNodeIds = new Set(nodes.map((n) => n.id));
   for (const dir of activeDirectives) {
     const normPath = normalizeCleanPath(dir.path);
+    const sunkSymbolId =
+      normPath && dir.startLine && dir.startLine > 1 && emittedSymbolsByPath.has(normPath)
+        ? resolveAnchorParentId(normPath, dir.startLine)
+        : undefined;
     let parentId =
-      dir.targetNodeId && existingNodeIds.has(dir.targetNodeId)
+      dir.targetNodeId && dir.targetNodeId.startsWith('sym:') && existingNodeIds.has(dir.targetNodeId)
         ? dir.targetNodeId
-        : pathToNodeId.get(normPath);
+        : sunkSymbolId && sunkSymbolId.startsWith('sym:')
+          ? sunkSymbolId
+          : dir.targetNodeId && existingNodeIds.has(dir.targetNodeId)
+            ? dir.targetNodeId
+            : resolveAnchorParentId(normPath, dir.startLine);
     if (!parentId) {
       if (mode === 'briefing' || effectiveDomains.length === 0) {
         parentId = rootId;
@@ -1351,7 +1604,30 @@ export function buildAtlasGraph(params: {
   const briefingTargetScope = normalizeCleanPath(params.briefingScopePath);
 
   for (const n of nodes) {
-    if (n.kind === 'claim' || n.kind === 'blocking' || n.kind === 'impact' || n.kind === 'directive' || n.kind === 'external-dep') {
+    if (
+      n.kind === 'claim' ||
+      n.kind === 'blocking' ||
+      n.kind === 'impact' ||
+      n.kind === 'directive' ||
+      n.kind === 'external-dep'
+    ) {
+      continue;
+    }
+
+    if (n.kind === 'symbol') {
+      if (!n.isSummary && verification && n.path && n.startLine) {
+        const symPath = normalizeCleanPath(n.path);
+        const sStart = n.startLine;
+        const sEnd = n.endLine ?? sStart;
+        const hitClaim = verification.claims.some((c) =>
+          c.claim.anchors.some((a) => {
+            if (normalizeCleanPath(a.path) !== symPath) return false;
+            const aLine = a.startLine ?? 1;
+            return aLine >= sStart && aLine <= sEnd;
+          })
+        );
+        n.completedDepth = hitClaim ? (hasDeepBriefingGuards ? 'deep' : 'flow') : 'none';
+      }
       continue;
     }
 
@@ -1468,6 +1744,20 @@ export function buildAtlasGraph(params: {
           keepIds.add(cur.id);
           cur = cur.parentId ? nodeById.get(cur.parentId) : undefined;
         }
+      }
+    }
+    // If user explicitly expanded symbols on a file that has 0 diff-changed symbols, keep its symbols visible
+    for (const [normPath, ownerNodeId] of symbolOwnerByPath.entries()) {
+      if (!expandedFiles.has(normPath)) continue;
+      let curOwner = nodeById.get(ownerNodeId);
+      while (curOwner) {
+        keepIds.add(curOwner.id);
+        curOwner = curOwner.parentId ? nodeById.get(curOwner.parentId) : undefined;
+      }
+      const symChildren = nodes.filter((x) => x.parentId === ownerNodeId && x.kind === 'symbol');
+      const anySymKept = symChildren.some((x) => keepIds.has(x.id));
+      if (!anySymKept) {
+        for (const sc of symChildren) keepIds.add(sc.id);
       }
     }
     prunedCount = nodes.length - keepIds.size;

@@ -14,8 +14,9 @@ import { getCanvasHtml } from '../src/webview/canvasHtml.js';
 import { getCockpitHtml } from '../src/webview/html.js';
 import { getFileIconsClientJs } from '../src/webview/fileIcons.js';
 import { discoverCandidateRepos, listDirectoryEntries } from '../src/core/repoPicker.js';
-import { extractFileAstFacts } from '../src/core/astAnalyzer.js';
+import { curateFileAstFacts, extractFileAstFacts } from '../src/core/astAnalyzer.js';
 import { verifyBriefing } from '../src/core/verifier.js';
+import { loadAtlasManifestResult, verifyManifest } from '../src/core/manifest.js';
 
 const execFileAsync = promisify(execFile);
 const MCP_SERVER_SCRIPT = path.resolve(__dirname, '..', 'dist', 'mcp-server.js');
@@ -728,6 +729,240 @@ test('Tree-sitter WASM AST analyzer extracts exact TS/Rust symbol spans, ignores
     assert.ok(scoreOutline);
     assert.ok(scoreOutline.symbols.some((s: any) => s.name === 'evaluateScore' && s.startLine === 7 && s.endLine === 10));
     assert.equal(scoreOutline.guardClauses.length, 1);
+  } finally {
+    await client.close();
+    await fs.rm(repoDir, { recursive: true, force: true });
+  }
+});
+
+test('Structured File -> AST Symbol sub-layer stays collapsed by default, merges Rust struct+impl members, highlights diff-touched symbols, and sinks causal edges on expand', async () => {
+  // 0. Self-check CodeAtlas repository .atlas/manifest.json has zero line/symbol drift
+  const selfRepoRoot = path.resolve(__dirname, '..');
+  const selfManifest = await loadAtlasManifestResult(selfRepoRoot);
+  assert.equal(selfManifest.status, 'ok');
+  if (selfManifest.status === 'ok') {
+    const selfVer = await verifyManifest(selfRepoRoot, selfManifest.manifest);
+    assert.equal(
+      selfVer.issues.length,
+      0,
+      `CodeAtlas .atlas/manifest.json must have 0 drift issues, got: ${JSON.stringify(selfVer.issues)}`
+    );
+  }
+
+  // 1. Rust struct + impl container merging & diff-changed method promotion
+  const rustModule = [
+    'pub struct AppServer {',
+    '    pub host: String,',
+    '    pub port: u16,',
+    '}',
+    'impl AppServer {',
+    '    pub fn new(host: String, port: u16) -> Self {',
+    '        Self { host, port }',
+    '    }',
+    '    pub async fn serve(&self) -> Result<(), String> {',
+    '        if self.port == 0 {',
+    '            return Err("invalid port".into());',
+    '        }',
+    '        Ok(())',
+    '    }',
+    '}',
+  ].join('\n');
+
+  const rustFacts = await extractFileAstFacts('crates/server/src/lib.rs', rustModule);
+  assert.ok(rustFacts);
+  const curatedRust = curateFileAstFacts({
+    facts: rustFacts,
+    changedLines: new Set([10]), // Line 10 inside AppServer::serve
+  });
+  const serverStruct = curatedRust.symbols.find((s) => s.name === 'AppServer' && s.kind === 'struct');
+  assert.ok(serverStruct, 'Rust struct AppServer must be emitted as primary container');
+  assert.ok(
+    !curatedRust.symbols.some((s) => s.kind === 'impl'),
+    'Redundant impl AppServer shell must be merged into struct AppServer'
+  );
+  assert.equal(serverStruct.members.length, 2, 'impl methods new & serve must attach to struct members[]');
+  assert.ok(serverStruct.signature?.includes('host'));
+  const serveMethod = curatedRust.symbols.find((s) => s.name === 'AppServer.serve' && s.kind === 'method');
+  assert.ok(serveMethod, 'Modified method AppServer.serve must be promoted as a visible symbol node');
+  assert.equal(serveMethod.changed, true);
+  assert.equal(serveMethod.guards.length, 1);
+
+  // 2. End-to-end MCP default-collapsed File -> Symbol toggle & dynamic causal edge sink-down
+  const { dir: repoDir } = await createTempGitRepo();
+  const scoreContent = [
+    'export interface ScoreOptions {',
+    '  cap: number;',
+    '  strict?: boolean;',
+    '}',
+    '',
+    'export function evaluateScore(val: number, opts: ScoreOptions): number {',
+    '  if (val < 0) return 0;',
+    '  if (opts.strict && val > opts.cap) throw new Error("overflow");',
+    '  return Math.min(val, opts.cap);',
+    '}',
+    '',
+    'export function formatScore(val: number): string {',
+    '  return String(val);',
+    '}',
+  ].join('\n');
+  await fs.writeFile(path.join(repoDir, 'src', 'core', 'score.ts'), scoreContent, 'utf-8');
+  await git(repoDir, ['add', '.']);
+  await git(repoDir, ['commit', '-m', 'add score module']);
+
+  // Modify line 9 inside evaluateScore (leaving ScoreOptions & formatScore untouched)
+  const modifiedScore = scoreContent.replace(
+    'return Math.min(val, opts.cap);',
+    'return Math.min(val + 1, opts.cap);'
+  );
+  await fs.writeFile(path.join(repoDir, 'src', 'core', 'score.ts'), modifiedScore, 'utf-8');
+
+  const client = new McpStdioClient(repoDir);
+  try {
+    await client.request('initialize', { protocolVersion: '2024-11-05', capabilities: {} });
+
+    // Submit a briefing with a Blocking Condition anchored at line 7 inside evaluateScore
+    const subRes = await client.request('tools/call', {
+      name: 'atlas_submit_briefing',
+      arguments: {
+        worktreePath: repoDir,
+        briefing: {
+          schemaVersion: '0.2',
+          title: 'Score guard check',
+          targetRef: 'WORKTREE',
+          summary: 'Checks evaluateScore guards',
+          claims: [
+            {
+              id: 'C1',
+              title: 'Score clamping',
+              statement: 'evaluateScore clamps negative values and caps score.',
+              claimType: 'fact',
+              anchors: [{ path: 'src/core/score.ts', startLine: 6, endLine: 10, symbol: 'evaluateScore' }],
+            },
+          ],
+          blockingConditions: [
+            {
+              id: 'B1',
+              condition: 'val < 0',
+              outcome: 'returns 0 immediately',
+              anchor: { path: 'src/core/score.ts', startLine: 7, endLine: 7, symbol: 'evaluateScore' },
+            },
+          ],
+        },
+      },
+    });
+    assert.ok(!subRes.isError);
+
+    // Add a line-anchored review question at line 8 inside evaluateScore
+    await client.request('tools/call', {
+      name: 'atlas_app_action',
+      arguments: {
+        worktreePath: repoDir,
+        action: 'addDirective',
+        payload: {
+          kind: 'question',
+          path: 'src/core/score.ts',
+          startLine: 8,
+          note: 'Should strict overflow return Result instead of throwing?',
+        },
+      },
+    });
+
+    // Open with domain expanded, but WITHOUT expanding file symbols: symbols MUST be collapsed by default!
+    const preOpen = await client.request('tools/call', {
+      name: 'open_atlas',
+      arguments: { worktreePath: repoDir },
+    });
+    const allDomIds = (preOpen.structuredContent.graph.nodes as any[])
+      .filter((n) => n.kind === 'domain' && n.domainId)
+      .map((n) => n.domainId);
+    // Set baseRef to HEAD so working-tree diff only touches line 9 (inside evaluateScore), not the whole file added since HEAD~1
+    await client.request('tools/call', {
+      name: 'atlas_app_action',
+      arguments: {
+        worktreePath: repoDir,
+        action: 'setBaseRef',
+        payload: { baseRef: 'HEAD' },
+      },
+    });
+    const initialOpen = await client.request('tools/call', {
+      name: 'atlas_app_action',
+      arguments: {
+        worktreePath: repoDir,
+        action: 'expandAllFiles',
+        payload: { domainIds: allDomIds },
+      },
+    });
+    const initialNodes = initialOpen.structuredContent.graph.nodes as any[];
+    assert.equal(
+      initialNodes.filter((n) => n.kind === 'symbol').length,
+      0,
+      'AST symbol layer must be collapsed by default'
+    );
+    const scoreFileNode = initialNodes.find((n) => n.path === 'src/core/score.ts' && (n.kind === 'file' || n.kind === 'diff-file'));
+    assert.ok(scoreFileNode, 'score.ts file node must exist');
+    assert.equal(scoreFileNode.canExpandSymbols, true);
+    assert.equal(scoreFileNode.symbolsExpanded, false);
+
+    // Toggle file symbols ON -> emits symbol children, marks only evaluateScore as changed, and sinks B1 & Directive onto evaluateScore!
+    const expandedRes = await client.request('tools/call', {
+      name: 'atlas_app_action',
+      arguments: {
+        worktreePath: repoDir,
+        action: 'toggleFileSymbols',
+        payload: { path: 'src/core/score.ts' },
+      },
+    });
+    const expNodes = expandedRes.structuredContent.graph.nodes as any[];
+    const symNodes = expNodes.filter((n) => n.kind === 'symbol');
+    assert.equal(symNodes.length, 3, 'Must emit ScoreOptions, evaluateScore, and formatScore symbols');
+
+    const evalSym = symNodes.find((n) => n.title === 'evaluateScore');
+    const fmtSym = symNodes.find((n) => n.title === 'formatScore');
+    assert.ok(evalSym && fmtSym);
+    assert.equal(evalSym.changed, true, 'Hunk-touched evaluateScore must be marked changed');
+    assert.equal(fmtSym.changed, false, 'Untouched formatScore in the same modified file must remain unchanged');
+    assert.equal(evalSym.guardCount, 2, 'evaluateScore has 2 early-exit AST guard clauses');
+    assert.ok(evalSym.signature?.includes('→ number'));
+
+    const blockNode = expNodes.find((n) => n.id === 'block:B1');
+    const dirNode = expNodes.find((n) => n.kind === 'directive');
+    assert.equal(
+      blockNode?.parentId,
+      evalSym.id,
+      'Blocking condition B1 must dynamically sink from file node onto enclosing symbol evaluateScore'
+    );
+    assert.equal(
+      dirNode?.parentId,
+      evalSym.id,
+      'Line-anchored directive must dynamically sink from file node onto enclosing symbol evaluateScore'
+    );
+
+    // Toggle file symbols OFF -> collapses back cleanly and re-anchors onto file/evidence node
+    const collapsedAgain = await client.request('tools/call', {
+      name: 'atlas_app_action',
+      arguments: {
+        worktreePath: repoDir,
+        action: 'toggleFileSymbols',
+        payload: { path: 'src/core/score.ts' },
+      },
+    });
+    assert.equal(
+      (collapsedAgain.structuredContent.graph.nodes as any[]).filter((n) => n.kind === 'symbol').length,
+      0
+    );
+
+    // Also test open_atlas({ expandFiles }) one-shot expansion
+    const oneShotOpen = await client.request('tools/call', {
+      name: 'open_atlas',
+      arguments: {
+        worktreePath: repoDir,
+        expandFiles: ['src/core/score.ts'],
+      },
+    });
+    assert.equal(
+      (oneShotOpen.structuredContent.graph.nodes as any[]).filter((n) => n.kind === 'symbol').length,
+      3
+    );
   } finally {
     await client.close();
     await fs.rm(repoDir, { recursive: true, force: true });

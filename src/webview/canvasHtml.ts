@@ -1063,6 +1063,18 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     .node.kind-diff-file {
       border-color: rgba(210,153,34,0.36);
     }
+    .node.kind-symbol {
+      width: 264px;
+      border-color: rgba(163,113,247,0.24);
+      background: linear-gradient(155deg, rgba(163,113,247,0.05), var(--panel-2));
+    }
+    .node.kind-symbol:hover {
+      border-color: rgba(163,113,247,0.55);
+      background: var(--panel);
+    }
+    .node.kind-symbol.is-changed {
+      border-color: rgba(210,153,34,0.46);
+    }
 
     .card-head {
       display: flex;
@@ -1290,6 +1302,83 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       background: rgba(210,153,34,0.18);
       color: var(--yellow);
     }
+    .micro-tag.guard-tag {
+      background: rgba(240,136,62,0.16);
+      color: var(--amber);
+      font-family: var(--mono);
+    }
+    .micro-tag.member-tag {
+      background: rgba(163,113,247,0.15);
+      color: #d2a8ff;
+    }
+    .sym-toggle-btn {
+      height: 19px;
+      padding: 0 6px;
+      font-size: 10px;
+      font-weight: 500;
+      border-radius: 4px;
+      background: var(--surface-subtle);
+      color: var(--muted);
+      border: 1px solid transparent;
+      opacity: 0.86;
+      transition: opacity 0.12s, background 0.12s, color 0.12s, border-color 0.12s;
+    }
+    .node:hover .sym-toggle-btn { opacity: 1; }
+    .sym-toggle-btn:hover:not(:disabled) {
+      color: var(--fg);
+      background: var(--surface-hover);
+      border-color: var(--border-strong);
+    }
+    .sym-toggle-btn.is-open {
+      opacity: 1;
+      color: #d2a8ff;
+      background: rgba(163,113,247,0.16);
+      border-color: rgba(163,113,247,0.42);
+    }
+    .sym-sig-bar {
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 6px 9px;
+      border-radius: 6px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--fg);
+      margin-bottom: 10px;
+      word-break: break-word;
+    }
+    .sym-sec-box {
+      margin: 10px 0;
+      padding: 8px 9px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: var(--surface-subtle);
+    }
+    .sym-sec-head {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .sym-guard-row, .sym-member-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      padding: 5px 7px;
+      border-radius: 5px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      margin-bottom: 4px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: border-color 0.12s;
+    }
+    .sym-guard-row:last-child, .sym-member-row:last-child { margin-bottom: 0; }
+    .sym-guard-row:hover { border-color: var(--amber); }
+    .sym-member-row:hover { border-color: var(--accent); }
     .status-dot {
       width: 7px;
       height: 7px;
@@ -1852,6 +1941,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         busySwitchBase: '正在重新计算对比基准 (Base Ref) Diff...',
         busyLoadRepo: '正在载入 Git 仓库与工作树状态...',
         busyExpandFiles: '正在加载源码树节点...',
+        busyExpandSymbols: '正在通过 Tree-sitter 解析 AST 符号结构与 Diff 行段...',
         busyScope: '正在切换局部作用域并扫描跨边界引用...',
         busySync: '正在同步仓库与核验状态...',
         batchDispatchFmt: (n) => '📌 待办批注 (' + n + ') · 🚀 批量提交',
@@ -1880,10 +1970,18 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         summaryTitle: 'Git 变更概览', tabCode: '源码与概览', tabDiff: 'Git Diff', tabDir: '💬 评审批注', tabTrust: '核验详情',
         inspFocus: '链路聚焦', defaultCrumb: '右键节点可设为作用域根或提问 · 点击源码行号可锚定行级批注',
         openBtn: '源码 ↗', expandDomainFiles: '文件', collapseDomainFiles: '收起',
+        expandFileSymbols: '符号 ▸', collapseFileSymbols: '收起 ▴',
+        ctxExpandSymbols: '🧩 展开 AST 符号结构', ctxCollapseSymbols: '🧩 收起 AST 符号结构',
+        symGuardsTitle: '🛡 AST 前置守卫条件', symMembersTitle: '🧩 容器成员方法',
+        symMemberUnit: '方法',
+        symKind: {
+          function: '函数', method: '方法', class: '类', interface: '接口',
+          struct: '结构体', enum: '枚举', trait: '特征', impl: '实现块', type: '类型别名', const: '常量'
+        },
         entryTag: '入口', recStarTag: '★ 入口', extBadgeFmt: (n) => '⇄ ' + n + ' 外部引用',
         dirKindQuestion: '💬 代码疑问 (Question)', dirKindRework: '🔧 修改要求 (Rework)', dirKindConstraint: '🛡 架构约束 (Constraint)',
         kind: {
-          root: '工作树根', domain: '架构模块', folder: '目录', entrypoint: '入口点', file: '源码文件',
+          root: '工作树根', domain: '架构模块', folder: '目录', entrypoint: '入口点', file: '源码文件', symbol: 'AST 符号',
           claim: '行为断言', evidence: '代码锚点', blocking: '守卫条件', 'diff-file': '变更文件',
           impact: '跨模块影响', directive: '评审批注', 'external-dep': '外部依赖引用'
         },
@@ -1948,6 +2046,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         busySwitchBase: 'Recomputing diff against base ref...',
         busyLoadRepo: 'Loading Git repository & working tree...',
         busyExpandFiles: 'Loading source tree nodes...',
+        busyExpandSymbols: 'Parsing Tree-sitter AST symbols & diff hunks...',
         busyScope: 'Updating scope root & scanning external refs...',
         busySync: 'Synchronizing repository state...',
         batchDispatchFmt: (n) => '📌 Pending Notes (' + n + ') · 🚀 Dispatch All',
@@ -1976,10 +2075,18 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         summaryTitle: 'Git Diff Summary', tabCode: 'Source & Overview', tabDiff: 'Git Diff', tabDir: '💬 Review Notes', tabTrust: 'Verification',
         inspFocus: 'Focus', defaultCrumb: 'Right-click node to set Scope Root or Ask · Click line number to anchor review note',
         openBtn: 'Open ↗', expandDomainFiles: 'Files', collapseDomainFiles: 'Hide',
+        expandFileSymbols: 'Sym ▸', collapseFileSymbols: 'Hide ▴',
+        ctxExpandSymbols: '🧩 Expand AST Symbol Layer', ctxCollapseSymbols: '🧩 Collapse AST Symbol Layer',
+        symGuardsTitle: '🛡 AST Guard Clauses', symMembersTitle: '🧩 Container Methods',
+        symMemberUnit: 'methods',
+        symKind: {
+          function: 'Function', method: 'Method', class: 'Class', interface: 'Interface',
+          struct: 'Struct', enum: 'Enum', trait: 'Trait', impl: 'Impl', type: 'Type Alias', const: 'Constant'
+        },
         entryTag: 'ENTRY', recStarTag: '★ ENTRY', extBadgeFmt: (n) => '⇄ ' + n + ' ext refs',
         dirKindQuestion: '💬 Question', dirKindRework: '🔧 Rework', dirKindConstraint: '🛡 Constraint',
         kind: {
-          root: 'Worktree Root', domain: 'Module', folder: 'Directory', entrypoint: 'Entry Point', file: 'Source File',
+          root: 'Worktree Root', domain: 'Module', folder: 'Directory', entrypoint: 'Entry Point', file: 'Source File', symbol: 'AST Symbol',
           claim: 'Claim', evidence: 'Code Anchor', blocking: 'Guard Clause', 'diff-file': 'Modified File',
           impact: 'Cross-Impact', directive: 'Review Note', 'external-dep': 'External Ref'
         },
@@ -2196,6 +2303,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         node.kind === 'file' ||
         node.kind === 'diff-file' ||
         node.kind === 'entrypoint' ||
+        node.kind === 'symbol' ||
         node.kind === 'evidence' ||
         node.kind === 'folder' ||
         node.kind === 'external-dep'
@@ -2205,6 +2313,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     function getNodeWidth(id) {
       if (measuredWidths.has(id)) return measuredWidths.get(id);
       const n = nodeById.get(id);
+      if (n && n.kind === 'symbol') return 264;
       return isCompactNode(n) ? COMPACT_W : CARD_W;
     }
 
@@ -2216,7 +2325,12 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
 
     function nextRecommendedDepth(node) {
       if (!node) return 'overview';
-      if (node.kind === 'file' || node.kind === 'diff-file' || node.kind === 'entrypoint') {
+      if (
+        node.kind === 'file' ||
+        node.kind === 'diff-file' ||
+        node.kind === 'entrypoint' ||
+        node.kind === 'symbol'
+      ) {
         return node.completedDepth === 'flow' ? 'deep' : 'flow';
       }
       const cd = node.completedDepth || 'none';
@@ -2247,7 +2361,9 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
 
     function formatCompactSubtitle(node) {
       if (!node) return '';
-      if (node.isSummary || node.kind === 'external-dep') return node.subtitle || '';
+      if (node.isSummary || node.kind === 'external-dep' || node.kind === 'symbol') {
+        return node.subtitle || '';
+      }
       if (node.kind === 'folder') return '';
       if (!node.path) return node.subtitle || '';
 
@@ -2287,7 +2403,8 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         node.kind === 'folder' ||
         node.kind === 'entrypoint' ||
         node.kind === 'file' ||
-        node.kind === 'diff-file'
+        node.kind === 'diff-file' ||
+        node.kind === 'symbol'
       );
     }
 
@@ -2307,7 +2424,9 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         nodeId: node.id,
         title: node.title,
         kind: node.kind,
-        path: targetPath
+        path: targetPath,
+        startLine: node.startLine,
+        endLine: node.endLine
       });
     }
 
@@ -2345,8 +2464,11 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     function openDepthPopover(anchorEl, targetNodeOrNull) {
       closePopovers();
       const done = targetNodeOrNull ? (targetNodeOrNull.completedDepth || 'none') : 'none';
+      const isSym = targetNodeOrNull && targetNodeOrNull.kind === 'symbol';
       const items = [
-        { d: 'overview', title: t('depthL1Title'), desc: t('depthL1Desc'), check: done === 'overview' || done === 'flow' || done === 'deep' },
+        ...(!isSym
+          ? [{ d: 'overview', title: t('depthL1Title'), desc: t('depthL1Desc'), check: done === 'overview' || done === 'flow' || done === 'deep' }]
+          : []),
         { d: 'flow', title: t('depthL2Title'), desc: t('depthL2Desc'), check: done === 'flow' || done === 'deep' },
         { d: 'deep', title: t('depthL3Title'), desc: t('depthL3Desc'), check: done === 'deep' }
       ];
@@ -2378,6 +2500,9 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       closePopovers();
       let html = '';
 
+      if (node.canExpandSymbols && node.path && !node.isSummary) {
+        html += '<button data-ctx="toggleSym"><strong>' + esc(node.symbolsExpanded ? t('ctxCollapseSymbols') : t('ctxExpandSymbols')) + '</strong></button>';
+      }
       if (node.kind === 'external-dep' && node.scopePath) {
         html += '<button data-ctx="setScope"><strong>' + esc(t('switchScopeToExt')) + '</strong></button>';
       } else if (node.scopePath && node.scopePath !== scopeRoot && (node.kind === 'domain' || node.kind === 'folder')) {
@@ -2394,7 +2519,9 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
 
       if (isAnalyzableNode(node) && !document.body.classList.contains('no-analyze-cap')) {
         html += '<div class="more-sep"></div>';
-        html += '<button data-ctx="d-overview">' + esc(t('depthL1Title')) + '</button>';
+        if (node.kind !== 'symbol') {
+          html += '<button data-ctx="d-overview">' + esc(t('depthL1Title')) + '</button>';
+        }
         html += '<button data-ctx="d-flow">' + esc(t('depthL2Title')) + '</button>';
         html += '<button data-ctx="d-deep">' + esc(t('depthL3Title')) + '</button>';
       }
@@ -2417,7 +2544,11 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           ce.stopPropagation();
           nodeCtxMenu.classList.add('hidden');
           const act = btn.dataset.ctx;
-          if (act === 'setScope' && node.scopePath) {
+          if (act === 'toggleSym' && node.path) {
+            pendingCenterNodeId = node.id;
+            collapsedIds.delete(node.id);
+            postStateAction({ type: 'toggleFileSymbols', path: node.path }, t('busyExpandSymbols'));
+          } else if (act === 'setScope' && node.scopePath) {
             setScopeRootAction(node.scopePath);
           } else if (act === 'exitScope') {
             setScopeRootAction('');
@@ -2835,7 +2966,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       const list = [];
       let expandedAny = false;
       for (const n of graph.nodes) {
-        const hay = (n.title + ' ' + (n.subtitle || '') + ' ' + (n.body || '') + ' ' + (n.roleSummary || '') + ' ' + (n.path || '') + ' ' + (n.layer || '')).toLowerCase();
+        const hay = (n.title + ' ' + (n.subtitle || '') + ' ' + (n.signature || '') + ' ' + (n.symbol || '') + ' ' + (n.body || '') + ' ' + (n.roleSummary || '') + ' ' + (n.path || '') + ' ' + (n.layer || '')).toLowerCase();
         if (hay.includes(q)) {
           matched.add(n.id);
           list.push(n.id);
@@ -3257,6 +3388,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           (compact ? ' node-compact' : '') +
           (n.isSummary ? ' is-summary' : '') +
           (n.isSupport ? ' is-support' : '') +
+          (n.changed ? ' is-changed' : '') +
           (n.directiveStatus === 'resolved' ? ' is-resolved' : '') +
           (n.badge === 'mismatch' ? ' has-mismatch' : '');
         el.style.left = p.x + 'px';
@@ -3281,6 +3413,14 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           } else if (n.badge === 'mismatch') {
             tagHtml += '<span class="status-dot" style="background:var(--red);" title="Mismatch"></span>';
           }
+          if (n.kind === 'symbol' && !n.isSummary) {
+            if (n.symbolMembers && n.symbolMembers.length > 0) {
+              tagHtml += '<span class="micro-tag member-tag">' + n.symbolMembers.length + ' ' + esc(t('symMemberUnit')) + '</span>';
+            }
+            if (n.guardCount && n.guardCount > 0) {
+              tagHtml += '<span class="micro-tag guard-tag" title="' + esc(t('symGuardsTitle')) + '">🛡 ' + n.guardCount + '</span>';
+            }
+          }
           if (extCount > 0) {
             tagHtml += '<span class="ext-badge" title="点击查看视图外依赖边界">' + esc(t('extBadgeFmt')(extCount)) + '</span>';
           }
@@ -3298,10 +3438,14 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
               n.changed && (n.additions !== undefined || n.deletions !== undefined)
                 ? '<span class="leaf-diff"><span class="diff-add">+' + (n.additions || 0) + '</span><span class="diff-del">-' + (n.deletions || 0) + '</span></span>'
                 : (n.changed ? '<span class="status-dot" style="background:var(--yellow);"></span>' : '');
+            const symBtnPart =
+              n.canExpandSymbols && n.path && !n.isSummary
+                ? '<button class="sym-toggle-btn' + (n.symbolsExpanded ? ' is-open' : '') + '" data-toggle-sym="' + esc(n.path) + '" title="' + esc(n.symbolsExpanded ? t('ctxCollapseSymbols') : t('ctxExpandSymbols')) + '">' + esc(n.symbolsExpanded ? t('collapseFileSymbols') : t('expandFileSymbols')) + '</button>'
+                : '';
             const openBtnPart = n.path
               ? '<button class="leaf-open" title="' + esc(t('openBtn')) + '" data-jump-path="' + esc(n.path) + '" data-jump-line="' + esc(n.startLine || 1) + '">↗</button>'
               : '';
-            rightHtml = diffPart + openBtnPart;
+            rightHtml = diffPart + symBtnPart + openBtnPart;
           }
 
           el.innerHTML =
@@ -3455,6 +3599,17 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
             pendingCenterNodeId = n.id;
             collapsedIds.delete(n.id);
             postStateAction({ type: 'toggleFolderFiles', folderId: folderToggle.dataset.toggleFolder }, t('busyExpandFiles'));
+          });
+        }
+
+        const symToggle = el.querySelector('[data-toggle-sym]');
+        if (symToggle) {
+          symToggle.addEventListener('mousedown', (ev) => ev.stopPropagation());
+          symToggle.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            pendingCenterNodeId = n.id;
+            collapsedIds.delete(n.id);
+            postStateAction({ type: 'toggleFileSymbols', path: symToggle.dataset.toggleSym }, t('busyExpandSymbols'));
           });
         }
 
@@ -3827,14 +3982,19 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
 
       // Overview & Code tab
       const snippet = snippetCache.get(node.id);
+      const symKindMap = t('symKind') || {};
+      const symKindLabel = node.kind === 'symbol' && node.symbolKind ? (symKindMap[node.symbolKind] || node.symbolKind) : '';
       let html =
         '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;">' +
           '<span class="layer-tag">' + esc(kindLabels[node.kind] || node.kind) + '</span>' +
+          (symKindLabel ? '<span class="layer-tag" style="color:#d2a8ff;">' + esc(symKindLabel) + (node.symbolExported ? ' · export' : '') + '</span>' : '') +
           (node.badge ? '<span class="badge badge-' + esc(node.badge) + '">' + esc(badgeLabels[node.badge] || node.badge) + '</span>' : '') +
           (node.layer ? '<span class="layer-tag">' + esc(node.layer) + '</span>' : '') +
         '</div>';
 
-      if (node.subtitle && node.subtitle !== node.path && node.subtitle !== node.title) {
+      if (node.kind === 'symbol' && node.signature) {
+        html += '<div class="sym-sig-bar">' + esc(node.title) + ' ' + esc(node.signature) + '</div>';
+      } else if (node.subtitle && node.subtitle !== node.path && node.subtitle !== node.title) {
         html += '<div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:8px;">' + esc(node.subtitle) + '</div>';
       }
       if (node.kind === 'blocking' && node.condition) {
@@ -3875,10 +4035,50 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
               '</button>'
             : '') +
           '<button class="secondary" id="btnQuickAskTab">' + esc(t('ctxAskAgent')) + '</button>' +
+          (node.canExpandSymbols && node.path && !node.isSummary
+            ? '<button class="secondary" id="btnInspToggleSym">' + esc(node.symbolsExpanded ? t('ctxCollapseSymbols') : t('ctxExpandSymbols')) + '</button>'
+            : '') +
           (node.kind === 'external-dep' && node.scopePath
             ? '<button class="secondary" id="btnSwitchExtScope">' + esc(t('switchScopeToExt')) + '</button>'
             : '') +
         '</div>';
+
+      if (node.kind === 'symbol' && Array.isArray(node.symbolGuards) && node.symbolGuards.length > 0) {
+        html += '<div class="sym-sec-box">';
+        html += '<div class="sym-sec-head"><span>' + esc(t('symGuardsTitle')) + ' (' + node.symbolGuards.length + ')</span></div>';
+        for (const g of node.symbolGuards) {
+          html +=
+            '<div class="sym-guard-row" data-ask-line="' + g.line + '" title="点击锚定第 ' + g.line + ' 行提问">' +
+              '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' +
+                '<strong style="color:var(--amber);">IF</strong> <code>' + esc(g.condition) + '</code> <span style="color:var(--muted);">→ ' + esc(g.outcomeKind) + '</span>' +
+              '</span>' +
+              '<span style="font-family:var(--mono);font-size:10px;color:var(--muted);flex-shrink:0;">L' + g.line + '</span>' +
+            '</div>';
+        }
+        html += '</div>';
+      }
+
+      if (node.kind === 'symbol' && Array.isArray(node.symbolMembers) && node.symbolMembers.length > 0) {
+        html += '<div class="sym-sec-box">';
+        html += '<div class="sym-sec-head"><span>' + esc(t('symMembersTitle')) + ' (' + node.symbolMembers.length + ')</span></div>';
+        for (const m of node.symbolMembers) {
+          const mSpan = m.endLine && m.endLine !== m.startLine ? ('L' + m.startLine + '-' + m.endLine) : ('L' + m.startLine);
+          html +=
+            '<div class="sym-member-row" data-member-start="' + m.startLine + '" data-member-end="' + (m.endLine || m.startLine) + '">' +
+              '<span style="display:inline-flex;align-items:center;gap:6px;min-width:0;flex:1;">' +
+                getSymbolIconSvg('method') +
+                '<span style="font-weight:600;white-space:nowrap;">' + esc(m.name) + '</span>' +
+                (m.signature ? '<span style="font-family:var(--mono);font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(m.signature) + '</span>' : '') +
+              '</span>' +
+              '<span style="display:inline-flex;align-items:center;gap:5px;flex-shrink:0;">' +
+                (m.changed ? '<span class="status-dot" style="background:var(--yellow);"></span>' : '') +
+                (m.guardCount ? '<span class="micro-tag guard-tag">🛡 ' + m.guardCount + '</span>' : '') +
+                '<span style="font-family:var(--mono);font-size:10px;color:var(--muted);">' + mSpan + '</span>' +
+              '</span>' +
+            '</div>';
+        }
+        html += '</div>';
+      }
 
       if (node.kind === 'domain') {
         const depsOut = graph.edges.filter(e => e.kind === 'dep' && e.from === node.id).map(e => nodeById.get(e.to)).filter(Boolean);
@@ -3952,6 +4152,30 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       if (swExtBtn && node.scopePath) {
         swExtBtn.addEventListener('click', () => setScopeRootAction(node.scopePath));
       }
+      const inspToggleSymBtn = document.getElementById('btnInspToggleSym');
+      if (inspToggleSymBtn && node.path) {
+        inspToggleSymBtn.addEventListener('click', () => {
+          pendingCenterNodeId = node.id;
+          collapsedIds.delete(node.id);
+          postStateAction({ type: 'toggleFileSymbols', path: node.path }, t('busyExpandSymbols'));
+        });
+      }
+      el.querySelectorAll('[data-member-start]').forEach(mRow => {
+        mRow.addEventListener('click', () => {
+          const ms = parseInt(mRow.dataset.memberStart || '1', 10);
+          const me = parseInt(mRow.dataset.memberEnd || String(ms), 10);
+          if (node.path) {
+            hostApi.postMessage({
+              type: 'requestSnippet',
+              nodeId: node.id,
+              path: node.path,
+              startLine: ms,
+              endLine: me,
+              fromBriefing: Boolean(node.fromBriefing)
+            });
+          }
+        });
+      });
       const delBtn = document.getElementById('btnRemoveDir');
       if (delBtn && node.directiveId) {
         delBtn.addEventListener('click', () => {

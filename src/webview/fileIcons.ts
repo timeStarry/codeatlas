@@ -178,9 +178,25 @@ export function getFileIconsClientJs(): string {
       );
     }
 
+    function getSymbolIconSvg(symbolKind) {
+      var sk = String(symbolKind || 'function').toLowerCase();
+      if (sk === 'class') return _atlasBadgeSvg('#f0883e', '#ffa657', 'C');
+      if (sk === 'struct') return _atlasBadgeSvg('#e09f3e', '#f2cc60', 'S');
+      if (sk === 'interface' || sk === 'trait') return _atlasBadgeSvg('#3fb950', '#7ee787', 'I');
+      if (sk === 'enum') return _atlasBadgeSvg('#d29922', '#e3b341', 'E');
+      if (sk === 'type') return _atlasBadgeSvg('#39c5cf', '#56d4dd', 'T');
+      if (sk === 'impl') return _atlasBadgeSvg('#8b949e', '#c9d1d9', 'IM');
+      if (sk === 'const') return _atlasBadgeSvg('#56b6c2', '#79c0ff', 'K');
+      if (sk === 'method') return _atlasBadgeSvg('#c678dd', '#e2b8f2', 'M');
+      return _atlasBadgeSvg('#a371f7', '#d2a8ff', 'fn');
+    }
+
     function getNodeIconSvg(node, isOpen) {
       if (!node) return '';
       var k = node.kind;
+      if (k === 'symbol' && !node.isSummary) {
+        return getSymbolIconSvg(node.symbolKind);
+      }
       if (k === 'root') {
         return _atlasSvg(
           '<circle cx="5" cy="4.5" r="1.7" stroke="#58a6ff" stroke-width="1.35"/>' +

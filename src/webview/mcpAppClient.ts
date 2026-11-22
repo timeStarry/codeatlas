@@ -59,6 +59,7 @@ const STATE_ACTIONS = new Set([
   'expandAllFiles',
   'collapseAllFiles',
   'toggleFolderFiles',
+  'toggleFileSymbols',
   'toggleSupportAssets',
   'setPruneUnchanged',
   'selectBriefing',
@@ -294,7 +295,12 @@ function buildAnalyzeChatPrompt(msg: CanvasOutboundMessage, repoPath: string): s
   const kind = typeof msg.kind === 'string' && msg.kind ? msg.kind : 'module';
   const relPath =
     typeof msg.path === 'string' && msg.path ? msg.path : scopeRoot;
-  const targetDesc = relPath && relPath !== title ? `${title} (${relPath})` : title;
+  const lineSpan =
+    kind === 'symbol' && typeof msg.startLine === 'number'
+      ? `:${msg.startLine}${typeof msg.endLine === 'number' && msg.endLine !== msg.startLine ? `-${msg.endLine}` : ''}`
+      : '';
+  const targetDesc =
+    relPath && relPath !== title ? `${title} (${relPath}${lineSpan})` : `${title}${lineSpan}`;
 
   if (depth === 'overview') {
     return [

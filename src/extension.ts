@@ -4,6 +4,7 @@ import * as fs from 'node:fs/promises';
 import * as crypto from 'node:crypto';
 import {
   getBranchCommits,
+  getChangedLinesForFiles,
   getDiffStats,
   getFileDiff,
   getGitContext,
@@ -20,6 +21,7 @@ import {
 } from './core/manifest.js';
 import { analyzeRepositoryArchitecture } from './core/indexer.js';
 import { enrichArchitectureWithWorkspace, scanScopeExternalEdges } from './core/workspace.js';
+import { CuratedFileSymbols, extractCuratedSymbolsForFiles } from './core/astAnalyzer.js';
 import { verifyBriefing } from './core/verifier.js';
 import { formatDirectivesForAgent } from './core/directives.js';
 import {
@@ -91,6 +93,7 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
   private didMigrate = false;
   private expandedDomainIds = new Set<string>();
   private expandedFolderIds = new Set<string>();
+  private expandedFilePaths = new Set<string>();
   private pruneUnchanged = false;
   private showSupportAssets = false;
   private lang: 'zh' | 'en' = 'zh';
@@ -268,6 +271,22 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
             await this.pushState();
           }
           break;
+        case 'toggleFileSymbols':
+          if (typeof msg.path === 'string' && msg.path.trim()) {
+            const cleanPath = msg.path
+              .replace(/\\/g, '/')
+              .replace(/^\.\//, '')
+              .replace(/^\/+|\/+$/g, '');
+            if (cleanPath) {
+              if (this.expandedFilePaths.has(cleanPath)) {
+                this.expandedFilePaths.delete(cleanPath);
+              } else {
+                this.expandedFilePaths.add(cleanPath);
+              }
+              await this.pushState();
+            }
+          }
+          break;
         case 'toggleSupportAssets':
           this.showSupportAssets = !this.showSupportAssets;
           await this.pushState();
@@ -292,6 +311,7 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
         case 'collapseAllFiles':
           this.expandedDomainIds.clear();
           this.expandedFolderIds.clear();
+          this.expandedFilePaths.clear();
           await this.pushState();
           break;
         case 'setPruneUnchanged':
@@ -378,6 +398,7 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
           if (this.scopeRoot === '(root)' || this.scopeRoot === '.') this.scopeRoot = '';
           this.expandedDomainIds.clear();
           this.expandedFolderIds.clear();
+          this.expandedFilePaths.clear();
           await this.pushState();
           break;
         case 'setStorageMode':
@@ -436,6 +457,7 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
       this.didAutoDiscover = false;
       this.expandedDomainIds.clear();
       this.expandedFolderIds.clear();
+      this.expandedFilePaths.clear();
       this.stateWatcher?.dispose();
       this.stateWatcher = undefined;
       await this.pushState();
@@ -629,7 +651,10 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
       }
       const allLines = content.split(/\r?\n/);
       const start = Math.max(1, (msg.startLine ?? 1) - 4);
-      const end = Math.min(allLines.length, (msg.endLine ?? msg.startLine ?? 1) + 8);
+      const cappedTargetEnd = msg.endLine
+        ? Math.min(msg.endLine, (msg.startLine ?? 1) + 90)
+        : (msg.startLine ?? 1);
+      const end = Math.min(allLines.length, cappedTargetEnd + 8);
       const hlStart = msg.startLine ?? 1;
       const hlEnd = msg.endLine ?? hlStart;
 
@@ -1270,6 +1295,21 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
         const scopeBoundaries = this.scopeRoot
           ? await scanScopeExternalEdges(git.repoRoot, trackedFiles, this.scopeRoot, arch)
           : [];
+        let fileSymbols: Map<string, CuratedFileSymbols> | undefined;
+        if (this.expandedFilePaths.size > 0) {
+          const expFiles = [...this.expandedFilePaths];
+          const changedLinesByFile = await getChangedLinesForFiles(
+            git.repoRoot,
+            this.baseRef,
+            expFiles,
+            diffStats
+          );
+          fileSymbols = await extractCuratedSymbolsForFiles({
+            repoRoot: git.repoRoot,
+            files: expFiles,
+            changedLinesByFile,
+          });
+        }
         const graph = buildAtlasGraph({
           git,
           manifest,
@@ -1292,6 +1332,8 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
           baseRef: this.baseRef,
           expandedDomainIds: [...this.expandedDomainIds],
           expandedFolderIds: [...this.expandedFolderIds],
+          expandedFilePaths: [...this.expandedFilePaths],
+          fileSymbols,
           pruneUnchanged: this.pruneUnchanged,
           showSupportAssets: this.showSupportAssets,
           lang: this.lang,

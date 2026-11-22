@@ -431,3 +431,89 @@ export async function getDiffHunks(
 
   return results;
 }
+
+/**
+ * Computes exact 1-based modified/added line sets ONLY for the specified file paths
+ * (`git diff -U0 <baseRef> -- <paths>`), used to highlight diff-impacted AST symbols.
+ */
+export async function getChangedLinesForFiles(
+  repoRoot: string,
+  baseRef: string | undefined,
+  relPaths: string[],
+  diffStats?: DiffFileStat[],
+  targetRef?: string,
+  compareMode: CompareMode = 'direct-diff'
+): Promise<Map<string, Set<number>>> {
+  const map = new Map<string, Set<number>>();
+  const targets = [
+    ...new Set(relPaths.map((p) => p.replace(/\\/g, '/').replace(/^\.\//, '')).filter(Boolean)),
+  ];
+  if (targets.length === 0) return map;
+
+  const untrackedSet = new Set(
+    (diffStats ?? [])
+      .filter((d) => d.status === '?')
+      .map((d) => d.path.replace(/\\/g, '/').replace(/^\.\//, ''))
+  );
+
+  const gitTargets: string[] = [];
+  for (const t of targets) {
+    if (untrackedSet.has(t)) {
+      const fullSet = new Set<number>();
+      for (let ln = 1; ln <= 4000; ln++) fullSet.add(ln);
+      map.set(t, fullSet);
+    } else {
+      gitTargets.push(t);
+    }
+  }
+
+  if (gitTargets.length === 0) return map;
+
+  const effectiveBase = baseRef
+    ? await resolveEffectiveBaseRef(repoRoot, baseRef, targetRef, compareMode)
+    : 'HEAD';
+  const args = ['diff', '-U0', '--no-color', effectiveBase];
+  if (targetRef && targetRef !== 'WORKTREE') {
+    args.push(targetRef);
+  }
+  args.push('--', ...gitTargets);
+
+  let out = '';
+  try {
+    out = await runGit(repoRoot, args);
+  } catch {
+    return map;
+  }
+
+  let currentFile = '';
+  const hunkRe = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
+
+  for (const line of out.split(/\r?\n/)) {
+    if (line.startsWith('+++ b/')) {
+      currentFile = line.slice('+++ b/'.length).trim().replace(/\\/g, '/');
+      if (!map.has(currentFile)) map.set(currentFile, new Set<number>());
+      continue;
+    }
+    if (line.startsWith('+++ /dev/null')) {
+      currentFile = '';
+      continue;
+    }
+    if (!currentFile) continue;
+    const m = hunkRe.exec(line);
+    if (!m) continue;
+    const newStart = parseInt(m[3], 10);
+    const newCount = m[4] !== undefined ? parseInt(m[4], 10) : 1;
+    const lineSet = map.get(currentFile)!;
+
+    if (newCount === 0) {
+      lineSet.add(Math.max(1, newStart));
+    } else {
+      const end = Math.min(newStart + newCount - 1, newStart + 4000);
+      for (let ln = newStart; ln <= end; ln++) {
+        lineSet.add(ln);
+      }
+    }
+  }
+
+  return map;
+}
