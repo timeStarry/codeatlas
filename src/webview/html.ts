@@ -12,6 +12,7 @@ export function getCockpitHtml(nonce: string): string {
   <title>CodeAtlas Cockpit</title>
   <style>
     :root {
+      color-scheme: dark;
       --bg: var(--vscode-sideBar-background, var(--vscode-editor-background, #181a1f));
       --fg: var(--vscode-sideBar-foreground, var(--vscode-editor-foreground, #dcdfe4));
       --muted: var(--vscode-descriptionForeground, #8b949e);
@@ -259,25 +260,25 @@ export function getCockpitHtml(nonce: string): string {
             <path d="M8 1.6 13.8 4.9v6.2L8 14.4 2.2 11.1V4.9L8 1.6Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
             <circle cx="8" cy="8" r="2" fill="currentColor"/>
           </svg>
-          CodeAtlas 驾驶舱
+          CodeAtlas 概览
         </h2>
       </div>
       <button class="secondary" id="btnRefresh" style="height:22px;padding:0 7px;font-size:11px;">↻ 刷新</button>
     </div>
-    <div class="meta" id="gitMeta">正在读取 Git 上下文...</div>
+    <div class="meta" id="gitMeta">正在读取 Git 工作树...</div>
     <div class="actions">
       <button id="btnOpenCanvas">打开画布</button>
-      <button class="secondary" id="btnAnalyzeBranch" style="color:var(--accent);border-color:rgba(77,166,255,0.4);">⚡ 分析分支</button>
-      <button class="secondary" id="btnLoadBriefing">加载 JSON</button>
+      <button class="secondary" id="btnAnalyzeBranch" style="color:var(--accent);border-color:rgba(77,166,255,0.4);">⚡ 分析变更</button>
+      <button class="secondary" id="btnLoadBriefing">加载简报</button>
     </div>
   </div>
 
   <div id="cockpitAnalyzeStatus" class="analyze-pill hidden"></div>
 
   <div class="tabs">
-    <button class="tab active" data-tab="briefing">因果简报</button>
-    <button class="tab" data-tab="delta">变更与骨架</button>
-    <button class="tab" data-tab="directives">纠偏批注</button>
+    <button class="tab active" data-tab="briefing">变更核验</button>
+    <button class="tab" data-tab="delta">Git Diff</button>
+    <button class="tab" data-tab="directives">评审批注</button>
   </div>
 
   <div id="tab-briefing"></div>

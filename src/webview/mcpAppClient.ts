@@ -10,6 +10,7 @@ export interface CanvasOutboundMessage {
   worktreePath?: string;
   scope?: 'branch' | 'node';
   depth?: 'overview' | 'flow' | 'deep';
+  agentTarget?: 'current' | 'new';
   scopeRoot?: string;
   storageMode?: 'git-hidden' | 'worktree-excluded' | 'worktree-tracked';
   baseRef?: string;
@@ -19,6 +20,7 @@ export interface CanvasOutboundMessage {
   path?: string;
   line?: number;
   startLine?: number;
+  endLine?: number;
   note?: string;
   directiveKind?: 'constraint' | 'question' | 'rework';
   contextBody?: string;
@@ -87,6 +89,69 @@ const win = globalThis as unknown as BrowserGlobal;
 let currentWorktreePath = '';
 let receivedInitialResult = false;
 let analyzeResetTimer: ReturnType<typeof setTimeout> | undefined;
+let bgPollTimer: ReturnType<typeof setInterval> | undefined;
+let lastKnownStateStamp = '';
+
+function computeStateStamp(statePayload: Record<string, unknown>): string {
+  const activeBriefing = String(statePayload.activeBriefingPath ?? '');
+  const graph = statePayload.graph as
+    | {
+        nodes?: Array<{ id?: string; body?: string; roleSummary?: string; directiveStatus?: string; resolutionSummary?: string }>;
+        summary?: { openDirectiveCount?: number; verified?: number; mismatch?: number };
+      }
+    | undefined;
+  const nodesSig = (graph?.nodes ?? [])
+    .map((n) => `${n.id}:${n.body ?? ''}:${n.roleSummary ?? ''}:${n.directiveStatus ?? ''}:${n.resolutionSummary ?? ''}`)
+    .join('|');
+  return `${activeBriefing}#${graph?.summary?.openDirectiveCount ?? 0}#${nodesSig.length}:${nodesSig.slice(0, 600)}`;
+}
+
+function stopBackgroundPoll(): void {
+  if (bgPollTimer) {
+    clearInterval(bgPollTimer);
+    bgPollTimer = undefined;
+  }
+}
+
+function startBackgroundRefreshWatch(baselineStamp: string): void {
+  stopBackgroundPoll();
+  let ticks = 0;
+  bgPollTimer = setInterval(() => {
+    ticks += 1;
+    if (ticks > 30 || !currentWorktreePath) {
+      stopBackgroundPoll();
+      dispatchToCanvas({ type: 'analyzeStatus', payload: { running: false } });
+      return;
+    }
+    if (inFlightTools > 0) return;
+    void (async () => {
+      try {
+        const res = await withToolSlot(() =>
+          app.callServerTool({
+            name: 'atlas_app_action',
+            arguments: {
+              worktreePath: currentWorktreePath,
+              action: 'refresh',
+              payload: { type: 'refresh' },
+            },
+          })
+        );
+        const data = extractStructured(res as ToolResultLike);
+        if (!data) return;
+        const statePayload = unwrapCanvasState(data);
+        const nextStamp = computeStateStamp(statePayload);
+        if (nextStamp && nextStamp !== baselineStamp) {
+          lastKnownStateStamp = nextStamp;
+          stopBackgroundPoll();
+          dispatchToCanvas({ type: 'analyzeStatus', payload: { running: false } });
+          dispatchToCanvas({ type: 'canvasState', payload: statePayload });
+        }
+      } catch {
+        // ignore transient poll errors
+      }
+    })();
+  }, 4000);
+}
 
 // Antigravity enforces at most 4 concurrent server tool calls per MCP App view.
 const MAX_IN_FLIGHT_TOOLS = 3;
@@ -275,6 +340,7 @@ app.ontoolinput = ({ arguments: args }) => {
 };
 
 app.ontoolresult = (result) => {
+  stopBackgroundPoll();
   if (analyzeResetTimer) {
     clearTimeout(analyzeResetTimer);
     analyzeResetTimer = undefined;
@@ -286,6 +352,7 @@ app.ontoolresult = (result) => {
     updateWorktreeFromData(data);
     const statePayload = unwrapCanvasState(data);
     updateWorktreeFromData(statePayload);
+    lastKnownStateStamp = computeStateStamp(statePayload);
     dispatchToCanvas({ type: 'canvasState', payload: statePayload });
   } else if (result.isError) {
     dispatchToCanvas({
@@ -309,7 +376,10 @@ const connectPromise: Promise<boolean> = (async () => {
     const caps = app.getHostCapabilities();
     dispatchToCanvas({
       type: 'hostCapabilities',
-      payload: { canAnalyze: Boolean(caps?.message) },
+      payload: {
+        canAnalyze: Boolean(caps?.message),
+        canUpdateContext: Boolean(caps?.updateModelContext),
+      },
     });
     return true;
   } catch {
@@ -429,6 +499,7 @@ async function handleCanvasMessage(msg: CanvasOutboundMessage): Promise<void> {
         const statePayload = unwrapCanvasState(data);
         updateWorktreeFromData(data);
         updateWorktreeFromData(statePayload);
+        lastKnownStateStamp = computeStateStamp(statePayload);
         dispatchToCanvas({ type: 'canvasState', payload: statePayload });
       } else if (result.isError) {
         dispatchToCanvas({
@@ -534,13 +605,37 @@ async function handleCanvasMessage(msg: CanvasOutboundMessage): Promise<void> {
     return;
   }
 
+  if (msg.type === 'attachNodeContext') {
+    if (!app.getHostCapabilities()?.updateModelContext) return;
+    const loc = `${msg.path || msg.scopeRoot || '(root)'}${msg.startLine ? `:${msg.startLine}${msg.endLine && msg.endLine !== msg.startLine ? `-${msg.endLine}` : ''}` : ''}`;
+    const text = [
+      `[CodeAtlas Context]`,
+      `- Repository: ${currentWorktreePath || '(unknown)'}`,
+      `- Node: ${msg.title || loc} (${msg.kind || 'node'})`,
+      `- Location: ${loc}`,
+      ...(msg.contextBody ? [`- Summary: ${msg.contextBody}`] : []),
+    ].join('\n');
+    try {
+      await app.updateModelContext({
+        content: [{ type: 'text', text }],
+      });
+      dispatchToCanvas({
+        type: 'contextAttachedNotice',
+        payload: { title: msg.title || loc },
+      });
+    } catch {
+      // ignore if surface rejects context attachment
+    }
+    return;
+  }
+
   if (msg.type === 'analyzeTarget') {
     if (!currentWorktreePath) {
       dispatchToCanvas({
         type: 'analyzeStatus',
         payload: {
           running: false,
-          error: '请先在左上角输入并切换本地 Git 仓库路径 / Load a local Git repository first.',
+          error: '请先选择或输入本地 Git 仓库路径 / Select a local Git repository first.',
         },
       });
       return;
@@ -553,16 +648,17 @@ async function handleCanvasMessage(msg: CanvasOutboundMessage): Promise<void> {
         payload: {
           running: false,
           error:
-            '当前视图无关联对话上下文，请在对话侧边栏打开 CodeAtlas 后使用一键分析 / No conversation available on this surface.',
+            '当前全局视图无关联对话上下文，请在对话侧边栏打开 CodeAtlas / Open CodeAtlas in conversation side pane.',
         },
       });
       return;
     }
 
+    const useNewSession = msg.agentTarget === 'new';
     const label =
       msg.scope === 'branch'
-        ? `branch vs ${typeof msg.baseRef === 'string' && msg.baseRef ? msg.baseRef : 'HEAD'}`
-        : `${typeof msg.title === 'string' && msg.title ? msg.title : 'module'}${typeof msg.path === 'string' && msg.path ? ` (${msg.path})` : ''}`;
+        ? `Diff vs ${typeof msg.baseRef === 'string' && msg.baseRef ? msg.baseRef : 'HEAD'}`
+        : `${typeof msg.title === 'string' && msg.title ? msg.title : 'Module'}${typeof msg.path === 'string' && msg.path ? ` (${msg.path})` : ''}`;
 
     dispatchToCanvas({
       type: 'analyzeStatus',
@@ -570,31 +666,47 @@ async function handleCanvasMessage(msg: CanvasOutboundMessage): Promise<void> {
     });
 
     const prompt = buildAnalyzeChatPrompt(msg, currentWorktreePath);
+    const baselineStamp = lastKnownStateStamp;
     try {
-      const res = await app.sendMessage({
-        role: 'user',
-        content: [{ type: 'text', text: prompt }],
-      });
+      const reqParams = {
+        role: 'user' as const,
+        content: [{ type: 'text' as const, text: prompt }],
+        ...(useNewSession
+          ? { _meta: { 'com.google.antigravity/message': { target: 'new' } } }
+          : {}),
+      };
+      const res = await app.sendMessage(reqParams as Parameters<typeof app.sendMessage>[0]);
       if (res.isError) {
         dispatchToCanvas({
           type: 'analyzeStatus',
           payload: {
             running: false,
-            error: '宿主拒绝了发送对话消息请求 / Host rejected sendMessage.',
+            error: '宿主拒绝了发送消息请求 / Host rejected sendMessage.',
           },
         });
         return;
       }
 
-      dispatchToCanvas({
-        type: 'analyzeStatus',
-        payload: { running: true, label: `${label} (已发送至对话 Agent / Sent to Agent)` },
-      });
-      if (analyzeResetTimer) clearTimeout(analyzeResetTimer);
-      analyzeResetTimer = setTimeout(() => {
-        analyzeResetTimer = undefined;
-        dispatchToCanvas({ type: 'analyzeStatus', payload: { running: false } });
-      }, 3000);
+      if (useNewSession) {
+        dispatchToCanvas({
+          type: 'analyzeStatus',
+          payload: {
+            running: true,
+            label: `${label} (已在独立后台会话运行，完成后自动刷新画布 / Running in background session...)`,
+          },
+        });
+        startBackgroundRefreshWatch(baselineStamp);
+      } else {
+        dispatchToCanvas({
+          type: 'analyzeStatus',
+          payload: { running: true, label: `${label} (已发送至当前会话 / Sent to current chat)` },
+        });
+        if (analyzeResetTimer) clearTimeout(analyzeResetTimer);
+        analyzeResetTimer = setTimeout(() => {
+          analyzeResetTimer = undefined;
+          dispatchToCanvas({ type: 'analyzeStatus', payload: { running: false } });
+        }, 3000);
+      }
     } catch (err) {
       dispatchToCanvas({
         type: 'analyzeStatus',
@@ -637,7 +749,9 @@ async function handleCanvasMessage(msg: CanvasOutboundMessage): Promise<void> {
           createdId = created.id;
           createdRev = created.revision ?? 1;
         }
-        dispatchToCanvas({ type: 'canvasState', payload: unwrapCanvasState(data) });
+        const unwrapped = unwrapCanvasState(data);
+        lastKnownStateStamp = computeStateStamp(unwrapped);
+        dispatchToCanvas({ type: 'canvasState', payload: unwrapped });
       }
     } catch {
       // continue to sendMessage even if directive persistence failed
@@ -645,45 +759,60 @@ async function handleCanvasMessage(msg: CanvasOutboundMessage): Promise<void> {
 
     if (!app.getHostCapabilities()?.message) return;
 
+    const useNewSession = msg.agentTarget === 'new';
     const kindLabel =
       msg.directiveKind === 'rework'
-        ? '代码/简报纠偏返工'
+        ? '代码修改要求'
         : msg.directiveKind === 'constraint'
-          ? '架构约束红线确认'
-          : '画布锚点提问';
+          ? '架构约束确认'
+          : '代码锚点提问';
     const loc = `${msg.path || '(模块级)'}${msg.startLine ? `:${msg.startLine}` : ''}`;
-    const ctxLine = msg.contextBody ? `\n- 当前节点内容摘要：${msg.contextBody}` : '';
+    const ctxLine = msg.contextBody ? `\n- 当前节点摘要：${msg.contextBody}` : '';
     const ackLine = createdId
       ? msg.directiveKind === 'rework'
         ? `3. 完成真实代码修改后，调用 \`atlas_ack_directive\`（\`worktreePath: "${currentWorktreePath}"\`，\`id: "${createdId}"\`，\`expectedRevision: ${createdRev}\`，\`agentId: "antigravity"\`，\`summary\` 填写修复说明）并调用 \`open_atlas\` 刷新画布。`
-        : `3. 在对话中详细解答后，同步调用 \`atlas_ack_directive\`（\`worktreePath: "${currentWorktreePath}"\`，\`id: "${createdId}"\`，\`expectedRevision: ${createdRev}\`，\`agentId: "antigravity"\`，\`summary\` 填入精炼结论）将解答写回该画布批注节点，并调用 \`open_atlas\` 刷新画布。`
+        : `3. 在对话中给出解答后，同步调用 \`atlas_ack_directive\`（\`worktreePath: "${currentWorktreePath}"\`，\`id: "${createdId}"\`，\`expectedRevision: ${createdRev}\`，\`agentId: "antigravity"\`，\`summary\` 填入精炼结论）将解答写回该画布批注节点，并调用 \`open_atlas\` 刷新画布。`
       : `3. 处理完成后调用 \`open_atlas\`（\`worktreePath: "${currentWorktreePath}"\`）刷新画布。`;
 
     const prompt = [
       `【CodeAtlas ${kindLabel}】针对本地仓库 \`${currentWorktreePath}\` 的节点「${msg.title || loc}」：`,
-      `- 绑定位置：\`${loc}\`${ctxLine}`,
-      `- 我的问题 / 要求：${msg.note || ''}`,
+      `- 代码锚点：\`${loc}\`${ctxLine}`,
+      `- 详情描述：${msg.note || ''}`,
       ``,
       `请按以下步骤处理：`,
       `1. 阅读 \`${loc}\` 处的真实源码核实情况。`,
-      `2. 若我对现有简报结论提出了纠偏，请核实后重提修正版简报；若是返工要求，请直接完成代码修改。`,
+      `2. 若涉及简报结论纠偏，请核实后重提修正版简报；若是修改要求，请直接完成代码修改。`,
       ackLine,
     ].join('\n');
 
+    const baselineStamp = lastKnownStateStamp;
     dispatchToCanvas({
       type: 'analyzeStatus',
-      payload: { running: true, label: `正在向 Agent 发送${kindLabel}...` },
+      payload: {
+        running: true,
+        label: useNewSession
+          ? `已在独立后台会话发送${kindLabel}，解答后自动回写画布...`
+          : `正在向当前会话发送${kindLabel}...`,
+      },
     });
     try {
-      await app.sendMessage({
-        role: 'user',
-        content: [{ type: 'text', text: prompt }],
-      });
-      if (analyzeResetTimer) clearTimeout(analyzeResetTimer);
-      analyzeResetTimer = setTimeout(() => {
-        analyzeResetTimer = undefined;
-        dispatchToCanvas({ type: 'analyzeStatus', payload: { running: false } });
-      }, 2500);
+      const reqParams = {
+        role: 'user' as const,
+        content: [{ type: 'text' as const, text: prompt }],
+        ...(useNewSession
+          ? { _meta: { 'com.google.antigravity/message': { target: 'new' } } }
+          : {}),
+      };
+      await app.sendMessage(reqParams as Parameters<typeof app.sendMessage>[0]);
+      if (useNewSession) {
+        startBackgroundRefreshWatch(baselineStamp);
+      } else {
+        if (analyzeResetTimer) clearTimeout(analyzeResetTimer);
+        analyzeResetTimer = setTimeout(() => {
+          analyzeResetTimer = undefined;
+          dispatchToCanvas({ type: 'analyzeStatus', payload: { running: false } });
+        }, 2500);
+      }
     } catch (err) {
       dispatchToCanvas({
         type: 'analyzeStatus',
@@ -695,30 +824,45 @@ async function handleCanvasMessage(msg: CanvasOutboundMessage): Promise<void> {
 
   if (msg.type === 'dispatchDirectives') {
     if (!currentWorktreePath || !app.getHostCapabilities()?.message) return;
+    const useNewSession = msg.agentTarget === 'new';
     const prompt = [
-      `请处理我在仓库 \`${currentWorktreePath}\` 的 CodeAtlas 画布上挂接的全部待办批注（疑问 / 返工 / 约束红线）：`,
+      `请处理我在仓库 \`${currentWorktreePath}\` 的 CodeAtlas 画布上提交的全部待办评审批注（代码疑问 / 修改要求 / 架构约束）：`,
       `1. 调用 \`atlas_fetch_directives\`（\`worktreePath: "${currentWorktreePath}"\`，\`claim: true\`，\`agentId: "antigravity"\`）获取所有待处理批注。`,
       `2. 逐条阅读对应文件与行号的真实源码：`,
-      `   - 对 \`question\`（疑问）：在对话中给出清晰解答，并调用 \`atlas_ack_directive\` 将精炼解答写入 \`summary\`；`,
-      `   - 对 \`rework\`（返工）：先完成真实代码修改，再调用 \`atlas_ack_directive\` 结项；`,
-      `   - 对 \`constraint\`（架构红线）：确认代码符合约束后调用 \`atlas_ack_directive\` 记录确认结论（或同步写入 manifest \`guardrails\`）。`,
+      `   - 对 \`question\`（代码疑问）：在对话中给出清晰解答，并调用 \`atlas_ack_directive\` 将精炼解答写入 \`summary\`；`,
+      `   - 对 \`rework\`（修改要求）：先完成真实代码修改，再调用 \`atlas_ack_directive\` 结项；`,
+      `   - 对 \`constraint\`（架构约束）：确认代码符合约束后调用 \`atlas_ack_directive\` 记录确认结论（或同步写入 manifest \`guardrails\`）。`,
       `3. 全部处理完毕后调用 \`open_atlas\`（\`worktreePath: "${currentWorktreePath}"\`）刷新画布状态。`,
     ].join('\n');
 
+    const baselineStamp = lastKnownStateStamp;
     dispatchToCanvas({
       type: 'analyzeStatus',
-      payload: { running: true, label: '已将画布待办批注批量派发给 Agent...' },
+      payload: {
+        running: true,
+        label: useNewSession
+          ? '已在独立后台会话批量处理批注，完成后自动刷新画布...'
+          : '已将画布待办批注批量发送至当前会话...',
+      },
     });
     try {
-      await app.sendMessage({
-        role: 'user',
-        content: [{ type: 'text', text: prompt }],
-      });
-      if (analyzeResetTimer) clearTimeout(analyzeResetTimer);
-      analyzeResetTimer = setTimeout(() => {
-        analyzeResetTimer = undefined;
-        dispatchToCanvas({ type: 'analyzeStatus', payload: { running: false } });
-      }, 2500);
+      const reqParams = {
+        role: 'user' as const,
+        content: [{ type: 'text' as const, text: prompt }],
+        ...(useNewSession
+          ? { _meta: { 'com.google.antigravity/message': { target: 'new' } } }
+          : {}),
+      };
+      await app.sendMessage(reqParams as Parameters<typeof app.sendMessage>[0]);
+      if (useNewSession) {
+        startBackgroundRefreshWatch(baselineStamp);
+      } else {
+        if (analyzeResetTimer) clearTimeout(analyzeResetTimer);
+        analyzeResetTimer = setTimeout(() => {
+          analyzeResetTimer = undefined;
+          dispatchToCanvas({ type: 'analyzeStatus', payload: { running: false } });
+        }, 2500);
+      }
     } catch (err) {
       dispatchToCanvas({
         type: 'analyzeStatus',

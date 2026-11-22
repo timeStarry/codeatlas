@@ -29,6 +29,13 @@ if (buildTest) {
   }
   await esbuild.build({
     ...sharedNodeOptions,
+    entryPoints: ['src/webview/canvasHtml.ts'],
+    outfile: 'dist/canvas-html.js',
+    format: 'cjs',
+    sourcemap: false,
+  });
+  await esbuild.build({
+    ...sharedNodeOptions,
     entryPoints: ['src/mcp/server.ts'],
     outfile: 'dist/mcp-server.js',
     format: 'cjs',
@@ -53,6 +60,13 @@ if (fs.existsSync('src/webview/mcpAppClient.ts')) {
 }
 
 contexts.push(
+  await esbuild.context({
+    ...sharedNodeOptions,
+    entryPoints: ['src/webview/canvasHtml.ts'],
+    outfile: 'dist/canvas-html.js',
+    format: 'cjs',
+    sourcemap: false,
+  }),
   await esbuild.context({
     ...sharedNodeOptions,
     entryPoints: ['src/extension.ts'],

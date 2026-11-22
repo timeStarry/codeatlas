@@ -503,6 +503,29 @@ async function buildAppHtmlResource(): Promise<string> {
   const resolved = await resolveOptionalRepoForUi(undefined);
   const initialWorktreePath = resolved.repoRoot ?? defaultCliRepo ?? '';
 
+  // Prefer fresh disk-built dist/canvas-html.js on reopen so UI iterations don't require server restart
+  const diskCanvasCandidates = [
+    path.join(__dirname, 'canvas-html.js'),
+    path.resolve(process.cwd(), 'dist', 'canvas-html.js'),
+  ];
+  for (const p of diskCanvasCandidates) {
+    try {
+      await fs.access(p);
+      const resolvedMod = require.resolve(p);
+      delete require.cache[resolvedMod];
+      const mod = require(resolvedMod) as { getCanvasHtml?: typeof getCanvasHtml };
+      if (typeof mod.getCanvasHtml === 'function') {
+        return mod.getCanvasHtml('', {
+          host: 'mcp-app',
+          inlineClientJs,
+          initialWorktreePath,
+        });
+      }
+    } catch {
+      // fallback to bundled getCanvasHtml
+    }
+  }
+
   return getCanvasHtml('', {
     host: 'mcp-app',
     inlineClientJs,

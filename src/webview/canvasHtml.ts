@@ -37,20 +37,26 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
   <title>CodeAtlas Canvas</title>
   <style>
     :root {
+      color-scheme: dark;
       --bg: var(--vscode-editor-background, var(--color-background-primary, #16181d));
       --fg: var(--vscode-editor-foreground, var(--color-text-primary, #dcdfe4));
       --muted: var(--vscode-descriptionForeground, var(--color-text-secondary, #8b949e));
-      --panel: var(--vscode-sideBar-background, var(--color-background-secondary, #1e2128));
-      --panel-2: var(--vscode-editorWidget-background, var(--color-background-tertiary, #232730));
-      --border: var(--vscode-panel-border, var(--color-border-primary, rgba(140,150,168,0.2)));
-      --border-strong: rgba(140,150,168,0.34);
+      --panel: var(--vscode-sideBar-background, #1b1e25);
+      --panel-2: var(--vscode-editorWidget-background, #212630);
+      --popover-bg: var(--vscode-menu-background, #1e232d);
+      --popover-surface: #151921;
+      --popover-hover: var(--vscode-list-hoverBackground, #2a3140);
+      --popover-border: var(--vscode-menu-border, #3b4456);
+      --input-solid: var(--vscode-input-background, #181c24);
+      --border: var(--vscode-panel-border, var(--color-border-primary, rgba(140,150,168,0.22)));
+      --border-strong: rgba(140,150,168,0.38);
       --accent: var(--vscode-textLink-foreground, var(--color-text-info, #4da6ff));
       --btn-bg: var(--vscode-button-background, #1f6feb);
       --btn-fg: var(--vscode-button-foreground, #ffffff);
       --btn-hover: var(--vscode-button-hoverBackground, #388bfd);
-      --input-bg: var(--vscode-input-background, var(--color-background-tertiary, #252932));
+      --input-bg: var(--input-solid);
       --input-fg: var(--vscode-input-foreground, var(--color-text-primary, #dcdfe4));
-      --input-border: var(--vscode-input-border, var(--color-border-secondary, rgba(140,150,168,0.28)));
+      --input-border: var(--vscode-input-border, rgba(140,150,168,0.34));
       --mono: var(--vscode-editor-font-family, var(--font-mono, "JetBrains Mono", Consolas, monospace));
       --green: var(--vscode-charts-green, var(--color-text-success, #3fb950));
       --red: var(--vscode-charts-red, var(--color-text-danger, #f85149));
@@ -60,8 +66,18 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       --cyan: #39c5cf;
       --diff-add-bg: var(--vscode-diffEditor-insertedTextBackground, rgba(63,185,80,0.15));
       --diff-del-bg: var(--vscode-diffEditor-removedTextBackground, rgba(248,81,73,0.15));
-      --surface-subtle: var(--vscode-textCodeBlock-background, rgba(135,145,160,0.1));
-      --surface-hover: rgba(135,145,160,0.16);
+      --surface-subtle: var(--vscode-textCodeBlock-background, rgba(135,145,160,0.12));
+      --surface-hover: rgba(135,145,160,0.18);
+    }
+    [data-theme="light"], body.vscode-light {
+      color-scheme: light;
+      --panel: var(--vscode-sideBar-background, #f6f8fa);
+      --panel-2: var(--vscode-editorWidget-background, #ffffff);
+      --popover-bg: var(--vscode-menu-background, #ffffff);
+      --popover-surface: #f6f8fa;
+      --popover-hover: var(--vscode-list-hoverBackground, #eaeef2);
+      --popover-border: var(--vscode-menu-border, #d0d7de);
+      --input-solid: var(--vscode-input-background, #ffffff);
     }
     * { box-sizing: border-box; }
     html, body {
@@ -79,7 +95,11 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     }
     body.host-mcp-app, body.host-mcp-app .app { min-height: 620px; }
     body.host-mcp-app .vscode-only { display: none !important; }
+    body.host-vscode .mcp-only { display: none !important; }
     body.no-analyze-cap .analyze-action { display: none !important; }
+    body.no-ctx-cap .ctx-attach-action { display: none !important; }
+    body.is-busy .toolbar .tb-zone > *:not(.brand) { pointer-events: none; opacity: 0.58; }
+    body.is-busy .subbar { pointer-events: none; opacity: 0.65; }
     .app { display: flex; flex-direction: column; width: 100%; height: 100%; }
 
     .atlas-ico {
@@ -152,18 +172,54 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       border-color: var(--border-strong);
       background: var(--surface-hover);
     }
+    .select-trigger {
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      height: 26px;
+      padding: 0 9px;
+      border-radius: 6px;
+      background: var(--input-bg);
+      border: 1px solid var(--input-border);
+      color: var(--fg);
+      font-size: 11.5px;
+      font-weight: 500;
+      cursor: pointer;
+      max-width: 196px;
+      overflow: hidden;
+    }
+    .select-trigger:hover:not(:disabled) {
+      background: var(--popover-hover);
+      border-color: var(--border-strong);
+    }
+    .select-trigger.is-open {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(77,166,255,0.2);
+    }
+    .select-trigger-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+    .select-caret {
+      font-size: 9px;
+      opacity: 0.7;
+      flex-shrink: 0;
+    }
     .repo-popover {
-      position: absolute;
-      top: calc(100% + 6px);
-      left: 0;
-      width: 392px;
-      max-width: 90vw;
-      background: var(--panel-2);
-      border: 1px solid var(--border-strong);
-      border-radius: 9px;
-      padding: 10px;
-      box-shadow: 0 12px 32px rgba(0,0,0,0.42);
-      z-index: 45;
+      position: fixed;
+      top: 44px;
+      left: 12px;
+      width: 396px;
+      max-width: calc(100vw - 16px);
+      background: var(--popover-bg);
+      border: 1px solid var(--popover-border);
+      border-radius: 10px;
+      padding: 11px;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.52);
+      z-index: 620;
       display: flex;
       flex-direction: column;
       gap: 8px;
@@ -206,7 +262,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       overflow-y: auto;
       border: 1px solid var(--border);
       border-radius: 7px;
-      background: var(--bg);
+      background: var(--popover-surface);
       padding: 3px;
       display: flex;
       flex-direction: column;
@@ -557,27 +613,21 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     }
     .more-dot.hidden { display: none; }
     .more-menu, .floating-menu {
-      background: var(--panel-2);
-      border: 1px solid var(--border-strong);
-      border-radius: 8px;
+      position: fixed;
+      background: var(--popover-bg);
+      border: 1px solid var(--popover-border);
+      border-radius: 9px;
       padding: 5px;
-      box-shadow: 0 10px 28px rgba(0,0,0,0.42);
+      box-shadow: 0 14px 36px rgba(0,0,0,0.52);
       display: flex;
       flex-direction: column;
       gap: 2px;
+      z-index: 620;
+      max-height: min(440px, calc(100vh - 20px));
+      overflow-y: auto;
     }
-    .more-menu {
-      position: absolute;
-      top: calc(100% + 6px);
-      right: 0;
-      width: 268px;
-      z-index: 45;
-    }
-    .floating-menu {
-      position: fixed;
-      width: 248px;
-      z-index: 80;
-    }
+    .more-menu { width: 286px; }
+    .floating-menu { width: 264px; }
     .more-menu.hidden, .floating-menu.hidden { display: none; }
     .more-sec-label {
       font-size: 10px;
@@ -594,19 +644,71 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     .more-menu button, .floating-menu button {
       width: 100%;
       height: auto;
-      min-height: 27px;
+      min-height: 28px;
       justify-content: flex-start;
       text-align: left;
       background: transparent;
       color: var(--fg);
       border: none;
       padding: 5px 8px;
-      border-radius: 5px;
+      border-radius: 6px;
       font-size: 11.5px;
       white-space: normal;
     }
     .more-menu button:hover:not(:disabled), .floating-menu button:hover:not(:disabled) {
-      background: var(--surface-hover);
+      background: var(--popover-hover);
+    }
+    .more-menu button.is-selected, .floating-menu button.is-selected {
+      background: rgba(77,166,255,0.15);
+      color: var(--accent);
+    }
+    .top-progress {
+      position: relative;
+      height: 2px;
+      width: 100%;
+      background: rgba(77,166,255,0.14);
+      overflow: hidden;
+      flex-shrink: 0;
+      z-index: 35;
+    }
+    .top-progress.hidden { display: none; }
+    .top-progress-bar {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 38%;
+      background: linear-gradient(90deg, transparent, var(--accent), #79c0ff, transparent);
+      animation: atlas-indeterminate 1.05s ease-in-out infinite;
+    }
+    @keyframes atlas-indeterminate {
+      0% { left: -40%; }
+      100% { left: 102%; }
+    }
+    .canvas-busy-scrim {
+      position: absolute;
+      inset: 0;
+      z-index: 95;
+      background: rgba(12, 14, 19, 0.38);
+      backdrop-filter: blur(1.5px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: all;
+      cursor: progress;
+    }
+    .canvas-busy-scrim.hidden { display: none; }
+    .canvas-busy-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      padding: 8px 16px;
+      border-radius: 999px;
+      background: var(--popover-bg);
+      border: 1px solid var(--popover-border);
+      color: var(--fg);
+      font-size: 12px;
+      font-weight: 600;
+      box-shadow: 0 10px 28px rgba(0,0,0,0.45);
     }
     .menu-item-col { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; }
     .menu-item-top { display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 6px; }
@@ -1413,13 +1515,13 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       gap: 6px;
     }
     .legend-popover {
-      background: var(--panel-2);
-      border: 1px solid var(--border-strong);
+      background: var(--popover-bg);
+      border: 1px solid var(--popover-border);
       border-radius: 8px;
       padding: 9px 11px;
       font-size: 11px;
       color: var(--muted);
-      box-shadow: 0 8px 22px rgba(0,0,0,0.32);
+      box-shadow: 0 12px 28px rgba(0,0,0,0.45);
       display: flex;
       flex-direction: column;
       gap: 5px;
@@ -1448,50 +1550,35 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           CodeAtlas
         </span>
         <div class="repo-wrap">
-          <button class="git-pill" id="btnRepoToggle" title="点击选择或切换本地 Git 仓库">
+          <button class="git-pill" id="btnRepoToggle" title="切换 Git 仓库或工作树 (Worktree)">
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="5" cy="4.5" r="1.7" stroke="currentColor" stroke-width="1.4"/><circle cx="5" cy="11.5" r="1.7" stroke="currentColor" stroke-width="1.4"/><circle cx="11.5" cy="7.5" r="1.7" stroke="currentColor" stroke-width="1.4"/><path d="M5 6.2v3.6M9.8 7.5H7.2A2.2 2.2 0 0 1 5 5.3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
             <span id="gitPill">加载中...</span>
             <span style="opacity:0.6;font-size:9px;">▾</span>
           </button>
-          <div class="repo-popover hidden" id="repoPopover">
-            <div class="repo-popover-head">
-              <div class="repo-popover-label" id="lblSwitchRepo">选择或切换本地 Git 仓库</div>
-            </div>
-            <div class="repo-quick-actions">
-              <button id="btnPickRepoDialog">📁 选择本地文件夹...</button>
-              <button class="secondary" id="btnToggleInlineBrowser">📂 浏览目录</button>
-            </div>
-            <div class="repo-dir-browser hidden" id="inlineDirBrowser"></div>
-            <div id="discoveredReposSec" style="display:none;">
-              <div class="repo-sec-title"><span id="lblDiscoveredRepos">已发现 / 最近仓库</span></div>
-              <div class="repo-discovered-list" id="discoveredReposList"></div>
-            </div>
-            <div>
-              <div class="repo-sec-title"><span id="lblManualPath">或直接输入路径</span></div>
-              <div class="worktree-bar" id="worktreeBar">
-                <input id="worktreeInput" class="worktree-input" value="${initialWorktreeAttr}" placeholder="输入本地 Git 仓库路径 (如 D:\\Project\\aster)..." />
-                <button class="secondary" id="btnSetWorktree">切换</button>
-              </div>
-            </div>
-          </div>
         </div>
-        <select id="baseRefSelect" style="max-width:112px;"></select>
+        <button class="select-trigger" id="btnBaseRefSelect" title="选择 Git Diff 对比基准引用 (Base Ref)">
+          <span class="select-trigger-label" id="lblBaseRefVal" style="font-family:var(--mono);font-size:11px;">基准: HEAD</span>
+          <span class="select-caret">▾</span>
+        </button>
       </div>
 
-      <!-- Center Zone: View Mode + Briefing Picker + Search -->
+      <!-- Center Zone: View Mode + Verification Report Picker + Search -->
       <div class="tb-zone">
         <div class="segmented" id="modeControl">
-          <button data-mode="atlas" id="mAtlas">全景底图</button>
-          <button data-mode="hybrid" id="mHybrid" class="active">融合视图</button>
-          <button data-mode="briefing" id="mBriefing">因果简报</button>
+          <button data-mode="atlas" id="mAtlas">架构拓扑</button>
+          <button data-mode="hybrid" id="mHybrid" class="active">变更叠加</button>
+          <button data-mode="briefing" id="mBriefing">变更核验</button>
         </div>
-        <select id="briefingSelect" style="max-width:168px;display:none;"></select>
+        <button class="select-trigger" id="btnBriefingSelect" style="display:none;max-width:186px;" title="选择已保存的核验简报">
+          <span class="select-trigger-label" id="lblBriefingVal"></span>
+          <span class="select-caret">▾</span>
+        </button>
         <div class="search-wrap">
           <svg class="search-ico" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <circle cx="7" cy="7" r="4.6" stroke="currentColor" stroke-width="1.4"/>
             <path d="m10.5 10.5 3.2 3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
           </svg>
-          <input id="searchInput" placeholder="搜索节点或文件 (/)..." />
+          <input id="searchInput" placeholder="搜索模块或文件 (/)..." />
           <span class="search-count" id="searchCount"></span>
         </div>
       </div>
@@ -1499,82 +1586,33 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       <!-- Right Zone: Batch Dispatch Pill + Clean Filters + Split Analyze CTA + Overflow Menu -->
       <div class="tb-zone">
         <button class="btn-batch-dispatch analyze-action hidden" id="btnDispatchBatch"></button>
-        <button class="secondary" id="btnSummaryToggle">变更摘要</button>
+        <button class="secondary" id="btnSummaryToggle">变更概览</button>
         <div class="filter-group">
-          <button id="btnPruneToggle" title="隐藏未变更的无关分支">仅看变更</button>
-          <button id="btnDeltaToggle" title="压暗未变更节点以突出 Diff">高亮Diff</button>
-          <button id="btnFocusToggle" title="仅高亮当前选中节点的上下游链路">聚焦</button>
+          <button id="btnPruneToggle" title="仅保留当前 Git Diff 涉及的模块">仅改动模块</button>
+          <button id="btnDeltaToggle" title="压暗未改动节点以突出变更影响范围">突出变更</button>
+          <button id="btnFocusToggle" title="仅高亮当前选中节点的上下游依赖链路">链路聚焦</button>
         </div>
         <div class="split-analyze analyze-action">
-          <button id="btnAnalyzeBranch">⚡ 分析分支</button>
-          <button class="split-caret" id="btnAnalyzeBranchMenu" title="选择分析深度档位">▾</button>
+          <button id="btnAnalyzeBranch">⚡ 分析变更</button>
+          <button class="split-caret" id="btnAnalyzeBranchMenu" title="选择分析粒度层级">▾</button>
         </div>
-        <button class="secondary icon-btn" id="btnRefresh" title="刷新索引">
+        <button class="secondary icon-btn" id="btnRefresh" title="重新扫描仓库与核验状态">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M13.2 8a5.2 5.2 0 1 1-1.4-3.6M13.4 2.6v2.8h-2.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
         <div class="more-wrap">
-          <button class="secondary icon-btn" id="btnMoreMenu" title="存储设置与更多工具">
+          <button class="secondary icon-btn" id="btnMoreMenu" title="偏好设置与工程选项">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <circle cx="3.2" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.8" cy="8" r="1.3"/>
             </svg>
             <span class="more-dot hidden" id="moreMenuDot"></span>
           </button>
-          <div class="more-menu hidden" id="moreMenu">
-            <div class="more-sec-label" id="lblStorageSec">Git 存储与隔离策略</div>
-            <button data-storage-mode="git-hidden" id="btnStHidden">
-              <span class="storage-check" id="chkStHidden">✓</span>
-              <span class="menu-item-col">
-                <strong id="lblStHidden">个人隐身 (.git/codeatlas)</strong>
-                <span class="agent-menu-desc" id="descStHidden">默认零入侵，不产生工作区文件、不改 .gitignore</span>
-              </span>
-            </button>
-            <button data-storage-mode="worktree-excluded" id="btnStExcluded">
-              <span class="storage-check" id="chkStExcluded"></span>
-              <span class="menu-item-col">
-                <strong id="lblStExcluded">工作区可视 (.git/info/exclude)</strong>
-                <span class="agent-menu-desc" id="descStExcluded">生成 .atlas/ 方便手改，本机静默忽略不进 Git</span>
-              </span>
-            </button>
-            <button data-storage-mode="worktree-tracked" id="btnStTracked">
-              <span class="storage-check" id="chkStTracked"></span>
-              <span class="menu-item-col">
-                <strong id="lblStTracked">团队随库共享 (.atlas/ 入库)</strong>
-                <span class="agent-menu-desc" id="descStTracked">允许将 .atlas/manifest.json 提交至团队仓库</span>
-              </span>
-            </button>
-            <div class="more-sep"></div>
-            <button id="btnInitManifest" style="display:none;"></button>
-            <button class="vscode-only" id="btnRunImpact"></button>
-            <button class="vscode-only" id="btnVerifyBriefing"></button>
-            <button class="vscode-only" id="btnCopyDirs"></button>
-            <div class="more-sep vscode-only"></div>
-            <div class="more-sec-label vscode-only" id="lblAgentBridgeSec">Agent 协作接入</div>
-            <button class="vscode-only" id="btnCopyMcpCfg">
-              <span class="menu-item-col">
-                <strong id="lblCopyMcp">1. 复制 MCP 配置 JSON</strong>
-                <span class="agent-menu-desc" id="descCopyMcp">自动填好当前仓库路径，粘贴到 Agent 配置</span>
-              </span>
-            </button>
-            <button class="vscode-only" id="btnCopyBranchPrompt">
-              <span class="menu-item-col">
-                <strong id="lblCopyBranch">2. 复制“分析当前分支” Prompt</strong>
-                <span class="agent-menu-desc" id="descCopyBranch">让 Agent 生成因果简报并自动回传画布</span>
-              </span>
-            </button>
-            <button class="vscode-only" id="btnCopyManifestPrompt">
-              <span class="menu-item-col">
-                <strong id="lblCopyManifest">3. 复制“完善架构骨架” Prompt</strong>
-                <span class="agent-menu-desc" id="descCopyManifest">让 Agent 编写 manifest.json 与红线</span>
-              </span>
-            </button>
-            <div class="more-sep"></div>
-            <button id="btnLangToggle"></button>
-          </div>
         </div>
       </div>
     </div>
+
+    <div class="top-progress hidden" id="topBusyBar"><div class="top-progress-bar"></div></div>
 
     <div class="analyze-banner hidden" id="analyzeBanner">
       <div class="analyze-banner-main">
@@ -1665,7 +1703,109 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         </div>
         <div class="inspector-content" id="inspContent"></div>
       </aside>
+
+      <!-- Blocking Canvas Busy Scrim -->
+      <div class="canvas-busy-scrim hidden" id="canvasBusyScrim">
+        <div class="canvas-busy-pill">
+          <span class="analyze-spinner"></span>
+          <span id="canvasBusyText">正在同步仓库状态...</span>
+        </div>
+      </div>
     </div>
+
+    <!-- Top-Level Portal Popovers (Zero z-index clipping or bleed-through) -->
+    <div class="repo-popover hidden" id="repoPopover">
+      <div class="repo-popover-head">
+        <div class="repo-popover-label" id="lblSwitchRepo">选择或切换 Git 仓库 / Worktree</div>
+      </div>
+      <div class="repo-quick-actions">
+        <button id="btnPickRepoDialog">📁 选择本地文件夹...</button>
+        <button class="secondary" id="btnToggleInlineBrowser">📂 浏览目录树</button>
+      </div>
+      <div class="repo-dir-browser hidden" id="inlineDirBrowser"></div>
+      <div id="discoveredReposSec" style="display:none;">
+        <div class="repo-sec-title"><span id="lblDiscoveredRepos">已发现 / 最近仓库</span></div>
+        <div class="repo-discovered-list" id="discoveredReposList"></div>
+      </div>
+      <div>
+        <div class="repo-sec-title"><span id="lblManualPath">或输入本地路径</span></div>
+        <div class="worktree-bar" id="worktreeBar">
+          <input id="worktreeInput" class="worktree-input" value="${initialWorktreeAttr}" placeholder="输入本地 Git 仓库路径 (如 D:\\Project\\aster)..." />
+          <button class="secondary" id="btnSetWorktree">载入</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="more-menu hidden" id="moreMenu">
+      <div class="more-sec-label mcp-only analyze-action" id="lblSessionTargetSec">Agent 执行会话</div>
+      <button class="mcp-only analyze-action" data-agent-target="new" id="btnTargetNew">
+        <span class="storage-check" id="chkTargetNew">✓</span>
+        <span class="menu-item-col">
+          <strong id="lblTargetNew">独立后台会话（推荐）</strong>
+          <span class="agent-menu-desc" id="descTargetNew">在后台新会话执行分析，不打断当前对话上下文</span>
+        </span>
+      </button>
+      <button class="mcp-only analyze-action" data-agent-target="current" id="btnTargetCurrent">
+        <span class="storage-check" id="chkTargetCurrent"></span>
+        <span class="menu-item-col">
+          <strong id="lblTargetCurrent">当前对话窗口</strong>
+          <span class="agent-menu-desc" id="descTargetCurrent">将分析指令直接发入当前对话流以便实时查看</span>
+        </span>
+      </button>
+      <div class="more-sep mcp-only analyze-action"></div>
+      <div class="more-sec-label" id="lblStorageSec">Git 元数据存储模式</div>
+      <button data-storage-mode="git-hidden" id="btnStHidden">
+        <span class="storage-check" id="chkStHidden">✓</span>
+        <span class="menu-item-col">
+          <strong id="lblStHidden">Git 元数据区 (.git/codeatlas)</strong>
+          <span class="agent-menu-desc" id="descStHidden">默认保持工作区洁净 (Working Tree Clean)，不改 .gitignore</span>
+        </span>
+      </button>
+      <button data-storage-mode="worktree-excluded" id="btnStExcluded">
+        <span class="storage-check" id="chkStExcluded"></span>
+        <span class="menu-item-col">
+          <strong id="lblStExcluded">本地排除目录 (.git/info/exclude)</strong>
+          <span class="agent-menu-desc" id="descStExcluded">生成工作区 .atlas/ 清单，写入 info/exclude 仅本机忽略</span>
+        </span>
+      </button>
+      <button data-storage-mode="worktree-tracked" id="btnStTracked">
+        <span class="storage-check" id="chkStTracked"></span>
+        <span class="menu-item-col">
+          <strong id="lblStTracked">版本库跟踪 (.atlas/ 入库)</strong>
+          <span class="agent-menu-desc" id="descStTracked">纳入 Git 版本控制，共享 .atlas/manifest.json 架构清单</span>
+        </span>
+      </button>
+      <div class="more-sep"></div>
+      <button id="btnInitManifest" style="display:none;"></button>
+      <button class="vscode-only" id="btnRunImpact"></button>
+      <button class="vscode-only" id="btnVerifyBriefing"></button>
+      <button class="vscode-only" id="btnCopyDirs"></button>
+      <div class="more-sep vscode-only"></div>
+      <div class="more-sec-label vscode-only" id="lblAgentBridgeSec">外部 Agent 接入</div>
+      <button class="vscode-only" id="btnCopyMcpCfg">
+        <span class="menu-item-col">
+          <strong id="lblCopyMcp">1. 复制 MCP Server 配置 JSON</strong>
+          <span class="agent-menu-desc" id="descCopyMcp">自动填入当前仓库路径，粘贴至 Agent MCP 配置</span>
+        </span>
+      </button>
+      <button class="vscode-only" id="btnCopyBranchPrompt">
+        <span class="menu-item-col">
+          <strong id="lblCopyBranch">2. 复制“分析分支 Diff” Prompt</strong>
+          <span class="agent-menu-desc" id="descCopyBranch">由外部 Agent 生成核验简报并写回当前仓库</span>
+        </span>
+      </button>
+      <button class="vscode-only" id="btnCopyManifestPrompt">
+        <span class="menu-item-col">
+          <strong id="lblCopyManifest">3. 复制“生成架构清单” Prompt</strong>
+          <span class="agent-menu-desc" id="descCopyManifest">由外部 Agent 梳理模块划分与架构约束 (manifest.json)</span>
+        </span>
+      </button>
+      <div class="more-sep"></div>
+      <button id="btnLangToggle"></button>
+    </div>
+
+    <!-- Unified Custom Select Popover -->
+    <div class="floating-menu hidden" id="customSelectPopover"></div>
 
     <!-- Shared Floating Progressive Depth Picker -->
     <div class="floating-menu hidden" id="depthPopover"></div>
@@ -1682,172 +1822,202 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
 
     const I18N = {
       zh: {
-        atlas: '全景底图', briefing: '因果简报', hybrid: '融合视图',
-        switchRepoTitle: '选择或切换本地 Git 仓库',
-        pickRepoDialogBtn: '📁 选择本地文件夹...', pickRepoWaiting: '⏳ 请在弹窗中选择...',
-        browseInlineBtn: '📂 浏览目录', browseInlineClose: '📂 收起目录',
-        discoveredReposTitle: '已发现 / 最近仓库（点击即切）', manualPathTitle: '或粘贴仓库路径',
-        upDirBtn: '⬆ 上级', openThisRepoBtn: '✓ 打开此仓库', currentRepoTag: '当前',
-        dirLoading: '正在读取目录列表...', dirEmpty: '此目录下没有子文件夹。',
-        nonRepoPickedFmt: (p) => '所选目录并非 Git 仓库根，请从下方子目录中选择仓库：' + p,
-        loadRepoBtn: '切换', worktreePh: '输入本地 Git 仓库路径 (如 D:\\\\Project\\\\aster)...',
-        mcpNoRepoDesc: '点击下方按钮或左上角仓库胶囊，可直接选择本地文件夹、浏览目录或从已发现仓库中一键切换。',
-        analyzeBranchBtn: '⚡ 分析分支', analyzeScopeBtn: '⚡ 概览当前根',
-        depthBtnOverview: '⚡ 概览职责', depthBtnFlow: '⚡ 解析链路', depthBtnDeep: '⚡ 深度核验',
-        depthL1Title: 'L1 · 概览职责（默认推荐）', depthL1Desc: '快速标注目录与各子文件一句话职责，原地回填不加冗余卡片',
-        depthL2Title: 'L2 · 核心调用链路', depthL2Desc: '梳理模块内 3–5 条主干协作流程与数据流',
-        depthL3Title: 'L3 · 深度边界核验', depthL3Desc: '逐行审计阻断守卫 IF→Guard、跨模块影响与架构盲区',
-        analyzingPrefix: '⚡ 正在执行: ', analyzingDefault: '⚡ 正在分析并核验...',
-        analyzeErrorPrefix: '⚠ 失败: ',
-        batchDispatchFmt: (n) => '📌 待发批注 (' + n + ') · 🚀 一键发送',
-        storageSec: 'Git 存储与隔离策略',
-        stHidden: '个人隐身 (.git/codeatlas)', stHiddenDesc: '默认零入侵，不产生工作区文件、不改 .gitignore',
-        stExcluded: '工作区可视 (.git/info/exclude)', stExcludedDesc: '生成 .atlas/ 方便手改，本机静默忽略不进 Git',
-        stTracked: '团队随库共享 (.atlas/ 入库)', stTrackedDesc: '允许将 .atlas/manifest.json 提交至团队仓库',
-        setScopeRoot: '🎯 设为当前视图根', exitScopeRoot: '🏠 返回全仓视图', switchScopeToExt: '🎯 切换视图根至此模块',
-        ctxAskAgent: '💬 就此节点提问 / 纠偏...', ctxFocus: '🔍 聚焦上下游子树',
-        summaryBtn: '变更摘要', pruneBtn: '仅看变更', impactBtn: '分析 LSP 影响面',
-        searchPh: '搜索节点或文件 (/)...', deltaBtn: '高亮Diff',
-        focusBtn: '聚焦', refreshTip: '刷新仓库索引', initManifest: '保存架构骨架 (manifest.json)',
-        agentSec: 'Agent 协作接入', exportDir: '导出画布批注 (Markdown)',
-        copyMcp: '1. 复制 MCP 配置 JSON', copyMcpDesc: '自动填好当前仓库路径，粘贴到 Agent 配置',
-        copyBranch: '2. 复制“分析当前分支” Prompt', copyBranchDesc: '让 Agent 生成因果简报并自动回传画布',
-        copyManifest: '3. 复制“完善架构骨架” Prompt', copyManifestDesc: '让 Agent 编写 manifest.json 与红线',
-        copyNodePrompt: '复制 Agent 分析 Prompt',
-        verifyJson: '加载并核验简报 JSON...', reverify: '立即重验', langBtn: '切换语言: English',
-        selectBriefing: '-- 选择简报 --', fit: '适配', tidy: '整理', expand: '全展', collapse: '收拢',
-        indexFiles: '展开文件层', collapseFiles: '收起文件层', legendBtn: '? 图例',
-        summaryTitle: '分支变更摘要', tabCode: '源码与详情', tabDiff: 'Git Diff', tabDir: '💬 提问与批注', tabTrust: '可信度',
-        inspFocus: '聚焦', defaultCrumb: '右键节点可设为局部根或提问 · 点行号可锚定代码提问',
-        openBtn: '打开 ↗', expandDomainFiles: '文件', collapseDomainFiles: '收起',
-        entryTag: '入口', recStarTag: '★ 先读', extBadgeFmt: (n) => '⇄ ' + n + ' 外部',
+        atlas: '架构拓扑', briefing: '变更核验', hybrid: '变更叠加',
+        baseRefPrefix: '基准: ', briefingPrefix: '简报: ',
+        switchRepoTitle: '选择或切换 Git 仓库 / Worktree',
+        pickRepoDialogBtn: '📁 选择本地文件夹...', pickRepoWaiting: '⏳ 等待系统弹窗选择...',
+        browseInlineBtn: '📂 浏览目录树', browseInlineClose: '📂 收起目录树',
+        discoveredReposTitle: '已发现仓库与 Worktree（点击即切）', manualPathTitle: '或输入本地仓库路径',
+        upDirBtn: '⬆ 上级目录', openThisRepoBtn: '✓ 载入此仓库', currentRepoTag: '当前',
+        dirLoading: '正在读取目录结构...', dirEmpty: '当前目录下无子目录。',
+        nonRepoPickedFmt: (p) => '所选目录非 Git 工作树根，请从下方子目录中选择仓库：' + p,
+        loadRepoBtn: '载入', worktreePh: '输入本地 Git 仓库路径 (如 D:\\\\Project\\\\aster)...',
+        mcpNoRepoDesc: '点击下方按钮或左上角仓库栏，选择本地文件夹、浏览目录树或直接载入已发现的 Git 仓库。',
+        analyzeBranchBtn: '⚡ 分析变更', analyzeScopeBtn: '⚡ 分析作用域',
+        depthBtnOverview: '⚡ 职责概览', depthBtnFlow: '⚡ 调用链路', depthBtnDeep: '⚡ 守卫核验',
+        depthL1Title: 'L1 · 模块职责概览（默认）', depthL1Desc: '梳理模块与各源码文件职责分工，标注建议优先阅读入口',
+        depthL2Title: 'L2 · 调用与数据流', depthL2Desc: '追踪模块内 3–5 条核心调用链 (Call Graph) 与控制流',
+        depthL3Title: 'L3 · 守卫与影响核验', depthL3Desc: '逐行核验前置守卫条件 (Guard Clauses)、跨模块影响与盲区',
+        analyzingPrefix: '⚡ 正在执行: ', analyzingDefault: '⚡ 正在分析并执行确定性核验...',
+        analyzeErrorPrefix: '⚠ 执行异常: ',
+        busySwitchView: '正在切换视图与重算拓扑...',
+        busyFilterDiff: '正在按 Git Diff 筛选受影响模块...',
+        busySwitchBase: '正在重新计算对比基准 (Base Ref) Diff...',
+        busyLoadRepo: '正在载入 Git 仓库与工作树状态...',
+        busyExpandFiles: '正在加载源码树节点...',
+        busyScope: '正在切换局部作用域并扫描跨边界引用...',
+        busySync: '正在同步仓库与核验状态...',
+        batchDispatchFmt: (n) => '📌 待办批注 (' + n + ') · 🚀 批量提交',
+        sessionTargetSec: 'Agent 执行会话模式',
+        targetNew: '独立后台会话（推荐）', targetNewDesc: '新建后台会话执行分析并自动刷新，不打断当前对话上下文',
+        targetCurrent: '当前对话窗口', targetCurrentDesc: '将分析指令直接发入当前会话流以便实时查看推理过程',
+        storageSec: 'Git 元数据存储模式',
+        stHidden: 'Git 元数据区 (.git/codeatlas)', stHiddenDesc: '默认保持工作区洁净 (Working Tree Clean)，不改 .gitignore',
+        stExcluded: '本地排除目录 (.git/info/exclude)', stExcludedDesc: '生成工作区 .atlas/ 清单，写入 info/exclude 仅本机忽略',
+        stTracked: '版本库跟踪 (.atlas/ 入库)', stTrackedDesc: '纳入 Git 版本控制，供团队共享 .atlas/manifest.json',
+        setScopeRoot: '🎯 设为当前作用域根 (Scope Root)', exitScopeRoot: '🏠 返回全仓拓扑', switchScopeToExt: '🎯 切换作用域至此模块',
+        ctxAskAgent: '💬 添加代码提问 / 评审批注...', ctxAttachChat: '📎 附加至下次对话上下文', ctxFocus: '🔍 聚焦上下游依赖链',
+        ctxAttachedFmt: (t) => '✓ 已将「' + t + '」挂载至下次对话输入框上下文',
+        summaryBtn: '变更概览', pruneBtn: '仅改动模块', impactBtn: '运行 LSP 引用影响分析',
+        searchPh: '搜索模块、符号或文件 (/)...', deltaBtn: '突出变更',
+        focusBtn: '链路聚焦', refreshTip: '重新扫描 Git 状态与简报核验', initManifest: '导出架构清单 (manifest.json)',
+        agentSec: '外部 Agent 接入', exportDir: '导出评审批注 (Markdown)',
+        copyMcp: '1. 复制 MCP Server 配置 JSON', copyMcpDesc: '自动填入当前仓库路径，粘贴至 Agent MCP 配置',
+        copyBranch: '2. 复制“分析分支 Diff” Prompt', copyBranchDesc: '由外部 Agent 生成变更核验简报并写回画布',
+        copyManifest: '3. 复制“生成架构清单” Prompt', copyManifestDesc: '由外部 Agent 梳理模块划分与架构约束 (manifest.json)',
+        copyNodePrompt: '复制模块分析 Prompt',
+        verifyJson: '加载并核验简报 JSON...', reverify: '重新核验', langBtn: 'Language: English',
+        selectBriefing: '未选择简报 (仅架构拓扑)', fit: '适应画布', tidy: '自动布局', expand: '全部展开', collapse: '全部折叠',
+        indexFiles: '显示文件层', collapseFiles: '收起文件层', legendBtn: '? 图例',
+        summaryTitle: 'Git 变更概览', tabCode: '源码与概览', tabDiff: 'Git Diff', tabDir: '💬 评审批注', tabTrust: '核验详情',
+        inspFocus: '链路聚焦', defaultCrumb: '右键节点可设为作用域根或提问 · 点击源码行号可锚定行级批注',
+        openBtn: '源码 ↗', expandDomainFiles: '文件', collapseDomainFiles: '收起',
+        entryTag: '入口', recStarTag: '★ 入口', extBadgeFmt: (n) => '⇄ ' + n + ' 外部引用',
+        dirKindQuestion: '💬 代码疑问 (Question)', dirKindRework: '🔧 修改要求 (Rework)', dirKindConstraint: '🛡 架构约束 (Constraint)',
         kind: {
-          root: '视图根', domain: '职责域', folder: '目录', entrypoint: '业务入口', file: '源码文件',
-          claim: '因果声明', evidence: '代码证据', blocking: '阻断守卫', 'diff-file': '变更文件',
-          impact: '跨模块影响', directive: '提问 / 批注', 'external-dep': '视图外依赖边界'
+          root: '工作树根', domain: '架构模块', folder: '目录', entrypoint: '入口点', file: '源码文件',
+          claim: '行为断言', evidence: '代码锚点', blocking: '守卫条件', 'diff-file': '变更文件',
+          impact: '跨模块影响', directive: '评审批注', 'external-dep': '外部依赖引用'
         },
-        badge: { verified: '✓ 已核验', mismatch: '✕ 失配', stale: '⟳ 过期', unverified: '未核验', unknown: '未知' },
+        badge: { verified: '✓ 已核验', mismatch: '✕ 失配', stale: '⟳ 陈旧', unverified: '待核验', unknown: '未声明' },
         legendHtml:
-          '<div><i class="dot" style="background:rgba(140,150,168,0.65);"></i>直角树干线：目录与模块静态归属层级</div>' +
-          '<div><i class="dot" style="background:#4da6ff;"></i>蓝色弧线：因果声明 / 模块依赖关系</div>' +
-          '<div><i class="dot" style="background:var(--amber);"></i>橙色虚线：显式阻断守卫 (IF → 拦截结果)</div>' +
-          '<div><i class="dot" style="background:#56b6c2;"></i>青色虚线框：局部视图根的外部依赖边界桩</div>' +
-          '<div><i class="dot" style="background:var(--purple);"></i>紫色虚线框：锚点提问与纠偏批注</div>' +
-          '<div style="border-top:1px solid var(--border);padding-top:5px;margin-top:2px;font-family:var(--mono);font-size:10px;">右键节点：设为局部根 / 提问 / 选深度 · / 搜索 · F 适配 · Esc 返回</div>',
-        emptyBriefingTitle: '尚未加载因果简报',
-        emptyBriefingDesc: '请点击顶部「⚡ 分析分支」生成简报，或切换至融合视图浏览架构底图。',
-        noGit: '未加载仓库',
-        summaryImpacted: '受影响职责域（点击定位并展开）',
-        summaryNoDiff: '当前相对基准无文件改动。',
-        summaryCommits: '本分支提交记录',
-        summaryNoCommits: '相对基准无新增提交。',
-        summaryClaims: '关联简报声明',
-        summaryPruneHint: '开启顶部“仅看变更”可剪枝未改动的无关模块。',
+          '<div><i class="dot" style="background:rgba(140,150,168,0.65);"></i>正交折线：仓库目录与模块包含层级 (Containment)</div>' +
+          '<div><i class="dot" style="background:#4da6ff;"></i>蓝色实线：调用流 / 模块依赖 / 行为断言锚定</div>' +
+          '<div><i class="dot" style="background:var(--amber);"></i>橙色虚线：前置守卫条件 (Guard Clause: IF → 拦截)</div>' +
+          '<div><i class="dot" style="background:#56b6c2;"></i>青色虚线：当前作用域外的跨模块引用 (External Ref)</div>' +
+          '<div><i class="dot" style="background:var(--purple);"></i>紫色虚线：代码评审批注与提问 (Review Directive)</div>' +
+          '<div style="border-top:1px solid var(--border);padding-top:5px;margin-top:2px;font-family:var(--mono);font-size:10px;">右键节点：设为作用域根 / 提问 / 分析粒度 · / 搜索 · F 适应画布 · Esc 返回</div>',
+        emptyBriefingTitle: '当前未加载变更核验简报',
+        emptyBriefingDesc: '请点击右上角「⚡ 分析变更」生成确定性核验简报，或切换至「变更叠加 / 架构拓扑」视图浏览模块结构。',
+        noGit: '未加载 Git 仓库',
+        summaryImpacted: '受影响架构模块（点击定位并展开）',
+        summaryNoDiff: '相对所选基准引用 (Base Ref) 无文件变更。',
+        summaryCommits: '提交记录 (Commits)',
+        summaryNoCommits: '相对对比基准无新增提交。',
+        summaryClaims: '核验断言列表',
+        summaryPruneHint: '开启顶部「仅改动模块」可隐藏未涉及变更的模块分支。',
         jumpEditor: '在编辑器打开 ↗',
-        loadingSnippet: '正在读取真实源码...',
-        loadingDiff: '正在加载 Git Diff...',
-        noDiffForFile: '当前文件相对所选基准无变更：',
-        notFileNode: '当前节点未绑定具体文件路径。',
-        dirHelp: '针对当前节点向 Agent 提问、纠偏简报或下达返工指令：',
-        dirPathReq: '请填写相对路径（模块级可填目录名）。',
-        dirPlaceholder: '输入你的疑问（如“这里为什么新建实例？”）、对简报结论的纠偏、或具体代码返工要求...',
-        askNowBtn: '🚀 立即发给 Agent',
-        dirWireBtn: '📌 先挂画布 (攒批)',
-        dirCopyBtn: '复制 Markdown',
-        delDirBtn: '删除此批注节点',
-        signalsTitle: '验证信号 (Verification Signals)',
-        noSignals: '未附带验证信号（状态：未知）。',
-        blindSpotsTitle: '已声明的盲区 (Blind Spots)',
-        noBlindSpots: '无已声明盲区。',
-        guardrailsTitle: '仓库架构红线 (manifest.json)',
-        noGuardrails: '未在 manifest.json 中声明红线。',
-        staleText: (t, h) => '简报已过期：目标提交 (' + t + ') 与当前 HEAD (' + h + ') 不一致，请重新核验。'
+        loadingSnippet: '正在读取仓库源码快照...',
+        loadingDiff: '正在计算 Git Diff...',
+        noDiffForFile: '相对当前对比基准无代码变更：',
+        notFileNode: '当前节点未关联具体源码文件。',
+        dirHelp: '针对当前代码锚点添加提问、纠偏或修改要求：',
+        dirPathReq: '请填写仓库相对路径。',
+        dirPlaceholder: '输入代码疑问（如“此处为何未做并发锁保护？”）、简报断言纠偏或具体修改要求...',
+        askNowBtn: '🚀 立即发送给 Agent',
+        dirWireBtn: '📌 挂入画布待办',
+        dirCopyBtn: '导出 Markdown',
+        delDirBtn: '删除此评审批注',
+        signalsTitle: '验证与测试信号 (Verification Signals)',
+        noSignals: '未提供测试或类型检查信号。',
+        blindSpotsTitle: '未覆盖盲区 (Blind Spots)',
+        noBlindSpots: '未声明已知盲区。',
+        guardrailsTitle: '架构约束红线 (Architecture Guardrails)',
+        noGuardrails: '未在 manifest.json 中配置架构约束。',
+        staleText: (t, h) => '简报快照已陈旧 (STALE)：简报基于提交 (' + t + ')，而当前 HEAD 为 (' + h + ')。'
       },
       en: {
-        atlas: 'Atlas', briefing: 'Briefing', hybrid: 'Hybrid',
-        switchRepoTitle: 'Select or Switch Git Repository',
+        atlas: 'Architecture', briefing: 'Verification', hybrid: 'Diff Overlay',
+        baseRefPrefix: 'Base: ', briefingPrefix: 'Report: ',
+        switchRepoTitle: 'Switch Git Repository / Worktree',
         pickRepoDialogBtn: '📁 Select Local Folder...', pickRepoWaiting: '⏳ Waiting for dialog...',
-        browseInlineBtn: '📂 Browse Tree', browseInlineClose: '📂 Hide Tree',
-        discoveredReposTitle: 'Discovered & Recent Repos', manualPathTitle: 'Or Enter Path Manually',
-        upDirBtn: '⬆ Up', openThisRepoBtn: '✓ Open Repo', currentRepoTag: 'active',
-        dirLoading: 'Reading directory...', dirEmpty: 'No subdirectories found.',
-        nonRepoPickedFmt: (p) => 'Not a Git root; pick a child Git repository inside: ' + p,
-        loadRepoBtn: 'Switch', worktreePh: 'Local Git repo path (e.g. D:\\\\Project\\\\aster)...',
-        mcpNoRepoDesc: 'Click below or open the top-left repository pill to select a folder, browse directories, or pick a discovered repo.',
-        analyzeBranchBtn: '⚡ Analyze Branch', analyzeScopeBtn: '⚡ Tour Scope',
-        depthBtnOverview: '⚡ L1 Overview', depthBtnFlow: '⚡ L2 Call Flow', depthBtnDeep: '⚡ L3 Deep Audit',
-        depthL1Title: 'L1 · Role Overview (Default)', depthL1Desc: 'Hydrate module & child files in-place with 1-sentence roles',
-        depthL2Title: 'L2 · Core Call Flows', depthL2Desc: 'Trace 3–5 primary execution & collaboration chains',
-        depthL3Title: 'L3 · Deep Guard Audit', depthL3Desc: 'Verify IF→Guard edge cases, cross-module impacts & blind spots',
-        analyzingPrefix: '⚡ Running: ', analyzingDefault: '⚡ Analyzing & verifying...',
-        analyzeErrorPrefix: '⚠ Failed: ',
-        batchDispatchFmt: (n) => '📌 Open Notes (' + n + ') · 🚀 Send All',
-        storageSec: 'Git Storage & Isolation',
-        stHidden: 'Git-Hidden (.git/codeatlas)', stHiddenDesc: 'Default zero-intrusion; untouched working tree & .gitignore',
-        stExcluded: 'Workspace Excluded (info/exclude)', stExcludedDesc: 'Editable .atlas/ locally ignored via .git/info/exclude',
-        stTracked: 'Team Tracked (.atlas/ in Git)', stTrackedDesc: 'Share .atlas/manifest.json in version control',
-        setScopeRoot: '🎯 Set as View Root', exitScopeRoot: '🏠 Reset to Full Repo', switchScopeToExt: '🎯 Switch View Root Here',
-        ctxAskAgent: '💬 Ask / Challenge Agent...', ctxFocus: '🔍 Focus Subtree',
-        summaryBtn: 'Summary', pruneBtn: 'Changed Only', impactBtn: 'Run LSP Impact Analysis',
-        searchPh: 'Search nodes or files (/)...', deltaBtn: 'Highlight Diff',
-        focusBtn: 'Focus', refreshTip: 'Refresh Repository Index', initManifest: 'Save Skeleton (manifest.json)',
-        agentSec: 'Connect External Agent', exportDir: 'Export Directives (Markdown)',
-        copyMcp: '1. Copy MCP Config JSON', copyMcpDesc: 'Pre-filled with current repo & dist/mcp-server.js',
-        copyBranch: '2. Copy Branch Analysis Prompt', copyBranchDesc: 'Ask Agent to submit a verified briefing to Canvas',
-        copyManifest: '3. Copy Manifest Authoring Prompt', copyManifestDesc: 'Ask Agent to write manifest.json & guardrails',
-        copyNodePrompt: 'Copy Agent Analysis Prompt',
-        verifyJson: 'Load & Verify Briefing JSON...', reverify: 'Re-verify', langBtn: 'Language: 中文',
-        selectBriefing: '-- Briefing --', fit: 'Fit', tidy: 'Tidy', expand: 'Expand', collapse: 'Collapse',
+        browseInlineBtn: '📂 Browse Directory', browseInlineClose: '📂 Hide Directory',
+        discoveredReposTitle: 'Discovered Repos & Worktrees', manualPathTitle: 'Or Enter Local Path',
+        upDirBtn: '⬆ Parent Dir', openThisRepoBtn: '✓ Open Repo', currentRepoTag: 'current',
+        dirLoading: 'Reading directory tree...', dirEmpty: 'No subdirectories found.',
+        nonRepoPickedFmt: (p) => 'Not a Git working tree root; select a child repository inside: ' + p,
+        loadRepoBtn: 'Open', worktreePh: 'Local Git repo path (e.g. D:\\\\Project\\\\aster)...',
+        mcpNoRepoDesc: 'Click below or open the top-left repository selector to pick a folder, browse directories, or open a discovered Git repo.',
+        analyzeBranchBtn: '⚡ Analyze Diff', analyzeScopeBtn: '⚡ Analyze Scope',
+        depthBtnOverview: '⚡ L1 Overview', depthBtnFlow: '⚡ L2 Call Flow', depthBtnDeep: '⚡ L3 Guard Audit',
+        depthL1Title: 'L1 · Module Overview (Default)', depthL1Desc: 'Summarize module & file responsibilities and highlight entry points',
+        depthL2Title: 'L2 · Call & Data Flow', depthL2Desc: 'Trace 3–5 primary call chains and control flows',
+        depthL3Title: 'L3 · Guard & Impact Audit', depthL3Desc: 'Verify guard clauses, cross-module impacts, and test signals',
+        analyzingPrefix: '⚡ Running: ', analyzingDefault: '⚡ Running deterministic verification...',
+        analyzeErrorPrefix: '⚠ Error: ',
+        busySwitchView: 'Switching view & computing layout...',
+        busyFilterDiff: 'Filtering modules by Git diff...',
+        busySwitchBase: 'Recomputing diff against base ref...',
+        busyLoadRepo: 'Loading Git repository & working tree...',
+        busyExpandFiles: 'Loading source tree nodes...',
+        busyScope: 'Updating scope root & scanning external refs...',
+        busySync: 'Synchronizing repository state...',
+        batchDispatchFmt: (n) => '📌 Pending Notes (' + n + ') · 🚀 Dispatch All',
+        sessionTargetSec: 'Agent Session Mode',
+        targetNew: 'Background Session (Recommended)', targetNewDesc: 'Run in a new background session without interrupting current chat',
+        targetCurrent: 'Current Conversation', targetCurrentDesc: 'Send prompt directly into the active chat stream',
+        storageSec: 'Git Metadata Storage',
+        stHidden: 'Git Metadata (.git/codeatlas)', stHiddenDesc: 'Keep working tree clean; zero changes to .gitignore',
+        stExcluded: 'Local Exclude (.git/info/exclude)', stExcludedDesc: 'Write .atlas/ in worktree, ignored locally via info/exclude',
+        stTracked: 'Tracked in Git (.atlas/)', stTrackedDesc: 'Commit .atlas/manifest.json for team-shared architecture',
+        setScopeRoot: '🎯 Set as Scope Root', exitScopeRoot: '🏠 Reset to Full Repo', switchScopeToExt: '🎯 Focus Scope on Module',
+        ctxAskAgent: '💬 Add Review Question / Directive...', ctxAttachChat: '📎 Attach to Next Chat Prompt', ctxFocus: '🔍 Focus Dependency Chain',
+        ctxAttachedFmt: (t) => '✓ Attached "' + t + '" to your next chat prompt context',
+        summaryBtn: 'Diff Summary', pruneBtn: 'Changed Only', impactBtn: 'Run LSP Reference Impact',
+        searchPh: 'Search modules, symbols, or files (/)...', deltaBtn: 'Highlight Diff',
+        focusBtn: 'Focus Graph', refreshTip: 'Rescan Git status & verification', initManifest: 'Export Manifest (manifest.json)',
+        agentSec: 'External Agent Setup', exportDir: 'Export Review Directives (Markdown)',
+        copyMcp: '1. Copy MCP Server Config JSON', copyMcpDesc: 'Pre-filled with current worktree & dist/mcp-server.js',
+        copyBranch: '2. Copy Diff Verification Prompt', copyBranchDesc: 'Ask external Agent to submit a verified briefing',
+        copyManifest: '3. Copy Architecture Manifest Prompt', copyManifestDesc: 'Ask external Agent to author manifest.json & guardrails',
+        copyNodePrompt: 'Copy Module Analysis Prompt',
+        verifyJson: 'Load & Verify Briefing JSON...', reverify: 'Re-verify', langBtn: '切换语言: 中文',
+        selectBriefing: 'None (Architecture Only)', fit: 'Fit View', tidy: 'Auto Layout', expand: 'Expand All', collapse: 'Collapse All',
         indexFiles: 'Show Files', collapseFiles: 'Hide Files', legendBtn: '? Legend',
-        summaryTitle: 'Branch Summary', tabCode: 'Code & Details', tabDiff: 'Git Diff', tabDir: '💬 Ask & Note', tabTrust: 'Trust',
-        inspFocus: 'Focus', defaultCrumb: 'Right-click node to set View Root or Ask · Click line number to anchor question',
+        summaryTitle: 'Git Diff Summary', tabCode: 'Source & Overview', tabDiff: 'Git Diff', tabDir: '💬 Review Notes', tabTrust: 'Verification',
+        inspFocus: 'Focus', defaultCrumb: 'Right-click node to set Scope Root or Ask · Click line number to anchor review note',
         openBtn: 'Open ↗', expandDomainFiles: 'Files', collapseDomainFiles: 'Hide',
-        entryTag: 'ENTRY', recStarTag: '★ START', extBadgeFmt: (n) => '⇄ ' + n + ' ext',
+        entryTag: 'ENTRY', recStarTag: '★ ENTRY', extBadgeFmt: (n) => '⇄ ' + n + ' ext refs',
+        dirKindQuestion: '💬 Question', dirKindRework: '🔧 Rework', dirKindConstraint: '🛡 Constraint',
         kind: {
-          root: 'View Root', domain: 'Domain', folder: 'Folder', entrypoint: 'Entrypoint', file: 'Source File',
-          claim: 'Causal Claim', evidence: 'Evidence', blocking: 'Guard / Block', 'diff-file': 'Changed File',
-          impact: 'Cross-Impact', directive: 'Question / Note', 'external-dep': 'External Boundary'
+          root: 'Worktree Root', domain: 'Module', folder: 'Directory', entrypoint: 'Entry Point', file: 'Source File',
+          claim: 'Claim', evidence: 'Code Anchor', blocking: 'Guard Clause', 'diff-file': 'Modified File',
+          impact: 'Cross-Impact', directive: 'Review Note', 'external-dep': 'External Ref'
         },
-        badge: { verified: '✓ verified', mismatch: '✕ mismatch', stale: '⟳ stale', unverified: 'unverified', unknown: 'unknown' },
+        badge: { verified: '✓ verified', mismatch: '✕ mismatch', stale: '⟳ stale', unverified: 'unverified', unknown: 'untested' },
         legendHtml:
-          '<div><i class="dot" style="background:rgba(140,150,168,0.65);"></i>Orthogonal spine: structural containment</div>' +
-          '<div><i class="dot" style="background:#4da6ff;"></i>Blue arc: causal claims &amp; module dependencies</div>' +
-          '<div><i class="dot" style="background:var(--amber);"></i>Amber dashed: explicit blocking guard (IF → Outcome)</div>' +
-          '<div><i class="dot" style="background:#56b6c2;"></i>Cyan dashed: out-of-scope dependency port</div>' +
-          '<div><i class="dot" style="background:var(--purple);"></i>Purple dashed: anchored question / directive</div>' +
-          '<div style="border-top:1px solid var(--border);padding-top:5px;margin-top:2px;font-family:var(--mono);font-size:10px;">Right-click: Set Root / Ask / Depth · / Search · F Fit · Esc Back</div>',
-        emptyBriefingTitle: 'No Briefing Loaded',
-        emptyBriefingDesc: 'Click ⚡ Analyze Branch above to generate a verified briefing, or switch to Hybrid view.',
-        noGit: 'No Repo',
-        summaryImpacted: 'Impacted Domains (click to focus)',
-        summaryNoDiff: 'No changed files vs current base ref.',
-        summaryCommits: 'Branch Commits',
-        summaryNoCommits: 'No new commits relative to base ref.',
-        summaryClaims: 'Briefing Claims',
-        summaryPruneHint: 'Enable "Changed Only" in the top bar to prune untouched domains.',
+          '<div><i class="dot" style="background:rgba(140,150,168,0.65);"></i>Orthogonal line: directory &amp; module containment</div>' +
+          '<div><i class="dot" style="background:#4da6ff;"></i>Blue solid: call flow, dependency &amp; claim anchor</div>' +
+          '<div><i class="dot" style="background:var(--amber);"></i>Amber dashed: explicit guard clause (IF → Outcome)</div>' +
+          '<div><i class="dot" style="background:#56b6c2;"></i>Cyan dashed: out-of-scope external reference</div>' +
+          '<div><i class="dot" style="background:var(--purple);"></i>Purple dashed: anchored review directive / question</div>' +
+          '<div style="border-top:1px solid var(--border);padding-top:5px;margin-top:2px;font-family:var(--mono);font-size:10px;">Right-click: Scope Root / Ask / Depth · / Search · F Fit View · Esc Back</div>',
+        emptyBriefingTitle: 'No Verification Report Loaded',
+        emptyBriefingDesc: 'Click ⚡ Analyze Diff in the toolbar to generate a verified report, or switch to Diff Overlay / Architecture view.',
+        noGit: 'No Git Repository',
+        summaryImpacted: 'Modified Modules (click to focus)',
+        summaryNoDiff: 'Working tree has no changes relative to base ref.',
+        summaryCommits: 'Commits Since Base Ref',
+        summaryNoCommits: 'No commits ahead of base ref.',
+        summaryClaims: 'Verified & Checked Claims',
+        summaryPruneHint: 'Toggle "Changed Only" in the toolbar to hide untouched modules.',
         jumpEditor: 'Open in Editor ↗',
-        loadingSnippet: 'Loading source preview...',
-        loadingDiff: 'Loading git diff...',
-        noDiffForFile: 'No git diff changes for: ',
-        notFileNode: 'This node is not bound to a specific file path.',
-        dirHelp: 'Ask Agent a question, challenge a claim, or wire a rework directive:',
-        dirPathReq: 'Relative path is required.',
-        dirPlaceholder: 'Type your question, correction, or rework instruction anchored here...',
-        askNowBtn: '🚀 Ask Agent Now',
-        dirWireBtn: '📌 Pin for Batch',
-        dirCopyBtn: 'Copy Markdown',
-        delDirBtn: 'Delete Note',
-        signalsTitle: 'Verification Signals',
-        noSignals: 'No verification signals attached (UNKNOWN).',
+        loadingSnippet: 'Reading repository file snapshot...',
+        loadingDiff: 'Computing Git diff...',
+        noDiffForFile: 'No diff relative to base ref for: ',
+        notFileNode: 'This node is not anchored to a file path.',
+        dirHelp: 'Add an anchored question, claim challenge, or rework directive on:',
+        dirPathReq: 'Repository-relative file path is required.',
+        dirPlaceholder: 'Describe your question, verification correction, or code rework requirement...',
+        askNowBtn: '🚀 Send to Agent Now',
+        dirWireBtn: '📌 Queue on Canvas',
+        dirCopyBtn: 'Export Markdown',
+        delDirBtn: 'Delete Directive',
+        signalsTitle: 'Verification & Test Signals',
+        noSignals: 'No test or typecheck signals attached.',
         blindSpotsTitle: 'Declared Blind Spots',
         noBlindSpots: 'None declared.',
-        guardrailsTitle: 'Repository Guardrails (manifest.json)',
-        noGuardrails: 'No guardrails declared.',
-        staleText: (t, h) => 'STALE BRIEFING: Target ref (' + t + ') differs from HEAD (' + h + ').'
+        guardrailsTitle: 'Architecture Guardrails (manifest.json)',
+        noGuardrails: 'No guardrails configured in manifest.json.',
+        staleText: (t, h) => 'STALE REPORT: Anchored to (' + t + '), while current HEAD is (' + h + ').'
       }
     };
 
     let lang = 'zh';
+    let agentTarget = 'new';
+    let currentDirKind = 'question';
+    let isCanvasBusy = false;
+    let busyWatchdog = null;
     let analyzeState = { running: false, label: '', error: '' };
     let graph = { mode: 'hybrid', scopeRoot: '', scopeAncestors: [], storageMode: 'git-hidden', nodes: [], edges: [], summary: {}, architecture: null, branchSummary: null };
     let nodeById = new Map();
@@ -1902,8 +2072,102 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     const nodesLayer = document.getElementById('nodesLayer');
     const inspector = document.getElementById('inspector');
     const summaryDrawer = document.getElementById('summaryDrawer');
+    const customSelectPopover = document.getElementById('customSelectPopover');
     const depthPopover = document.getElementById('depthPopover');
     const nodeCtxMenu = document.getElementById('nodeCtxMenu');
+    const topBusyBar = document.getElementById('topBusyBar');
+    const canvasBusyScrim = document.getElementById('canvasBusyScrim');
+    const canvasBusyText = document.getElementById('canvasBusyText');
+
+    function setCanvasBusy(busy, label) {
+      isCanvasBusy = Boolean(busy);
+      if (busyWatchdog) {
+        clearTimeout(busyWatchdog);
+        busyWatchdog = null;
+      }
+      document.body.classList.toggle('is-busy', isCanvasBusy);
+      if (topBusyBar) topBusyBar.classList.toggle('hidden', !isCanvasBusy);
+      if (canvasBusyScrim) canvasBusyScrim.classList.toggle('hidden', !isCanvasBusy);
+      if (isCanvasBusy) {
+        if (canvasBusyText) canvasBusyText.textContent = label || t('busySync');
+        busyWatchdog = setTimeout(() => {
+          setCanvasBusy(false);
+        }, 18000);
+      }
+    }
+
+    function postStateAction(msg, busyLabel) {
+      if (isCanvasBusy) return;
+      closePopovers();
+      setCanvasBusy(true, busyLabel || t('busySync'));
+      hostApi.postMessage(msg);
+    }
+
+    function positionPopover(popoverEl, anchorEl, alignRight) {
+      if (!popoverEl || !anchorEl) return;
+      const rect = anchorEl.getBoundingClientRect();
+      const popW = popoverEl.offsetWidth || 264;
+      const popH = popoverEl.offsetHeight || 220;
+      const left = alignRight
+        ? Math.max(8, Math.min(window.innerWidth - popW - 8, rect.right - popW))
+        : Math.max(8, Math.min(window.innerWidth - popW - 8, rect.left));
+      let top = rect.bottom + 6;
+      if (top + popH > window.innerHeight - 8 && rect.top > popH + 12) {
+        top = Math.max(8, rect.top - popH - 6);
+      } else {
+        top = Math.max(8, Math.min(window.innerHeight - popH - 8, top));
+      }
+      popoverEl.style.left = left + 'px';
+      popoverEl.style.top = top + 'px';
+    }
+
+    function openCustomSelect(opts) {
+      const anchorEl = opts.anchorEl;
+      if (!anchorEl || !customSelectPopover) return;
+      const alreadyOpenForAnchor =
+        !customSelectPopover.classList.contains('hidden') &&
+        customSelectPopover.dataset.anchorId === anchorEl.id;
+      closePopovers();
+      if (alreadyOpenForAnchor) return;
+
+      customSelectPopover.dataset.anchorId = anchorEl.id || '';
+      anchorEl.classList.add('is-open');
+      if (opts.width) {
+        customSelectPopover.style.width = opts.width + 'px';
+      } else {
+        customSelectPopover.style.width = Math.max(220, Math.round(anchorEl.getBoundingClientRect().width)) + 'px';
+      }
+
+      let html = '';
+      if (opts.title) {
+        html += '<div class="more-sec-label">' + esc(opts.title) + '</div>';
+      }
+      html += (opts.items || []).map((it, idx) => {
+        const isSel = String(it.value) === String(opts.activeValue ?? '');
+        return '<button class="' + (isSel ? 'is-selected' : '') + '" data-csel-idx="' + idx + '">' +
+          '<span class="storage-check">' + (isSel ? '✓' : '') + '</span>' +
+          '<span class="menu-item-col">' +
+            '<span class="menu-item-top"><span style="' + (it.mono ? 'font-family:var(--mono);font-size:11px;' : 'font-weight:500;') + '">' + esc(it.label) + '</span>' +
+              (it.tag ? '<span class="repo-branch-tag">' + esc(it.tag) + '</span>' : '') +
+            '</span>' +
+            (it.desc ? '<span class="agent-menu-desc">' + esc(it.desc) + '</span>' : '') +
+          '</span>' +
+        '</button>';
+      }).join('');
+
+      customSelectPopover.innerHTML = html;
+      customSelectPopover.classList.remove('hidden');
+      positionPopover(customSelectPopover, anchorEl, Boolean(opts.alignRight));
+
+      customSelectPopover.querySelectorAll('[data-csel-idx]').forEach(btn => {
+        btn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          const chosen = opts.items[parseInt(btn.dataset.cselIdx, 10)];
+          closePopovers();
+          if (chosen && opts.onSelect) opts.onSelect(chosen.value, chosen);
+        });
+      });
+    }
 
     function t(key) {
       return (I18N[lang] && I18N[lang][key]) || I18N.zh[key] || key;
@@ -2018,7 +2282,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       );
     }
 
-    function triggerNodeAnalyze(node, explicitDepth) {
+    function triggerNodeAnalyze(node, explicitDepth, overrideTarget) {
       if (!node || analyzeState.running) return;
       const depth = explicitDepth || nextRecommendedDepth(node);
       const targetPath =
@@ -2029,6 +2293,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         type: 'analyzeTarget',
         scope: 'node',
         depth,
+        agentTarget: overrideTarget || agentTarget,
         scopeRoot,
         nodeId: node.id,
         title: node.title,
@@ -2037,11 +2302,11 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       });
     }
 
-    function triggerTopAnalyze(explicitDepth) {
+    function triggerTopAnalyze(explicitDepth, overrideTarget) {
       if (analyzeState.running || !gitCtx) return;
       if (scopeRoot && !explicitDepth) {
         const rootNode = nodeById.get('root');
-        triggerNodeAnalyze(rootNode || { id: 'root', kind: 'root', title: scopeRoot, scopePath: scopeRoot }, nextRecommendedDepth(rootNode));
+        triggerNodeAnalyze(rootNode || { id: 'root', kind: 'root', title: scopeRoot, scopePath: scopeRoot }, nextRecommendedDepth(rootNode), overrideTarget);
         return;
       }
       const depth = explicitDepth || 'deep';
@@ -2050,6 +2315,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           type: 'analyzeTarget',
           scope: 'node',
           depth: 'overview',
+          agentTarget: overrideTarget || agentTarget,
           scopeRoot,
           title: scopeRoot || 'Repository',
           kind: 'root',
@@ -2061,13 +2327,14 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         type: 'analyzeTarget',
         scope: 'branch',
         depth,
+        agentTarget: overrideTarget || agentTarget,
         scopeRoot,
         baseRef
       });
     }
 
     function openDepthPopover(anchorEl, targetNodeOrNull) {
-      const rect = anchorEl.getBoundingClientRect();
+      closePopovers();
       const done = targetNodeOrNull ? (targetNodeOrNull.completedDepth || 'none') : 'none';
       const items = [
         { d: 'overview', title: t('depthL1Title'), desc: t('depthL1Desc'), check: done === 'overview' || done === 'flow' || done === 'deep' },
@@ -2083,10 +2350,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         '</button>'
       ).join('');
       depthPopover.classList.remove('hidden');
-      const left = Math.min(window.innerWidth - 260, Math.max(8, rect.right - 248));
-      const top = Math.min(window.innerHeight - 170, rect.bottom + 5);
-      depthPopover.style.left = left + 'px';
-      depthPopover.style.top = top + 'px';
+      positionPopover(depthPopover, anchorEl, true);
 
       depthPopover.querySelectorAll('[data-pick-depth]').forEach(btn => {
         btn.addEventListener('click', (ev) => {
@@ -2115,6 +2379,9 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       }
 
       html += '<button data-ctx="ask">' + esc(t('ctxAskAgent')) + '</button>';
+      if (isMcpAppHost && !document.body.classList.contains('no-ctx-cap')) {
+        html += '<button class="ctx-attach-action" data-ctx="attachCtx">' + esc(t('ctxAttachChat')) + '</button>';
+      }
 
       if (isAnalyzableNode(node) && !document.body.classList.contains('no-analyze-cap')) {
         html += '<div class="more-sep"></div>';
@@ -2131,10 +2398,10 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
 
       nodeCtxMenu.innerHTML = html;
       nodeCtxMenu.classList.remove('hidden');
-      const left = Math.min(window.innerWidth - 256, Math.max(8, ev.clientX));
-      const top = Math.min(window.innerHeight - 230, Math.max(8, ev.clientY));
-      nodeCtxMenu.style.left = left + 'px';
-      nodeCtxMenu.style.top = top + 'px';
+      const popW = nodeCtxMenu.offsetWidth || 264;
+      const popH = nodeCtxMenu.offsetHeight || 240;
+      nodeCtxMenu.style.left = Math.min(window.innerWidth - popW - 8, Math.max(8, ev.clientX)) + 'px';
+      nodeCtxMenu.style.top = Math.min(window.innerHeight - popH - 8, Math.max(8, ev.clientY)) + 'px';
 
       nodeCtxMenu.querySelectorAll('[data-ctx]').forEach(btn => {
         btn.addEventListener('click', (ce) => {
@@ -2150,6 +2417,17 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
             inspectorTab = 'directive';
             selectNode(node.id);
             setTimeout(() => document.getElementById('inspDirNote')?.focus(), 30);
+          } else if (act === 'attachCtx') {
+            hostApi.postMessage({
+              type: 'attachNodeContext',
+              title: node.title,
+              kind: node.kind,
+              path: node.path || node.scopePath || node.defaultDirectivePath || '',
+              startLine: node.startLine,
+              endLine: node.endLine,
+              scopeRoot,
+              contextBody: node.body || node.roleSummary || ''
+            });
           } else if (act === 'd-overview') {
             triggerNodeAnalyze(node, 'overview');
           } else if (act === 'd-flow') {
@@ -2175,7 +2453,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       collapsedIds.clear();
       selectedNodeId = null;
       inspector.classList.add('hidden');
-      hostApi.postMessage({ type: 'setScopeRoot', scopeRoot: nextScope });
+      postStateAction({ type: 'setScopeRoot', scopeRoot: nextScope }, t('busyScope'));
     }
 
     function syncAnalyzeUi() {
@@ -2230,6 +2508,21 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     }
 
     function syncStorageMenu() {
+      const sesSec = document.getElementById('lblSessionTargetSec');
+      if (sesSec) sesSec.textContent = t('sessionTargetSec');
+      const tNew = document.getElementById('lblTargetNew');
+      if (tNew) tNew.textContent = t('targetNew');
+      const dNew = document.getElementById('descTargetNew');
+      if (dNew) dNew.textContent = t('targetNewDesc');
+      const tCur = document.getElementById('lblTargetCurrent');
+      if (tCur) tCur.textContent = t('targetCurrent');
+      const dCur = document.getElementById('descTargetCurrent');
+      if (dCur) dCur.textContent = t('targetCurrentDesc');
+      const cNew = document.getElementById('chkTargetNew');
+      if (cNew) cNew.textContent = agentTarget === 'new' ? '✓' : '';
+      const cCur = document.getElementById('chkTargetCurrent');
+      if (cCur) cCur.textContent = agentTarget === 'current' ? '✓' : '';
+
       document.getElementById('lblStorageSec').textContent = t('storageSec');
       document.getElementById('lblStHidden').textContent = t('stHidden');
       document.getElementById('descStHidden').textContent = t('stHiddenDesc');
@@ -2801,7 +3094,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           const domId = item.dataset.expandDom;
           if (domId) {
             pendingCenterNodeId = nid;
-            hostApi.postMessage({ type: 'expandDomainFiles', domainId: domId });
+            postStateAction({ type: 'expandDomainFiles', domainId: domId }, t('busyExpandFiles'));
           }
           if (nodeById.has(nid)) {
             collapsedIds.delete(nid);
@@ -2869,21 +3162,21 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       const chips = [];
       if (s.verified > 0) chips.push('<span class="chip ok" data-chip="trust">' + (lang === 'zh' ? '✓ 已核验 ' : '✓ Verified ') + s.verified + '</span>');
       if (s.mismatch > 0) chips.push('<span class="chip err' + (activeChipFilter === 'mismatch' ? ' active' : '') + '" data-chip="mismatch">' + (lang === 'zh' ? '✕ 失配 ' : '✕ Mismatch ') + s.mismatch + '</span>');
-      if (s.stale > 0) chips.push('<span class="chip warn" data-chip="trust">' + (lang === 'zh' ? '⟳ 过期 ' : '⟳ Stale ') + s.stale + '</span>');
-      if (s.blockingCount > 0) chips.push('<span class="chip warn' + (activeChipFilter === 'blocking' ? ' active' : '') + '" data-chip="blocking">' + (lang === 'zh' ? '阻断 ' : 'Guards ') + s.blockingCount + '</span>');
-      if (s.impactCount > 0) chips.push('<span class="chip' + (activeChipFilter === 'impact' ? ' active' : '') + '" style="color:var(--cyan);background:rgba(57,197,207,0.14);" data-chip="impact">' + (lang === 'zh' ? '影响 ' : 'Impact ') + s.impactCount + '</span>');
+      if (s.stale > 0) chips.push('<span class="chip warn" data-chip="trust">' + (lang === 'zh' ? '⟳ 陈旧 ' : '⟳ Stale ') + s.stale + '</span>');
+      if (s.blockingCount > 0) chips.push('<span class="chip warn' + (activeChipFilter === 'blocking' ? ' active' : '') + '" data-chip="blocking">' + (lang === 'zh' ? '守卫 ' : 'Guards ') + s.blockingCount + '</span>');
+      if (s.impactCount > 0) chips.push('<span class="chip' + (activeChipFilter === 'impact' ? ' active' : '') + '" style="color:var(--cyan);background:rgba(57,197,207,0.14);" data-chip="impact">' + (lang === 'zh' ? '跨模块影响 ' : 'Impact ') + s.impactCount + '</span>');
       if (scopeRoot && s.externalBoundaryCount > 0) {
-        chips.push('<span class="chip" data-chip="showRootExt" style="color:#56b6c2;background:rgba(86,182,194,0.14);">' + (lang === 'zh' ? '⇄ 视图外关联 ' : '⇄ External ') + s.externalBoundaryCount + '</span>');
+        chips.push('<span class="chip" data-chip="showRootExt" style="color:#56b6c2;background:rgba(86,182,194,0.14);">' + (lang === 'zh' ? '⇄ 外部引用 ' : '⇄ Ext Refs ') + s.externalBoundaryCount + '</span>');
       }
-      if (s.manifestIssues && s.manifestIssues.length > 0) chips.push('<span class="chip err" data-chip="trust">' + (lang === 'zh' ? '骨架漂移 ' : 'Drift ') + s.manifestIssues.length + '</span>');
+      if (s.manifestIssues && s.manifestIssues.length > 0) chips.push('<span class="chip err" data-chip="trust">' + (lang === 'zh' ? '清单漂移 ' : 'Manifest Drift ') + s.manifestIssues.length + '</span>');
       if (s.blindSpots && s.blindSpots.length > 0) chips.push('<span class="chip warn" data-chip="trust">' + (lang === 'zh' ? '盲区 ' : 'Blind Spots ') + s.blindSpots.length + '</span>');
       if (s.directiveCount > 0) chips.push('<span class="chip dir' + (activeChipFilter === 'directive' ? ' active' : '') + '" data-chip="directive">' + (lang === 'zh' ? '批注 ' : 'Directives ') + s.directiveCount + '</span>');
-      if (s.prunedCount > 0) chips.push('<span class="chip">' + (lang === 'zh' ? '已剪枝 ' : 'Pruned ') + s.prunedCount + '</span>');
+      if (s.prunedCount > 0) chips.push('<span class="chip">' + (lang === 'zh' ? '已过滤 ' : 'Filtered ') + s.prunedCount + '</span>');
       if (s.hiddenSupportFiles > 0 || showSupportAssets) {
         const supLabel = showSupportAssets
-          ? (lang === 'zh' ? '非源码资源: 显示' : 'Assets: Visible')
-          : (lang === 'zh' ? '已收起资源 ' + s.hiddenSupportFiles : 'Folded Assets ' + s.hiddenSupportFiles);
-        chips.push('<span class="chip' + (showSupportAssets ? ' active' : '') + '" data-chip="toggleSupport" title="' + (lang === 'zh' ? '点击切换显示/隐藏静态资源与配置目录' : 'Toggle non-code support & asset domains') + '">' + supLabel + '</span>');
+          ? (lang === 'zh' ? '静态/支持文件: 显示' : 'Support Files: Shown')
+          : (lang === 'zh' ? '已折叠资源 ' + s.hiddenSupportFiles : 'Folded Assets ' + s.hiddenSupportFiles);
+        chips.push('<span class="chip' + (showSupportAssets ? ' active' : '') + '" data-chip="toggleSupport" title="' + (lang === 'zh' ? '切换显示或隐藏文档、静态资源与构建配置模块' : 'Toggle docs, static assets, and config modules') + '">' + supLabel + '</span>');
       }
 
       const tc = document.getElementById('trustChips');
@@ -2892,7 +3185,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         el.addEventListener('click', () => {
           const kind = el.dataset.chip;
           if (kind === 'toggleSupport') {
-            hostApi.postMessage({ type: 'toggleSupportAssets' });
+            postStateAction({ type: 'toggleSupportAssets' }, t('busySync'));
             return;
           }
           if (kind === 'showRootExt') {
@@ -3135,7 +3428,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
             ev.stopPropagation();
             pendingCenterNodeId = n.id;
             collapsedIds.delete(n.id);
-            hostApi.postMessage({ type: 'toggleDomainFiles', domainId: domToggle.dataset.toggleDom });
+            postStateAction({ type: 'toggleDomainFiles', domainId: domToggle.dataset.toggleDom }, t('busyExpandFiles'));
           });
         }
 
@@ -3146,7 +3439,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
             ev.stopPropagation();
             pendingCenterNodeId = n.id;
             collapsedIds.delete(n.id);
-            hostApi.postMessage({ type: 'toggleFolderFiles', folderId: folderToggle.dataset.toggleFolder });
+            postStateAction({ type: 'toggleFolderFiles', folderId: folderToggle.dataset.toggleFolder }, t('busyExpandFiles'));
           });
         }
 
@@ -3402,15 +3695,19 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         const defaultPath = node.defaultDirectivePath || node.path || node.scopePath || scopeRoot || '(root)';
         const defaultLine = prefilledDirLine || node.startLine || 1;
         prefilledDirLine = null;
+        const dirKindLabelMap = {
+          question: t('dirKindQuestion'),
+          rework: t('dirKindRework'),
+          constraint: t('dirKindConstraint')
+        };
 
         el.innerHTML =
           '<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">' + esc(t('dirHelp')) + ' <strong>' + esc(node.title) + '</strong></div>' +
-          '<div style="display:flex;gap:6px;margin-bottom:8px;">' +
-            '<select id="inspDirKind">' +
-              '<option value="question">' + (lang === 'zh' ? '💬 提问 / 纠偏探讨' : '💬 Question / Challenge') + '</option>' +
-              '<option value="rework">' + (lang === 'zh' ? '🔧 要求代码返工' : '🔧 Code Rework') + '</option>' +
-              '<option value="constraint">' + (lang === 'zh' ? '🛡 架构约束红线' : '🛡 Guardrail') + '</option>' +
-            '</select>' +
+          '<div style="display:flex;gap:6px;margin-bottom:8px;align-items:center;">' +
+            '<button class="select-trigger" id="btnInspDirKind" style="max-width:168px;flex-shrink:0;">' +
+              '<span class="select-trigger-label" id="lblInspDirKindVal">' + esc(dirKindLabelMap[currentDirKind] || dirKindLabelMap.question) + '</span>' +
+              '<span class="select-caret">▾</span>' +
+            '</button>' +
             '<input id="inspDirPath" value="' + esc(defaultPath) + '" placeholder="relative/path" style="flex:1;min-width:90px;" />' +
             '<input id="inspDirLine" type="number" min="1" value="' + esc(defaultLine) + '" style="width:64px;" title="Line" />' +
           '</div>' +
@@ -3421,6 +3718,28 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
             '<button class="secondary" id="btnAddCanvasDir" disabled>' + esc(t('dirWireBtn')) + '</button>' +
             '<button class="secondary vscode-only" id="btnInspCopyDirs">' + esc(t('dirCopyBtn')) + '</button>' +
           '</div>';
+
+        const dirKindBtn = document.getElementById('btnInspDirKind');
+        if (dirKindBtn) {
+          dirKindBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            openCustomSelect({
+              anchorEl: dirKindBtn,
+              width: 224,
+              activeValue: currentDirKind,
+              items: [
+                { value: 'question', label: t('dirKindQuestion') },
+                { value: 'rework', label: t('dirKindRework') },
+                { value: 'constraint', label: t('dirKindConstraint') }
+              ],
+              onSelect: (val) => {
+                currentDirKind = val;
+                const lbl = document.getElementById('lblInspDirKindVal');
+                if (lbl) lbl.textContent = dirKindLabelMap[val] || val;
+              }
+            });
+          });
+        }
 
         const pathInput = document.getElementById('inspDirPath');
         const noteInput = document.getElementById('inspDirNote');
@@ -3453,12 +3772,12 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           askNowBtn.addEventListener('click', () => {
             const note = noteInput.value.trim();
             const p = pathInput.value.trim();
-            const kind = document.getElementById('inspDirKind').value;
             const line = parseInt(document.getElementById('inspDirLine').value, 10);
             if (!note || !p) return;
             hostApi.postMessage({
               type: 'askAgentNow',
-              directiveKind: kind,
+              directiveKind: currentDirKind,
+              agentTarget,
               path: p,
               startLine: Number.isFinite(line) ? line : 1,
               targetNodeId: node.id,
@@ -3473,17 +3792,16 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         addBtn.addEventListener('click', () => {
           const note = noteInput.value.trim();
           const p = pathInput.value.trim();
-          const kind = document.getElementById('inspDirKind').value;
           const line = parseInt(document.getElementById('inspDirLine').value, 10);
           if (!note || !p) return;
-          hostApi.postMessage({
+          postStateAction({
             type: 'addDirective',
-            kind,
+            kind: currentDirKind,
             path: p,
             startLine: Number.isFinite(line) ? line : 1,
             targetNodeId: node.id,
             note
-          });
+          }, t('busySync'));
           inspectorTab = 'overview';
         });
         document.getElementById('btnInspCopyDirs').addEventListener('click', () => {
@@ -3622,7 +3940,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       const delBtn = document.getElementById('btnRemoveDir');
       if (delBtn && node.directiveId) {
         delBtn.addEventListener('click', () => {
-          hostApi.postMessage({ type: 'removeDirective', id: node.directiveId });
+          postStateAction({ type: 'removeDirective', id: node.directiveId }, t('busySync'));
           selectedNodeId = null;
           inspector.classList.add('hidden');
         });
@@ -3656,9 +3974,14 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
 
     function closePopovers() {
       if (moreMenu) moreMenu.classList.add('hidden');
+      if (customSelectPopover) {
+        customSelectPopover.classList.add('hidden');
+        customSelectPopover.dataset.anchorId = '';
+      }
       if (depthPopover) depthPopover.classList.add('hidden');
       if (nodeCtxMenu) nodeCtxMenu.classList.add('hidden');
       if (repoPopover && gitCtx) repoPopover.classList.add('hidden');
+      document.querySelectorAll('.select-trigger.is-open').forEach(el => el.classList.remove('is-open'));
     }
 
     function switchToRepoPath(nextPath) {
@@ -3671,7 +3994,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       collapsedIds.clear();
       selectedNodeId = null;
       inspector.classList.add('hidden');
-      hostApi.postMessage({ type: 'setWorktreePath', worktreePath: val });
+      postStateAction({ type: 'setWorktreePath', worktreePath: val }, t('busyLoadRepo'));
     }
 
     function requestBrowseDir(dirPath) {
@@ -3824,13 +4147,15 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     if (repoToggleBtn && repoPopover) {
       repoToggleBtn.addEventListener('click', (ev) => {
         ev.stopPropagation();
-        if (moreMenu) moreMenu.classList.add('hidden');
-        depthPopover.classList.add('hidden');
-        nodeCtxMenu.classList.add('hidden');
-        repoPopover.classList.toggle('hidden');
-        if (!repoPopover.classList.contains('hidden')) {
+        const wasOpen = !repoPopover.classList.contains('hidden');
+        closePopovers();
+        if (!wasOpen) {
+          repoPopover.classList.remove('hidden');
           renderDiscoveredRepos();
           renderInlineDirBrowser();
+          positionPopover(repoPopover, repoToggleBtn, false);
+        } else if (!gitCtx) {
+          repoPopover.classList.add('hidden');
         }
       });
       repoPopover.addEventListener('click', (ev) => ev.stopPropagation());
@@ -3850,14 +4175,29 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       });
     }
 
-    document.getElementById('btnMoreMenu').addEventListener('click', (ev) => {
+    const moreMenuBtn = document.getElementById('btnMoreMenu');
+    moreMenuBtn.addEventListener('click', (ev) => {
       ev.stopPropagation();
-      depthPopover.classList.add('hidden');
-      nodeCtxMenu.classList.add('hidden');
-      if (repoPopover && gitCtx) repoPopover.classList.add('hidden');
-      moreMenu.classList.toggle('hidden');
+      const wasOpen = !moreMenu.classList.contains('hidden');
+      closePopovers();
+      if (!wasOpen) {
+        moreMenu.classList.remove('hidden');
+        positionPopover(moreMenu, moreMenuBtn, true);
+      }
     });
+    moreMenu.addEventListener('click', (ev) => ev.stopPropagation());
+    customSelectPopover.addEventListener('click', (ev) => ev.stopPropagation());
+    depthPopover.addEventListener('click', (ev) => ev.stopPropagation());
     document.addEventListener('click', closePopovers);
+
+    document.querySelectorAll('[data-agent-target]').forEach(btn => {
+      btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        agentTarget = btn.dataset.agentTarget === 'current' ? 'current' : 'new';
+        syncStorageMenu();
+        moreMenu.classList.add('hidden');
+      });
+    });
 
     document.querySelectorAll('[data-storage-mode]').forEach(btn => {
       btn.addEventListener('click', (ev) => {
@@ -3866,12 +4206,12 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         storageMode = m;
         syncStorageMenu();
         moreMenu.classList.add('hidden');
-        hostApi.postMessage({ type: 'setStorageMode', storageMode: m });
+        postStateAction({ type: 'setStorageMode', storageMode: m }, t('busySync'));
       });
     });
 
     document.getElementById('btnDispatchBatch').addEventListener('click', () => {
-      hostApi.postMessage({ type: 'dispatchDirectives' });
+      hostApi.postMessage({ type: 'dispatchDirectives', agentTarget });
     });
 
     document.getElementById('btnAnalyzeBranch').addEventListener('click', () => {
@@ -3879,8 +4219,6 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     });
     document.getElementById('btnAnalyzeBranchMenu').addEventListener('click', (ev) => {
       ev.stopPropagation();
-      moreMenu.classList.add('hidden');
-      nodeCtxMenu.classList.add('hidden');
       openDepthPopover(ev.currentTarget, scopeRoot ? nodeById.get('root') : null);
     });
 
@@ -3909,24 +4247,58 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
 
     document.querySelectorAll('#modeControl button').forEach(btn => {
       btn.addEventListener('click', () => {
+        if (btn.dataset.mode === viewMode) return;
         viewMode = btn.dataset.mode;
         document.querySelectorAll('#modeControl button').forEach(b => b.classList.toggle('active', b === btn));
         positions.clear();
         manualPositions.clear();
         collapsedIds.clear();
-        hostApi.postMessage({ type: 'setMode', mode: viewMode });
+        postStateAction({ type: 'setMode', mode: viewMode }, t('busySwitchView'));
       });
     });
 
-    document.getElementById('briefingSelect').addEventListener('change', (ev) => {
-      if (ev.target.value) hostApi.postMessage({ type: 'selectBriefing', path: ev.target.value });
+    const baseRefBtn = document.getElementById('btnBaseRefSelect');
+    baseRefBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const refs = (gitCtx && Array.isArray(gitCtx.recentRefs) && gitCtx.recentRefs.length > 0) ? gitCtx.recentRefs : ['HEAD'];
+      openCustomSelect({
+        anchorEl: baseRefBtn,
+        width: 210,
+        title: lang === 'zh' ? 'Git Diff 对比基准 (Base Ref)' : 'Git Diff Base Ref',
+        activeValue: baseRef,
+        items: refs.map(r => ({ value: r, label: r, mono: true })),
+        onSelect: (val) => {
+          if (!val || val === baseRef) return;
+          baseRef = val;
+          postStateAction({ type: 'setBaseRef', baseRef }, t('busySwitchBase'));
+        }
+      });
     });
-    document.getElementById('baseRefSelect').addEventListener('change', (ev) => {
-      if (ev.target.value) {
-        baseRef = ev.target.value;
-        hostApi.postMessage({ type: 'setBaseRef', baseRef });
-      }
+
+    const briefingBtn = document.getElementById('btnBriefingSelect');
+    briefingBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const items = [
+        { value: '', label: t('selectBriefing') },
+        ...availableBriefings.map(b => ({
+          value: b.path,
+          label: b.label,
+          tag: b.isExample ? 'example' : undefined
+        }))
+      ];
+      openCustomSelect({
+        anchorEl: briefingBtn,
+        width: 288,
+        title: lang === 'zh' ? '切换变更核验简报' : 'Verification Reports',
+        activeValue: activeBriefingPath || '',
+        items,
+        onSelect: (val) => {
+          if (val === activeBriefingPath) return;
+          postStateAction({ type: 'selectBriefing', path: val }, t('busySync'));
+        }
+      });
     });
+
     document.getElementById('btnLangToggle').addEventListener('click', () => {
       moreMenu.classList.add('hidden');
       lang = lang === 'zh' ? 'en' : 'zh';
@@ -3936,7 +4308,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       if (selectedNodeId && nodeById.has(selectedNodeId)) {
         renderInspector(nodeById.get(selectedNodeId));
       }
-      hostApi.postMessage({ type: 'setLang', lang });
+      postStateAction({ type: 'setLang', lang }, t('busySync'));
     });
     document.getElementById('btnSummaryToggle').addEventListener('click', () => {
       summaryOpen = !summaryOpen;
@@ -3952,11 +4324,11 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       pruneUnchanged = !pruneUnchanged;
       positions.clear();
       manualPositions.clear();
-      hostApi.postMessage({ type: 'setPruneUnchanged', value: pruneUnchanged });
+      postStateAction({ type: 'setPruneUnchanged', value: pruneUnchanged }, t('busyFilterDiff'));
     });
     document.getElementById('btnRunImpact').addEventListener('click', () => {
       moreMenu.classList.add('hidden');
-      hostApi.postMessage({ type: 'runImpactAnalysis' });
+      postStateAction({ type: 'runImpactAnalysis' }, t('busySync'));
     });
 
     document.getElementById('btnIndexFiles').addEventListener('click', () => {
@@ -3965,9 +4337,9 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       positions.clear();
       manualPositions.clear();
       if (anyExpanded) {
-        hostApi.postMessage({ type: 'collapseAllFiles' });
+        postStateAction({ type: 'collapseAllFiles' }, t('busyExpandFiles'));
       } else {
-        hostApi.postMessage({ type: 'expandAllFiles', domainIds: domainNodes.map(n => n.domainId) });
+        postStateAction({ type: 'expandAllFiles', domainIds: domainNodes.map(n => n.domainId) }, t('busyExpandFiles'));
       }
     });
 
@@ -4047,10 +4419,10 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       syncFocusButtons();
       syncVisualClasses();
     });
-    document.getElementById('btnRefresh').addEventListener('click', () => hostApi.postMessage({ type: 'refresh', baseRef }));
+    document.getElementById('btnRefresh').addEventListener('click', () => postStateAction({ type: 'refresh', baseRef }, t('busySync')));
     document.getElementById('btnInitManifest').addEventListener('click', () => {
       moreMenu.classList.add('hidden');
-      hostApi.postMessage({ type: 'initManifestDraft' });
+      postStateAction({ type: 'initManifestDraft' }, t('busySync'));
     });
     document.getElementById('btnCopyMcpCfg').addEventListener('click', () => {
       moreMenu.classList.add('hidden');
@@ -4064,7 +4436,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       moreMenu.classList.add('hidden');
       hostApi.postMessage({ type: 'copyManifestPrompt' });
     });
-    document.getElementById('btnReverifyStale').addEventListener('click', () => hostApi.postMessage({ type: 'refresh', baseRef }));
+    document.getElementById('btnReverifyStale').addEventListener('click', () => postStateAction({ type: 'refresh', baseRef }, t('busySync')));
     document.getElementById('btnVerifyBriefing').addEventListener('click', () => {
       moreMenu.classList.add('hidden');
       hostApi.postMessage({ type: 'pickBriefing' });
@@ -4142,6 +4514,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       const msg = event.data;
       if (!msg || typeof msg.type !== 'string') return;
       if (msg.type === 'canvasState') {
+        setCanvasBusy(false);
         const prevCount = graph.nodes.length;
         const incomingBriefing = msg.payload.activeBriefingPath || '';
         const briefingChanged = incomingBriefing !== lastBriefingKey;
@@ -4178,8 +4551,12 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           }
         }
         if (repoPopover) {
-          if (!gitCtx && isMcpAppHost) repoPopover.classList.remove('hidden');
-          else repoPopover.classList.add('hidden');
+          if (!gitCtx && isMcpAppHost) {
+            repoPopover.classList.remove('hidden');
+            if (repoToggleBtn) positionPopover(repoPopover, repoToggleBtn, false);
+          } else {
+            repoPopover.classList.add('hidden');
+          }
         }
 
         applyStaticTranslations();
@@ -4209,22 +4586,20 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           indexBtn.style.display = 'none';
         }
 
-        const bSel = document.getElementById('briefingSelect');
+        const bBtn = document.getElementById('btnBriefingSelect');
+        const bVal = document.getElementById('lblBriefingVal');
         if (availableBriefings.length === 0) {
-          bSel.style.display = 'none';
+          bBtn.style.display = 'none';
         } else {
-          bSel.style.display = 'inline-block';
-          bSel.innerHTML = '<option value="">' + esc(t('selectBriefing')) + '</option>' +
-            availableBriefings.map(b =>
-              '<option value="' + esc(b.path) + '"' + (b.path === activeBriefingPath ? ' selected' : '') + '>' + esc(b.label) + '</option>'
-            ).join('');
+          bBtn.style.display = 'inline-flex';
+          const curBr = availableBriefings.find(b => b.path === activeBriefingPath);
+          bVal.textContent = curBr ? (t('briefingPrefix') + curBr.label) : t('selectBriefing');
         }
 
-        const rSel = document.getElementById('baseRefSelect');
-        const refs = (gitCtx && gitCtx.recentRefs) ? gitCtx.recentRefs : ['HEAD'];
-        rSel.innerHTML = refs.map(r =>
-          '<option value="' + esc(r) + '"' + (r === baseRef ? ' selected' : '') + '>vs ' + esc(r) + '</option>'
-        ).join('');
+        const rVal = document.getElementById('lblBaseRefVal');
+        if (rVal) {
+          rVal.textContent = t('baseRefPrefix') + baseRef;
+        }
 
         const staleEl = document.getElementById('staleBanner');
         if (graph.summary && graph.summary.isStale) {
@@ -4324,7 +4699,23 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         syncAnalyzeUi();
       } else if (msg.type === 'hostCapabilities') {
         const canAnalyze = msg.payload ? Boolean(msg.payload.canAnalyze) : true;
+        const canUpdateCtx = msg.payload && msg.payload.canUpdateContext !== undefined ? Boolean(msg.payload.canUpdateContext) : false;
         document.body.classList.toggle('no-analyze-cap', !canAnalyze);
+        document.body.classList.toggle('no-ctx-cap', !canUpdateCtx);
+      } else if (msg.type === 'contextAttachedNotice') {
+        const title = (msg.payload && msg.payload.title) || '';
+        analyzeState = { running: false, label: '', error: '' };
+        const banner = document.getElementById('analyzeBanner');
+        const spinner = document.getElementById('analyzeSpinner');
+        const textEl = document.getElementById('analyzeBannerText');
+        const dismissBtn = document.getElementById('btnDismissAnalyze');
+        banner.classList.remove('hidden', 'is-error');
+        spinner.classList.add('hidden');
+        textEl.textContent = t('ctxAttachedFmt')(title);
+        dismissBtn.style.display = 'inline-flex';
+        setTimeout(() => {
+          if (!analyzeState.running && !analyzeState.error) banner.classList.add('hidden');
+        }, 3200);
       } else if (msg.type === 'snippet') {
         snippetCache.set(msg.payload.nodeId, msg.payload);
         if (selectedNodeId === msg.payload.nodeId && inspectorTab === 'overview') {
@@ -4338,14 +4729,19 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           if (cur) renderInspector(cur);
         }
       } else if (msg.type === 'dirListing') {
+        setCanvasBusy(false);
         pickingDialog = false;
         dirBrowserLoading = false;
         dirBrowserOpen = true;
         dirListingState = msg.payload || null;
-        if (repoPopover) repoPopover.classList.remove('hidden');
+        if (repoPopover) {
+          repoPopover.classList.remove('hidden');
+          if (repoToggleBtn) positionPopover(repoPopover, repoToggleBtn, false);
+        }
         applyStaticTranslations();
         renderInlineDirBrowser();
       } else if (msg.type === 'pickWorktreeDone') {
+        setCanvasBusy(false);
         pickingDialog = false;
         applyStaticTranslations();
       }

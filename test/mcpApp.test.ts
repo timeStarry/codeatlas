@@ -292,10 +292,17 @@ test('Canvas & Cockpit HTML scripts compile cleanly, omit decorative side-stripe
   const vscodeHtml = getCanvasHtml('testnonce123', { host: 'vscode' });
   const cockpitHtml = getCockpitHtml('testnonce123');
 
-  // Ensure heavy decorative border stripes are gone
-  for (const banned of ['border-top: 3px', 'border-left: 4px', 'border-left: 5px']) {
-    assert.equal(mcpHtml.includes(banned), false, `Canvas CSS must not contain ${banned}`);
+  // Ensure heavy decorative border stripes AND native <select> elements are completely eliminated from Canvas
+  for (const banned of ['border-top: 3px', 'border-left: 4px', 'border-left: 5px', '<select']) {
+    assert.equal(mcpHtml.includes(banned), false, `Canvas HTML must not contain ${banned}`);
+    assert.equal(vscodeHtml.includes(banned), false, `VS Code Canvas HTML must not contain ${banned}`);
   }
+
+  // Ensure unified opaque popover tokens, blocking busy overlay, and background session target toggle exist
+  assert.ok(mcpHtml.includes('--popover-bg:'), 'Canvas CSS must define opaque --popover-bg token');
+  assert.ok(mcpHtml.includes('id="customSelectPopover"'), 'Unified custom dropdown popover must exist');
+  assert.ok(mcpHtml.includes('id="canvasBusyScrim"') && mcpHtml.includes('id="topBusyBar"'), 'Blocking busy UI must exist');
+  assert.ok(mcpHtml.includes('data-agent-target="new"'), 'Background Agent session toggle must exist');
 
   // Compile every inline <script> block with Node vm.Script to catch any syntax/escaping bugs
   for (const [label, html] of [
