@@ -30,6 +30,48 @@ export async function getGitStateDir(repoRoot: string): Promise<string> {
   return path.join(gitDir, 'codeatlas');
 }
 
+export async function getGitCommonDir(repoRoot: string): Promise<string> {
+  try {
+    const out = await runGit(repoRoot, ['rev-parse', '--git-common-dir']);
+    return path.resolve(repoRoot, out.trim());
+  } catch {
+    const out = await runGit(repoRoot, ['rev-parse', '--git-dir']);
+    return path.resolve(repoRoot, out.trim());
+  }
+}
+
+/**
+ * Adds or removes `/.atlas/` in `<git-common-dir>/info/exclude` so workspace `.atlas/`
+ * files stay 100% ignored locally without touching the repository's `.gitignore`.
+ */
+export async function syncLocalGitExclude(
+  repoRoot: string,
+  shouldExclude: boolean,
+  pattern = '/.atlas/'
+): Promise<void> {
+  const commonDir = await getGitCommonDir(repoRoot);
+  const excludePath = path.join(commonDir, 'info', 'exclude');
+  await fs.mkdir(path.dirname(excludePath), { recursive: true });
+
+  let raw = '';
+  try {
+    raw = await fs.readFile(excludePath, 'utf-8');
+  } catch {
+    raw = '';
+  }
+
+  const lines = raw.split(/\r?\n/);
+  const hasEntry = lines.some((l) => l.trim() === pattern || l.trim() === '.atlas/' || l.trim() === '.atlas');
+
+  if (shouldExclude && !hasEntry) {
+    const prefix = raw.length > 0 && !raw.endsWith('\n') ? '\n' : '';
+    await fs.writeFile(excludePath, `${raw}${prefix}${pattern}\n`, 'utf-8');
+  } else if (!shouldExclude && hasEntry) {
+    const filtered = lines.filter((l) => l.trim() !== pattern);
+    await fs.writeFile(excludePath, filtered.join('\n'), 'utf-8');
+  }
+}
+
 export async function resolveEffectiveBaseRef(
   repoRoot: string,
   baseRef: string,

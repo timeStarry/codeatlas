@@ -240,9 +240,17 @@ export function getFileIconsClientJs(): string {
         );
       }
       if (k === 'directive') {
+        var dirColor = node.directiveStatus === 'resolved' ? '#3fb950' : '#a371f7';
         return _atlasSvg(
-          '<path d="M3 3h10v7.5H6.5L3.5 13V10.5H3V3Z" fill="#a371f7" fill-opacity="0.18" stroke="#a371f7" stroke-width="1.25" stroke-linejoin="round"/>',
-          '#a371f7'
+          '<path d="M3 3h10v7.5H6.5L3.5 13V10.5H3V3Z" fill="' + dirColor + '" fill-opacity="0.18" stroke="' + dirColor + '" stroke-width="1.25" stroke-linejoin="round"/>',
+          dirColor
+        );
+      }
+      if (k === 'external-dep') {
+        return _atlasSvg(
+          '<rect x="2.2" y="2.2" width="11.6" height="11.6" rx="2.5" stroke="#56b6c2" stroke-width="1.2" stroke-dasharray="2.2 1.8"/>' +
+          '<path d="M6 10 10.2 5.8M7 5.8h3.2V9" stroke="#56b6c2" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>',
+          '#56b6c2'
         );
       }
       return getFileIconSvg(node.path || node.title, { kind: k });

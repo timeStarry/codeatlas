@@ -6,8 +6,13 @@ import {
   BriefingReport,
   BriefingVerificationResult,
   EvidenceAnchor,
+  ModuleOutlineReport,
+  OutlineChildVerification,
+  OutlineVerificationResult,
+  RepoAtlasConfig,
+  StorageMode,
 } from './types.js';
-import { getGitContext, getGitStateDir } from './git.js';
+import { getGitContext, getGitStateDir, listTrackedFiles, resolveRef } from './git.js';
 import { verifyAnchor } from './verifier.js';
 
 const RETRY_DELAYS_MS = [10, 20, 40, 80, 160];
@@ -429,4 +434,217 @@ export async function ackDirective(
     await writeAtomicWin32(filePath, JSON.stringify(updated, null, 2) + '\n');
     return { ok: true, directive: updated };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Repository Storage Config (100% stored inside <git-dir>/codeatlas/config.json)
+// ---------------------------------------------------------------------------
+
+export async function loadRepoConfig(repoRoot: string): Promise<RepoAtlasConfig> {
+  try {
+    const stateDir = await getGitStateDir(repoRoot);
+    const raw = await fs.readFile(path.join(stateDir, 'config.json'), 'utf-8');
+    const parsed = JSON.parse(raw) as Partial<RepoAtlasConfig>;
+    const valid: StorageMode[] = ['git-hidden', 'worktree-excluded', 'worktree-tracked'];
+    if (parsed.storageMode && valid.includes(parsed.storageMode)) {
+      return { storageMode: parsed.storageMode };
+    }
+  } catch {
+    // default
+  }
+  return { storageMode: 'git-hidden' };
+}
+
+export async function saveRepoConfig(
+  repoRoot: string,
+  config: RepoAtlasConfig
+): Promise<RepoAtlasConfig> {
+  const stateDir = await getGitStateDir(repoRoot);
+  const cfgPath = path.join(stateDir, 'config.json');
+  await writeAtomicWin32(cfgPath, JSON.stringify(config, null, 2) + '\n');
+  return config;
+}
+
+// ---------------------------------------------------------------------------
+// L1 Module Outlines (In-Place Directory & File Role Summaries)
+// ---------------------------------------------------------------------------
+
+export interface StoredOutlineRecord {
+  id: string;
+  storedAt: string;
+  filePath: string;
+  outline: ModuleOutlineReport;
+  verification: OutlineVerificationResult;
+}
+
+function normalizeOutlineScope(raw: string): string {
+  const clean = String(raw ?? '')
+    .replace(/\\/g, '/')
+    .replace(/^\.\//, '')
+    .replace(/^\/+|\/+$/g, '');
+  return clean === '.' || clean === '(root)' ? '' : clean;
+}
+
+function outlineSlug(scopePath: string): string {
+  const norm = normalizeOutlineScope(scopePath);
+  if (!norm) return '__root__';
+  const safe = norm.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 72);
+  const hash = crypto.createHash('sha1').update(norm).digest('hex').slice(0, 8);
+  return `${safe}-${hash}`;
+}
+
+export async function verifyOutline(
+  repoRoot: string,
+  outline: ModuleOutlineReport
+): Promise<OutlineVerificationResult> {
+  const git = await getGitContext(repoRoot);
+  const tracked = await listTrackedFiles(git.repoRoot);
+  const trackedSet = new Set(tracked.map((f) => f.replace(/\\/g, '/')));
+  const dirPrefixes = new Set<string>();
+  for (const f of trackedSet) {
+    const parts = f.split('/');
+    for (let i = 1; i < parts.length; i++) {
+      dirPrefixes.add(parts.slice(0, i).join('/'));
+    }
+  }
+
+  const scopeNorm = normalizeOutlineScope(outline.scopePath);
+  const notes: string[] = [];
+
+  if (scopeNorm && !dirPrefixes.has(scopeNorm) && !trackedSet.has(scopeNorm)) {
+    // Also check working tree filesystem in case of untracked directory
+    try {
+      await fs.access(path.join(git.repoRoot, scopeNorm));
+    } catch {
+      notes.push(`Scope path "${scopeNorm}" does not exist in repository.`);
+    }
+  }
+
+  const checkExists = async (rel: string): Promise<{ exists: boolean; isDirectory: boolean }> => {
+    const clean = normalizeOutlineScope(rel);
+    if (!clean) return { exists: true, isDirectory: true };
+    if (trackedSet.has(clean)) return { exists: true, isDirectory: false };
+    if (dirPrefixes.has(clean)) return { exists: true, isDirectory: true };
+    try {
+      const st = await fs.stat(path.join(git.repoRoot, clean));
+      return { exists: true, isDirectory: st.isDirectory() };
+    } catch {
+      return { exists: false, isDirectory: false };
+    }
+  };
+
+  const childResults: OutlineChildVerification[] = [];
+  let validCount = 0;
+  let mismatchCount = 0;
+
+  for (const ch of outline.children ?? []) {
+    const cleanPath = normalizeOutlineScope(ch.path);
+    const status = await checkExists(cleanPath);
+    childResults.push({
+      item: { ...ch, path: cleanPath },
+      exists: status.exists,
+      isDirectory: status.isDirectory,
+    });
+    if (status.exists) {
+      validCount += 1;
+    } else {
+      mismatchCount += 1;
+      notes.push(`Child path "${ch.path}" does not exist in repository.`);
+    }
+  }
+
+  let recommendedEntryValid = true;
+  if (outline.recommendedEntry) {
+    const rec = await checkExists(outline.recommendedEntry);
+    recommendedEntryValid = rec.exists;
+    if (!rec.exists) {
+      mismatchCount += 1;
+      notes.push(`recommendedEntry "${outline.recommendedEntry}" does not exist.`);
+    }
+  }
+
+  let isStale = false;
+  if (outline.targetRef && outline.targetRef !== 'WORKTREE' && git.headSha) {
+    const resolved = await resolveRef(git.repoRoot, outline.targetRef);
+    if (resolved && resolved !== git.headSha) {
+      isStale = true;
+    }
+  }
+
+  const overallBadge =
+    notes.some((n) => n.startsWith('Scope path')) || mismatchCount > 0
+      ? 'mismatch'
+      : isStale
+        ? 'stale'
+        : 'verified';
+
+  return {
+    scopePath: scopeNorm,
+    targetRefClaimed: outline.targetRef || 'WORKTREE',
+    currentHeadSha: git.headSha,
+    isStale,
+    overallBadge,
+    validCount,
+    mismatchCount,
+    recommendedEntryValid,
+    children: childResults,
+    notes,
+    verifiedAt: new Date().toISOString(),
+  };
+}
+
+export async function saveOutlineRecord(
+  repoRoot: string,
+  outline: ModuleOutlineReport,
+  verification: OutlineVerificationResult
+): Promise<StoredOutlineRecord> {
+  const stateDir = await getGitStateDir(repoRoot);
+  const outlinesDir = path.join(stateDir, 'outlines');
+  const scopeNorm = normalizeOutlineScope(outline.scopePath);
+  const id = outlineSlug(scopeNorm);
+  const filePath = path.join(outlinesDir, `${id}.json`);
+  const normalizedOutline: ModuleOutlineReport = {
+    ...outline,
+    scopePath: scopeNorm,
+    recommendedEntry: outline.recommendedEntry
+      ? normalizeOutlineScope(outline.recommendedEntry)
+      : undefined,
+    children: (outline.children ?? []).map((c) => ({
+      ...c,
+      path: normalizeOutlineScope(c.path),
+    })),
+  };
+  const record: StoredOutlineRecord = {
+    id,
+    storedAt: new Date().toISOString(),
+    filePath,
+    outline: normalizedOutline,
+    verification,
+  };
+  await writeAtomicWin32(filePath, JSON.stringify(record, null, 2) + '\n');
+  return record;
+}
+
+export async function loadAllOutlines(repoRoot: string): Promise<StoredOutlineRecord[]> {
+  try {
+    const stateDir = await getGitStateDir(repoRoot);
+    const outlinesDir = path.join(stateDir, 'outlines');
+    const entries = await fs.readdir(outlinesDir, { withFileTypes: true });
+    const records: StoredOutlineRecord[] = [];
+    for (const e of entries) {
+      if (!e.isFile() || !e.name.endsWith('.json')) continue;
+      try {
+        const raw = await fs.readFile(path.join(outlinesDir, e.name), 'utf-8');
+        const parsed = JSON.parse(raw) as StoredOutlineRecord;
+        if (parsed?.outline && Array.isArray(parsed.outline.children)) {
+          records.push(parsed);
+        }
+      } catch {
+        // skip malformed
+      }
+    }
+    return records;
+  } catch {
+    return [];
+  }
 }

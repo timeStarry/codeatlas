@@ -335,3 +335,180 @@ test('Canvas & Cockpit HTML scripts compile cleanly, omit decorative side-stripe
   assert.ok(ciSvg.includes('#b392f0'), 'Workflow YAML should render pipeline icon');
   assert.notEqual(folderClosed, folderOpen, 'Open and closed folders must have distinct icons');
 });
+
+test('Storage isolation (.git/codeatlas vs .git/info/exclude), Scope Root + external boundary detection, L1 outline hydration, and Q&A resolution', async () => {
+  const { dir: repoDir } = await createTempGitRepo();
+  const client = new McpStdioClient(repoDir);
+
+  try {
+    await client.request('initialize', { protocolVersion: '2024-11-05', capabilities: {} });
+
+    // 1. Default git-hidden manifest storage creates ZERO files in working tree and ZERO git status changes
+    const initRes = await client.request('tools/call', {
+      name: 'atlas_app_action',
+      arguments: {
+        worktreePath: repoDir,
+        action: 'initManifestDraft',
+        payload: { type: 'initManifestDraft' },
+      },
+    });
+    assert.ok(!initRes.isError);
+    assert.equal(initRes.structuredContent.storageMode, 'git-hidden');
+    assert.equal(initRes.structuredContent.graph.architecture.hasManifest, true);
+
+    let wtManifestExists = true;
+    try {
+      await fs.access(path.join(repoDir, '.atlas', 'manifest.json'));
+    } catch {
+      wtManifestExists = false;
+    }
+    assert.equal(wtManifestExists, false, 'Default git-hidden mode must not create .atlas/ in worktree');
+    assert.equal((await getGitContext(repoDir)).dirtyCount, 0);
+
+    // Switching to worktree-excluded promotes manifest to .atlas/manifest.json AND keeps git status 0 dirty via .git/info/exclude!
+    const exclRes = await client.request('tools/call', {
+      name: 'atlas_app_action',
+      arguments: {
+        worktreePath: repoDir,
+        action: 'setStorageMode',
+        payload: { type: 'setStorageMode', storageMode: 'worktree-excluded' },
+      },
+    });
+    assert.ok(!exclRes.isError);
+    assert.equal(exclRes.structuredContent.storageMode, 'worktree-excluded');
+    await fs.access(path.join(repoDir, '.atlas', 'manifest.json'));
+    assert.equal(
+      (await getGitContext(repoDir)).dirtyCount,
+      0,
+      'worktree-excluded must ignore .atlas/ via .git/info/exclude without touching .gitignore'
+    );
+
+    // 2. Subtree Scope Root (`src/core`) + External Dependency Boundary Detection (`src/index.ts` imports `src/core/engine.ts`)
+    const scopeRes = await client.request('tools/call', {
+      name: 'atlas_app_action',
+      arguments: {
+        worktreePath: repoDir,
+        action: 'setScopeRoot',
+        payload: { type: 'setScopeRoot', scopeRoot: 'src/core' },
+      },
+    });
+    assert.ok(!scopeRes.isError);
+    const scopedGraph = scopeRes.structuredContent.graph;
+    assert.equal(scopedGraph.scopeRoot, 'src/core');
+    assert.ok(scopedGraph.scopeAncestors.length === 3);
+    assert.ok(
+      scopedGraph.nodes.some((n: any) => n.kind === 'external-dep' && n.externalDirection === 'inbound'),
+      'Scoped view must detect inbound external caller from src/index.ts'
+    );
+    assert.ok(scopedGraph.summary.externalBoundaryCount >= 1);
+
+    // Reset back to full repo
+    await client.request('tools/call', {
+      name: 'atlas_app_action',
+      arguments: {
+        worktreePath: repoDir,
+        action: 'setScopeRoot',
+        payload: { type: 'setScopeRoot', scopeRoot: '' },
+      },
+    });
+
+    // 3. L1 Module Outline (`atlas_submit_outline`) hydrates file roles in-place and rejects hallucinated paths
+    const badOutline = await client.request('tools/call', {
+      name: 'atlas_submit_outline',
+      arguments: {
+        worktreePath: repoDir,
+        outline: {
+          schemaVersion: '0.2',
+          scopePath: 'src/core',
+          targetRef: 'WORKTREE',
+          title: 'Bad Outline',
+          summary: 'Contains nonexistent file',
+          children: [{ path: 'src/core/does-not-exist.ts', summary: 'Ghost file' }],
+        },
+      },
+    });
+    assert.equal(badOutline.isError, true, 'Hallucinated outline path must fail verification');
+
+    const okOutline = await client.request('tools/call', {
+      name: 'atlas_submit_outline',
+      arguments: {
+        worktreePath: repoDir,
+        outline: {
+          schemaVersion: '0.2',
+          scopePath: 'src/core',
+          targetRef: 'WORKTREE',
+          title: 'Core Scoring Module',
+          summary: 'Owns deterministic score computation.',
+          recommendedEntry: 'src/core/engine.ts',
+          children: [
+            {
+              path: 'src/core/engine.ts',
+              summary: 'Computes bounded non-negative score',
+              role: 'entry',
+            },
+          ],
+        },
+      },
+    });
+    assert.ok(!okOutline.isError);
+
+    const afterOutline = await client.request('tools/call', {
+      name: 'open_atlas',
+      arguments: { worktreePath: repoDir },
+    });
+    const engineNode = afterOutline.structuredContent.graph.nodes.find(
+      (n: any) => n.path === 'src/core/engine.ts'
+    );
+    assert.ok(engineNode, 'Outline submission should auto-expand domain to show hydrated file');
+    assert.equal(engineNode.roleSummary, 'Computes bounded non-negative score');
+    assert.equal(engineNode.isRecommendedEntry, true);
+
+    // 4. Anchored Question -> Resolution round-trip updates openDirectiveCount and renders resolutionSummary
+    const askRes = await client.request('tools/call', {
+      name: 'atlas_app_action',
+      arguments: {
+        worktreePath: repoDir,
+        action: 'addDirective',
+        payload: {
+          type: 'addDirective',
+          kind: 'question',
+          path: 'src/core/engine.ts',
+          startLine: 2,
+          note: 'Why return 0 for negative inputs?',
+        },
+      },
+    });
+    assert.ok(askRes.structuredContent.createdDirective?.id);
+    assert.equal(askRes.structuredContent.graph.summary.openDirectiveCount, 1);
+
+    const dirId = askRes.structuredContent.createdDirective.id;
+    const ackRes = await client.request('tools/call', {
+      name: 'atlas_ack_directive',
+      arguments: {
+        worktreePath: repoDir,
+        id: dirId,
+        expectedRevision: 1,
+        agentId: 'antigravity',
+        summary: 'Negative scores are clamped to 0 to preserve monotonic totals.',
+      },
+    });
+    assert.ok(!ackRes.isError);
+
+    const afterAck = await client.request('tools/call', {
+      name: 'open_atlas',
+      arguments: { worktreePath: repoDir },
+    });
+    assert.equal(afterAck.structuredContent.graph.summary.openDirectiveCount, 0);
+    const resolvedDirNode = afterAck.structuredContent.graph.nodes.find(
+      (n: any) => n.directiveId === dirId
+    );
+    assert.equal(resolvedDirNode?.directiveStatus, 'resolved');
+    assert.equal(
+      resolvedDirNode?.resolutionSummary,
+      'Negative scores are clamped to 0 to preserve monotonic totals.'
+    );
+  } finally {
+    await client.close();
+    await fs.rm(repoDir, { recursive: true, force: true });
+  }
+});

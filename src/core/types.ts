@@ -2,6 +2,49 @@ export type CompareMode = 'direct-diff' | 'merge-base' | 'worktree';
 export type ClaimType = 'fact' | 'inference' | 'unknown';
 export type VerificationBadge = 'verified' | 'mismatch' | 'stale' | 'unverified' | 'unknown';
 export type DirectiveStatus = 'open' | 'claimed' | 'resolved' | 'dismissed';
+export type StorageMode = 'git-hidden' | 'worktree-excluded' | 'worktree-tracked';
+export type AnalysisDepth = 'overview' | 'flow' | 'deep';
+
+export interface RepoAtlasConfig {
+  storageMode: StorageMode;
+}
+
+export interface FileRoleItem {
+  path: string;
+  summary: string;
+  role?: 'entry' | 'core' | 'types' | 'util' | 'test' | 'config';
+  keySymbols?: string[];
+}
+
+export interface ModuleOutlineReport {
+  schemaVersion: '0.2';
+  scopePath: string;
+  targetRef: string;
+  title: string;
+  summary: string;
+  recommendedEntry?: string;
+  children: FileRoleItem[];
+}
+
+export interface OutlineChildVerification {
+  item: FileRoleItem;
+  exists: boolean;
+  isDirectory: boolean;
+}
+
+export interface OutlineVerificationResult {
+  scopePath: string;
+  targetRefClaimed: string;
+  currentHeadSha: string;
+  isStale: boolean;
+  overallBadge: VerificationBadge;
+  validCount: number;
+  mismatchCount: number;
+  recommendedEntryValid: boolean;
+  children: OutlineChildVerification[];
+  notes: string[];
+  verifiedAt: string;
+}
 
 export interface EvidenceAnchor {
   path: string;
@@ -50,6 +93,8 @@ export interface BriefingReport {
   baseRef?: string;
   targetRef: string;
   compareMode?: CompareMode;
+  depth?: 'flow' | 'deep';
+  scopePath?: string;
   summary: string;
   blockingConditions?: BlockingCondition[];
   claims: BriefingClaim[];
@@ -192,7 +237,7 @@ export interface AtlasManifest {
 }
 
 export type ManifestLoadResult =
-  | { status: 'ok'; manifest: AtlasManifest }
+  | { status: 'ok'; manifest: AtlasManifest; source?: 'worktree' | 'git-hidden' }
   | { status: 'missing' }
   | { status: 'invalid'; errors: string[] };
 

@@ -127,13 +127,6 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       color: var(--accent);
       flex-shrink: 0;
     }
-    .tb-divider {
-      width: 1px;
-      height: 16px;
-      background: var(--border);
-      margin: 0 2px;
-      flex-shrink: 0;
-    }
 
     /* Repo / Branch Pill + MCP Worktree Popover */
     .repo-wrap { position: relative; display: inline-flex; align-items: center; }
@@ -235,7 +228,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       pointer-events: none;
     }
     #searchInput {
-      width: 156px;
+      width: 152px;
       height: 26px;
       padding: 0 36px 0 25px;
       border-radius: 6px;
@@ -243,7 +236,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       transition: width 0.16s ease, border-color 0.14s ease;
     }
     #searchInput:focus {
-      width: 204px;
+      width: 200px;
       outline: none;
       border-color: var(--accent);
     }
@@ -341,17 +334,48 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       font-weight: 600;
     }
 
-    /* Primary Analyze CTA */
+    /* Split Analyze Button + Batch Dispatch Pill */
+    .split-analyze {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 6px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    }
+    .split-analyze > button {
+      border-radius: 0;
+      background: var(--btn-bg);
+      color: #fff;
+      font-weight: 600;
+    }
+    .split-analyze > button:hover:not(:disabled) { background: var(--btn-hover); }
+    .split-analyze > .split-caret {
+      padding: 0 6px;
+      border-left: 1px solid rgba(255,255,255,0.22);
+      font-size: 9.5px;
+    }
     .btn-analyze {
       background: var(--btn-bg);
       color: #ffffff;
       font-weight: 600;
       border: 1px solid rgba(121,192,255,0.32);
-      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
     }
     .btn-analyze:hover:not(:disabled) { background: var(--btn-hover); }
+    .btn-batch-dispatch {
+      background: rgba(163,113,247,0.18);
+      color: #d2a8ff;
+      border: 1px solid rgba(163,113,247,0.5);
+      font-weight: 600;
+      font-size: 11px;
+      padding: 0 9px;
+    }
+    .btn-batch-dispatch:hover:not(:disabled) {
+      background: rgba(163,113,247,0.3);
+      color: #ffffff;
+    }
+    .btn-batch-dispatch.hidden { display: none; }
 
-    /* Overflow More Menu */
+    /* Overflow More Menu & Floating Depth / Context Menus */
     .more-wrap { position: relative; display: inline-flex; }
     .more-dot {
       position: absolute;
@@ -364,22 +388,29 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       pointer-events: none;
     }
     .more-dot.hidden { display: none; }
-    .more-menu {
-      position: absolute;
-      top: calc(100% + 6px);
-      right: 0;
-      width: 256px;
+    .more-menu, .floating-menu {
       background: var(--panel-2);
       border: 1px solid var(--border-strong);
       border-radius: 8px;
       padding: 5px;
-      box-shadow: 0 10px 28px rgba(0,0,0,0.38);
-      z-index: 45;
+      box-shadow: 0 10px 28px rgba(0,0,0,0.42);
       display: flex;
       flex-direction: column;
       gap: 2px;
     }
-    .more-menu.hidden { display: none; }
+    .more-menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      width: 268px;
+      z-index: 45;
+    }
+    .floating-menu {
+      position: fixed;
+      width: 248px;
+      z-index: 80;
+    }
+    .more-menu.hidden, .floating-menu.hidden { display: none; }
     .more-sec-label {
       font-size: 10px;
       font-weight: 700;
@@ -392,10 +423,10 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       background: var(--border);
       margin: 3px 4px;
     }
-    .more-menu button {
+    .more-menu button, .floating-menu button {
       width: 100%;
       height: auto;
-      min-height: 28px;
+      min-height: 27px;
       justify-content: flex-start;
       text-align: left;
       background: transparent;
@@ -406,15 +437,25 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       font-size: 11.5px;
       white-space: normal;
     }
-    .more-menu button:hover:not(:disabled) { background: var(--surface-hover); }
-    .menu-item-col { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; }
+    .more-menu button:hover:not(:disabled), .floating-menu button:hover:not(:disabled) {
+      background: var(--surface-hover);
+    }
+    .menu-item-col { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; }
+    .menu-item-top { display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 6px; }
     .agent-menu-desc {
       font-size: 10px;
       color: var(--muted);
       line-height: 1.3;
     }
+    .storage-check {
+      color: var(--accent);
+      font-weight: 700;
+      width: 12px;
+      display: inline-block;
+      flex-shrink: 0;
+    }
 
-    /* Subbar: Breadcrumbs + Architecture Meta + Semantic Trust Chips */
+    /* Subbar: Scope Breadcrumbs + Architecture Meta + Semantic Trust Chips */
     .subbar {
       display: flex;
       align-items: center;
@@ -464,6 +505,22 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       gap: 4px;
     }
     .crumb:hover { background: var(--surface-subtle); color: var(--accent); }
+    .crumb.scope-active {
+      background: rgba(77,166,255,0.14);
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .scope-exit-btn {
+      height: 18px;
+      padding: 0 5px;
+      font-size: 10px;
+      border-radius: 4px;
+      background: var(--surface-subtle);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      margin-left: 3px;
+    }
+    .scope-exit-btn:hover { color: var(--fg); border-color: var(--accent); }
     .trust-chips { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
     .chip {
       font-size: 10.5px;
@@ -649,6 +706,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     .edge-path.impact { stroke: var(--cyan); stroke-width: 1.75; stroke-dasharray: 4 3; }
     .edge-path.dep { stroke: #58a6ff; stroke-width: 1.75; stroke-dasharray: 4 3; }
     .edge-path.directive { stroke: var(--purple); stroke-width: 1.75; stroke-dasharray: 3 3; }
+    .edge-path.external { stroke: #56b6c2; stroke-width: 1.65; stroke-dasharray: 4 4; }
     .edge-path.dimmed { opacity: 0.1; }
     .edge-path.focused { stroke-width: 2.3; opacity: 1; }
     .edge-pill { fill: var(--panel); stroke: var(--border-strong); stroke-width: 1; }
@@ -656,12 +714,14 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     .edge-pill.impact { stroke: rgba(57,197,207,0.55); }
     .edge-pill.dep { stroke: rgba(88,166,255,0.55); }
     .edge-pill.directive { stroke: rgba(163,113,247,0.55); }
+    .edge-pill.external { stroke: rgba(86,182,194,0.55); }
     .edge-pill.dimmed, .edge-label.dimmed { opacity: 0.12; }
     .edge-label { fill: var(--muted); font-size: 9px; font-weight: 600; font-family: var(--mono); }
     .edge-label.blocking { fill: var(--amber); }
     .edge-label.impact { fill: var(--cyan); }
     .edge-label.dep { fill: #58a6ff; }
     .edge-label.directive { fill: var(--purple); }
+    .edge-label.external { fill: #56b6c2; }
 
     /* Nodes: Clean Zero-Stripe Architectural Hierarchy */
     .node {
@@ -703,12 +763,20 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       border: 1px dashed rgba(163,113,247,0.62);
       background: linear-gradient(155deg, rgba(163,113,247,0.08), var(--panel));
     }
+    .node.kind-directive.is-resolved {
+      border: 1px dashed rgba(63,185,80,0.55);
+      background: linear-gradient(155deg, rgba(63,185,80,0.07), var(--panel));
+    }
+    .node.kind-external-dep {
+      border: 1px dashed rgba(86,182,194,0.62);
+      background: linear-gradient(155deg, rgba(86,182,194,0.08), var(--panel-2));
+    }
     .node.has-mismatch {
       border-color: rgba(248,81,73,0.68);
       box-shadow: 0 0 0 1px rgba(248,81,73,0.22), 0 3px 12px rgba(0,0,0,0.22);
     }
 
-    /* Archetype B & C: Compact Folder & IDE File Rows */
+    /* Archetype B & C: Compact Folder, External Port & IDE File Rows */
     .node.node-compact {
       width: 246px;
       padding: 6px 10px;
@@ -761,10 +829,22 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       background: var(--surface-subtle);
       color: var(--muted);
       font-weight: 500;
-      max-width: 112px;
+      max-width: 116px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .ext-badge {
+      font-size: 9.5px;
+      font-weight: 600;
+      padding: 0 5px;
+      height: 16px;
+      line-height: 16px;
+      border-radius: 4px;
+      background: rgba(86,182,194,0.15);
+      color: #56b6c2;
+      border: 1px dashed rgba(86,182,194,0.42);
       flex-shrink: 0;
     }
     .node-sub {
@@ -788,7 +868,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     }
     .kind-claim .node-body, .kind-directive .node-body { -webkit-line-clamp: 3; }
 
-    .blocking-box {
+    .blocking-box, .resolution-box {
       margin-top: 6px;
       padding: 5px 8px;
       border-radius: 5px;
@@ -796,6 +876,10 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       border-left: 2px solid var(--amber);
       font-size: 11px;
       line-height: 1.4;
+    }
+    .resolution-box {
+      border-left-color: var(--green);
+      color: var(--fg);
     }
     .blocking-if { color: var(--amber); font-weight: 600; }
     .blocking-then { color: var(--fg); margin-top: 2px; }
@@ -839,16 +923,32 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       background: var(--surface-hover);
       border-color: var(--border-strong);
     }
-    .quick-analyze {
-      color: var(--accent);
-      background: rgba(77,166,255,0.1);
+    .card-split-analyze {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 4px;
+      overflow: hidden;
       opacity: 0;
       transition: opacity 0.12s;
     }
-    .node:hover .quick-analyze, .node.selected .quick-analyze { opacity: 1; }
-    .quick-analyze:hover:not(:disabled) {
-      background: rgba(77,166,255,0.22);
-      color: #ffffff;
+    .node:hover .card-split-analyze, .node.selected .card-split-analyze { opacity: 1; }
+    .card-split-analyze > button {
+      height: 20px;
+      font-size: 10px;
+      padding: 0 6px;
+      border-radius: 0;
+      color: var(--accent);
+      background: rgba(77,166,255,0.12);
+      border: none;
+      font-weight: 600;
+    }
+    .card-split-analyze > button + button {
+      padding: 0 4px;
+      border-left: 1px solid rgba(77,166,255,0.25);
+    }
+    .card-split-analyze > button:hover:not(:disabled) {
+      background: rgba(77,166,255,0.24);
+      color: #fff;
     }
 
     /* Compact IDE File / Folder Row Internals */
@@ -879,7 +979,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-    .kind-entrypoint .leaf-title, .kind-folder .leaf-title { font-weight: 600; }
+    .kind-entrypoint .leaf-title, .kind-folder .leaf-title, .kind-external-dep .leaf-title { font-weight: 600; }
     .leaf-sub {
       font-family: var(--mono);
       font-size: 10px;
@@ -887,6 +987,17 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+    .leaf-role {
+      font-size: 10.5px;
+      color: var(--fg);
+      opacity: 0.82;
+      line-height: 1.3;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      margin-top: 1px;
     }
     .leaf-right {
       display: inline-flex;
@@ -904,6 +1015,10 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       background: rgba(88,166,255,0.14);
       color: var(--accent);
       flex-shrink: 0;
+    }
+    .micro-tag.star-tag {
+      background: rgba(210,153,34,0.18);
+      color: var(--yellow);
     }
     .status-dot {
       width: 7px;
@@ -1001,7 +1116,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
 
     /* Right Inspector */
     .inspector {
-      width: 392px;
+      width: 396px;
       max-width: 46vw;
       background: var(--panel);
       border-left: 1px solid var(--border);
@@ -1086,7 +1201,14 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     .code-line.diff-plus { background: var(--diff-add-bg); margin: 0 -8px; padding: 0 8px; }
     .code-line.diff-minus { background: var(--diff-del-bg); margin: 0 -8px; padding: 0 8px; }
     .code-line.diff-hunk { color: var(--accent); font-weight: 600; }
-    .line-no { color: var(--muted); min-width: 30px; text-align: right; user-select: none; }
+    .line-no {
+      color: var(--muted);
+      min-width: 30px;
+      text-align: right;
+      user-select: none;
+      cursor: pointer;
+    }
+    .line-no:hover { color: var(--accent); text-decoration: underline; }
 
     /* Bottom Floating Canvas Controls */
     .hud {
@@ -1192,28 +1314,55 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         </div>
       </div>
 
-      <!-- Right Zone: Clean Filters + Primary CTA + Overflow Menu -->
+      <!-- Right Zone: Batch Dispatch Pill + Clean Filters + Split Analyze CTA + Overflow Menu -->
       <div class="tb-zone">
+        <button class="btn-batch-dispatch analyze-action hidden" id="btnDispatchBatch"></button>
         <button class="secondary" id="btnSummaryToggle">变更摘要</button>
         <div class="filter-group">
           <button id="btnPruneToggle" title="隐藏未变更的无关分支">仅看变更</button>
           <button id="btnDeltaToggle" title="压暗未变更节点以突出 Diff">高亮Diff</button>
           <button id="btnFocusToggle" title="仅高亮当前选中节点的上下游链路">聚焦</button>
         </div>
-        <button class="btn-analyze analyze-action" id="btnAnalyzeBranch">⚡ 分析分支</button>
+        <div class="split-analyze analyze-action">
+          <button id="btnAnalyzeBranch">⚡ 分析分支</button>
+          <button class="split-caret" id="btnAnalyzeBranchMenu" title="选择分析深度档位">▾</button>
+        </div>
         <button class="secondary icon-btn" id="btnRefresh" title="刷新索引">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M13.2 8a5.2 5.2 0 1 1-1.4-3.6M13.4 2.6v2.8h-2.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
         <div class="more-wrap">
-          <button class="secondary icon-btn" id="btnMoreMenu" title="更多工具与设置">
+          <button class="secondary icon-btn" id="btnMoreMenu" title="存储设置与更多工具">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <circle cx="3.2" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.8" cy="8" r="1.3"/>
             </svg>
             <span class="more-dot hidden" id="moreMenuDot"></span>
           </button>
           <div class="more-menu hidden" id="moreMenu">
+            <div class="more-sec-label" id="lblStorageSec">Git 存储与隔离策略</div>
+            <button data-storage-mode="git-hidden" id="btnStHidden">
+              <span class="storage-check" id="chkStHidden">✓</span>
+              <span class="menu-item-col">
+                <strong id="lblStHidden">个人隐身 (.git/codeatlas)</strong>
+                <span class="agent-menu-desc" id="descStHidden">默认零入侵，不产生工作区文件、不改 .gitignore</span>
+              </span>
+            </button>
+            <button data-storage-mode="worktree-excluded" id="btnStExcluded">
+              <span class="storage-check" id="chkStExcluded"></span>
+              <span class="menu-item-col">
+                <strong id="lblStExcluded">工作区可视 (.git/info/exclude)</strong>
+                <span class="agent-menu-desc" id="descStExcluded">生成 .atlas/ 方便手改，本机静默忽略不进 Git</span>
+              </span>
+            </button>
+            <button data-storage-mode="worktree-tracked" id="btnStTracked">
+              <span class="storage-check" id="chkStTracked"></span>
+              <span class="menu-item-col">
+                <strong id="lblStTracked">团队随库共享 (.atlas/ 入库)</strong>
+                <span class="agent-menu-desc" id="descStTracked">允许将 .atlas/manifest.json 提交至团队仓库</span>
+              </span>
+            </button>
+            <div class="more-sep"></div>
             <button id="btnInitManifest" style="display:none;"></button>
             <button class="vscode-only" id="btnRunImpact"></button>
             <button class="vscode-only" id="btnVerifyBriefing"></button>
@@ -1235,7 +1384,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
             <button class="vscode-only" id="btnCopyManifestPrompt">
               <span class="menu-item-col">
                 <strong id="lblCopyManifest">3. 复制“完善架构骨架” Prompt</strong>
-                <span class="agent-menu-desc" id="descCopyManifest">让 Agent 编写 .atlas/manifest.json 与红线</span>
+                <span class="agent-menu-desc" id="descCopyManifest">让 Agent 编写 manifest.json 与红线</span>
               </span>
             </button>
             <div class="more-sep"></div>
@@ -1314,7 +1463,11 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
             <strong id="inspTitle" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">节点精读</strong>
           </div>
           <div class="tb-zone" style="gap:4px;flex-shrink:0;">
-            <button class="btn-analyze analyze-action" id="btnInspAnalyzeQuick" style="height:22px;padding:0 8px;font-size:11px;display:none;">⚡ 分析</button>
+            <button class="secondary" id="btnInspScopeRoot" style="height:22px;padding:0 7px;font-size:11px;display:none;"></button>
+            <div class="split-analyze analyze-action" id="inspAnalyzeWrap" style="display:none;">
+              <button id="btnInspAnalyzeQuick" style="height:22px;padding:0 7px;font-size:11px;">⚡ 概览</button>
+              <button class="split-caret" id="btnInspAnalyzeMenu" style="height:22px;padding:0 5px;">▾</button>
+            </div>
             <button class="secondary" id="btnInspFocus" style="height:22px;padding:0 7px;font-size:11px;">聚焦</button>
             <button class="secondary icon-btn" id="btnCloseInsp" style="width:22px;height:22px;">✕</button>
           </div>
@@ -1322,12 +1475,18 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         <div class="inspector-tabs">
           <button class="insp-tab active" data-itab="overview" id="tabCode">源码</button>
           <button class="insp-tab" data-itab="diff" id="tabDiff">Diff</button>
-          <button class="insp-tab" data-itab="directive" id="tabDir">+ 批注</button>
+          <button class="insp-tab" data-itab="directive" id="tabDir">💬 提问与批注</button>
           <button class="insp-tab" data-itab="trust" id="tabTrust">可信度</button>
         </div>
         <div class="inspector-content" id="inspContent"></div>
       </aside>
     </div>
+
+    <!-- Shared Floating Progressive Depth Picker -->
+    <div class="floating-menu hidden" id="depthPopover"></div>
+
+    <!-- Node Right-Click Context Menu -->
+    <div class="floating-menu hidden" id="nodeCtxMenu"></div>
   </div>
 
   ${inlineClientScript}<script${mainScriptAttr}>
@@ -1342,37 +1501,50 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         switchRepoTitle: '本地 Git 仓库路径',
         loadRepoBtn: '切换仓库', worktreePh: '输入本地 Git 仓库路径 (如 D:\\\\Project\\\\aster)...',
         mcpNoRepoDesc: '请点击左上角仓库胶囊输入本地 Git 仓库路径（如 D:\\\\Project\\\\aster）。',
-        analyzeBranchBtn: '⚡ 分析分支', analyzeNodeBtn: '⚡ 深度分析此模块', analyzeQuickBtn: '⚡ 分析',
-        analyzingPrefix: '⚡ 正在分析: ', analyzingDefault: '⚡ 正在分析并生成确定性核验简报...',
-        analyzeErrorPrefix: '⚠ 分析失败: ',
+        analyzeBranchBtn: '⚡ 分析分支', analyzeScopeBtn: '⚡ 概览当前根',
+        depthBtnOverview: '⚡ 概览职责', depthBtnFlow: '⚡ 解析链路', depthBtnDeep: '⚡ 深度核验',
+        depthL1Title: 'L1 · 概览职责（默认推荐）', depthL1Desc: '快速标注目录与各子文件一句话职责，原地回填不加冗余卡片',
+        depthL2Title: 'L2 · 核心调用链路', depthL2Desc: '梳理模块内 3–5 条主干协作流程与数据流',
+        depthL3Title: 'L3 · 深度边界核验', depthL3Desc: '逐行审计阻断守卫 IF→Guard、跨模块影响与架构盲区',
+        analyzingPrefix: '⚡ 正在执行: ', analyzingDefault: '⚡ 正在分析并核验...',
+        analyzeErrorPrefix: '⚠ 失败: ',
+        batchDispatchFmt: (n) => '📌 待发批注 (' + n + ') · 🚀 一键发送',
+        storageSec: 'Git 存储与隔离策略',
+        stHidden: '个人隐身 (.git/codeatlas)', stHiddenDesc: '默认零入侵，不产生工作区文件、不改 .gitignore',
+        stExcluded: '工作区可视 (.git/info/exclude)', stExcludedDesc: '生成 .atlas/ 方便手改，本机静默忽略不进 Git',
+        stTracked: '团队随库共享 (.atlas/ 入库)', stTrackedDesc: '允许将 .atlas/manifest.json 提交至团队仓库',
+        setScopeRoot: '🎯 设为当前视图根', exitScopeRoot: '🏠 返回全仓视图', switchScopeToExt: '🎯 切换视图根至此模块',
+        ctxAskAgent: '💬 就此节点提问 / 纠偏...', ctxFocus: '🔍 聚焦上下游子树',
         summaryBtn: '变更摘要', pruneBtn: '仅看变更', impactBtn: '分析 LSP 影响面',
         searchPh: '搜索节点或文件 (/)...', deltaBtn: '高亮Diff',
-        focusBtn: '聚焦', refreshTip: '刷新仓库索引', initManifest: '保存架构骨架 (.atlas/manifest.json)',
+        focusBtn: '聚焦', refreshTip: '刷新仓库索引', initManifest: '保存架构骨架 (manifest.json)',
         agentSec: 'Agent 协作接入', exportDir: '导出画布批注 (Markdown)',
         copyMcp: '1. 复制 MCP 配置 JSON', copyMcpDesc: '自动填好当前仓库路径，粘贴到 Agent 配置',
         copyBranch: '2. 复制“分析当前分支” Prompt', copyBranchDesc: '让 Agent 生成因果简报并自动回传画布',
-        copyManifest: '3. 复制“完善架构骨架” Prompt', copyManifestDesc: '让 Agent 编写 .atlas/manifest.json 与红线',
+        copyManifest: '3. 复制“完善架构骨架” Prompt', copyManifestDesc: '让 Agent 编写 manifest.json 与红线',
         copyNodePrompt: '复制 Agent 分析 Prompt',
         verifyJson: '加载并核验简报 JSON...', reverify: '立即重验', langBtn: '切换语言: English',
         selectBriefing: '-- 选择简报 --', fit: '适配', tidy: '整理', expand: '全展', collapse: '收拢',
         indexFiles: '展开文件层', collapseFiles: '收起文件层', legendBtn: '? 图例',
-        summaryTitle: '分支变更摘要', tabCode: '源码与详情', tabDiff: 'Git Diff', tabDir: '+ 批注', tabTrust: '可信度',
-        inspFocus: '聚焦', defaultCrumb: '点击节点查看源码 · 双击聚焦链路 · 点模块按需展开文件',
+        summaryTitle: '分支变更摘要', tabCode: '源码与详情', tabDiff: 'Git Diff', tabDir: '💬 提问与批注', tabTrust: '可信度',
+        inspFocus: '聚焦', defaultCrumb: '右键节点可设为局部根或提问 · 点行号可锚定代码提问',
         openBtn: '打开 ↗', expandDomainFiles: '文件', collapseDomainFiles: '收起',
-        entryTag: '入口',
+        entryTag: '入口', recStarTag: '★ 先读', extBadgeFmt: (n) => '⇄ ' + n + ' 外部',
         kind: {
-          root: '仓库快照', domain: '职责域', folder: '目录', entrypoint: '业务入口', file: '源码文件',
-          claim: '因果声明', evidence: '代码证据', blocking: '阻断守卫', 'diff-file': '变更文件', impact: '跨模块影响', directive: '人工批注'
+          root: '视图根', domain: '职责域', folder: '目录', entrypoint: '业务入口', file: '源码文件',
+          claim: '因果声明', evidence: '代码证据', blocking: '阻断守卫', 'diff-file': '变更文件',
+          impact: '跨模块影响', directive: '提问 / 批注', 'external-dep': '视图外依赖边界'
         },
         badge: { verified: '✓ 已核验', mismatch: '✕ 失配', stale: '⟳ 过期', unverified: '未核验', unknown: '未知' },
         legendHtml:
           '<div><i class="dot" style="background:rgba(140,150,168,0.65);"></i>直角树干线：目录与模块静态归属层级</div>' +
           '<div><i class="dot" style="background:#4da6ff;"></i>蓝色弧线：因果声明 / 模块依赖关系</div>' +
           '<div><i class="dot" style="background:var(--amber);"></i>橙色虚线：显式阻断守卫 (IF → 拦截结果)</div>' +
-          '<div><i class="dot" style="background:var(--purple);"></i>紫色虚线框：人工纠偏与红线批注</div>' +
-          '<div style="border-top:1px solid var(--border);padding-top:5px;margin-top:2px;font-family:var(--mono);font-size:10px;">/ 搜索 · F 适配 · 0 100% · D 高亮Diff · E/C 展开收拢 · Enter 跳源码 · Esc 返回</div>',
+          '<div><i class="dot" style="background:#56b6c2;"></i>青色虚线框：局部视图根的外部依赖边界桩</div>' +
+          '<div><i class="dot" style="background:var(--purple);"></i>紫色虚线框：锚点提问与纠偏批注</div>' +
+          '<div style="border-top:1px solid var(--border);padding-top:5px;margin-top:2px;font-family:var(--mono);font-size:10px;">右键节点：设为局部根 / 提问 / 选深度 · / 搜索 · F 适配 · Esc 返回</div>',
         emptyBriefingTitle: '尚未加载因果简报',
-        emptyBriefingDesc: '请点击顶部「⚡ 分析分支」生成确定性核验简报，或切换至融合视图浏览架构底图。',
+        emptyBriefingDesc: '请点击顶部「⚡ 分析分支」生成简报，或切换至融合视图浏览架构底图。',
         noGit: '未加载仓库',
         summaryImpacted: '受影响职责域（点击定位并展开）',
         summaryNoDiff: '当前相对基准无文件改动。',
@@ -1385,18 +1557,19 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         loadingDiff: '正在加载 Git Diff...',
         noDiffForFile: '当前文件相对所选基准无变更：',
         notFileNode: '当前节点未绑定具体文件路径。',
-        dirHelp: '向当前节点挂接一条架构约束、疑问或返工指令：',
-        dirPathReq: '必须填写仓库相对路径。',
-        dirPlaceholder: '必填：描述需要 Agent 修复、保留或核验的具体要求...',
-        dirWireBtn: '+ 挂接到画布',
-        dirCopyBtn: '复制 Markdown 指令',
+        dirHelp: '针对当前节点向 Agent 提问、纠偏简报或下达返工指令：',
+        dirPathReq: '请填写相对路径（模块级可填目录名）。',
+        dirPlaceholder: '输入你的疑问（如“这里为什么新建实例？”）、对简报结论的纠偏、或具体代码返工要求...',
+        askNowBtn: '🚀 立即发给 Agent',
+        dirWireBtn: '📌 先挂画布 (攒批)',
+        dirCopyBtn: '复制 Markdown',
         delDirBtn: '删除此批注节点',
         signalsTitle: '验证信号 (Verification Signals)',
         noSignals: '未附带验证信号（状态：未知）。',
         blindSpotsTitle: '已声明的盲区 (Blind Spots)',
         noBlindSpots: '无已声明盲区。',
-        guardrailsTitle: '仓库架构红线 (.atlas/manifest.json)',
-        noGuardrails: '未在 .atlas/manifest.json 中声明红线。',
+        guardrailsTitle: '仓库架构红线 (manifest.json)',
+        noGuardrails: '未在 manifest.json 中声明红线。',
         staleText: (t, h) => '简报已过期：目标提交 (' + t + ') 与当前 HEAD (' + h + ') 不一致，请重新核验。'
       },
       en: {
@@ -1404,35 +1577,48 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         switchRepoTitle: 'Local Git Repository Path',
         loadRepoBtn: 'Switch', worktreePh: 'Local Git repo path (e.g. D:\\\\Project\\\\aster)...',
         mcpNoRepoDesc: 'Click the repository pill in the top-left corner and enter a local Git repo path.',
-        analyzeBranchBtn: '⚡ Analyze Branch', analyzeNodeBtn: '⚡ Analyze Module', analyzeQuickBtn: '⚡ Analyze',
-        analyzingPrefix: '⚡ Analyzing: ', analyzingDefault: '⚡ Analyzing & verifying briefing...',
-        analyzeErrorPrefix: '⚠ Analysis failed: ',
+        analyzeBranchBtn: '⚡ Analyze Branch', analyzeScopeBtn: '⚡ Tour Scope',
+        depthBtnOverview: '⚡ L1 Overview', depthBtnFlow: '⚡ L2 Call Flow', depthBtnDeep: '⚡ L3 Deep Audit',
+        depthL1Title: 'L1 · Role Overview (Default)', depthL1Desc: 'Hydrate module & child files in-place with 1-sentence roles',
+        depthL2Title: 'L2 · Core Call Flows', depthL2Desc: 'Trace 3–5 primary execution & collaboration chains',
+        depthL3Title: 'L3 · Deep Guard Audit', depthL3Desc: 'Verify IF→Guard edge cases, cross-module impacts & blind spots',
+        analyzingPrefix: '⚡ Running: ', analyzingDefault: '⚡ Analyzing & verifying...',
+        analyzeErrorPrefix: '⚠ Failed: ',
+        batchDispatchFmt: (n) => '📌 Open Notes (' + n + ') · 🚀 Send All',
+        storageSec: 'Git Storage & Isolation',
+        stHidden: 'Git-Hidden (.git/codeatlas)', stHiddenDesc: 'Default zero-intrusion; untouched working tree & .gitignore',
+        stExcluded: 'Workspace Excluded (info/exclude)', stExcludedDesc: 'Editable .atlas/ locally ignored via .git/info/exclude',
+        stTracked: 'Team Tracked (.atlas/ in Git)', stTrackedDesc: 'Share .atlas/manifest.json in version control',
+        setScopeRoot: '🎯 Set as View Root', exitScopeRoot: '🏠 Reset to Full Repo', switchScopeToExt: '🎯 Switch View Root Here',
+        ctxAskAgent: '💬 Ask / Challenge Agent...', ctxFocus: '🔍 Focus Subtree',
         summaryBtn: 'Summary', pruneBtn: 'Changed Only', impactBtn: 'Run LSP Impact Analysis',
         searchPh: 'Search nodes or files (/)...', deltaBtn: 'Highlight Diff',
-        focusBtn: 'Focus', refreshTip: 'Refresh Repository Index', initManifest: 'Save Architecture Skeleton (.atlas/manifest.json)',
+        focusBtn: 'Focus', refreshTip: 'Refresh Repository Index', initManifest: 'Save Skeleton (manifest.json)',
         agentSec: 'Connect External Agent', exportDir: 'Export Directives (Markdown)',
         copyMcp: '1. Copy MCP Config JSON', copyMcpDesc: 'Pre-filled with current repo & dist/mcp-server.js',
         copyBranch: '2. Copy Branch Analysis Prompt', copyBranchDesc: 'Ask Agent to submit a verified briefing to Canvas',
-        copyManifest: '3. Copy Manifest Authoring Prompt', copyManifestDesc: 'Ask Agent to write .atlas/manifest.json & guardrails',
+        copyManifest: '3. Copy Manifest Authoring Prompt', copyManifestDesc: 'Ask Agent to write manifest.json & guardrails',
         copyNodePrompt: 'Copy Agent Analysis Prompt',
         verifyJson: 'Load & Verify Briefing JSON...', reverify: 'Re-verify', langBtn: 'Language: 中文',
         selectBriefing: '-- Briefing --', fit: 'Fit', tidy: 'Tidy', expand: 'Expand', collapse: 'Collapse',
         indexFiles: 'Show Files', collapseFiles: 'Hide Files', legendBtn: '? Legend',
-        summaryTitle: 'Branch Summary', tabCode: 'Code & Details', tabDiff: 'Git Diff', tabDir: '+ Directive', tabTrust: 'Trust',
-        inspFocus: 'Focus', defaultCrumb: 'Click to inspect · Double-click to focus · Expand modules on demand',
+        summaryTitle: 'Branch Summary', tabCode: 'Code & Details', tabDiff: 'Git Diff', tabDir: '💬 Ask & Note', tabTrust: 'Trust',
+        inspFocus: 'Focus', defaultCrumb: 'Right-click node to set View Root or Ask · Click line number to anchor question',
         openBtn: 'Open ↗', expandDomainFiles: 'Files', collapseDomainFiles: 'Hide',
-        entryTag: 'ENTRY',
+        entryTag: 'ENTRY', recStarTag: '★ START', extBadgeFmt: (n) => '⇄ ' + n + ' ext',
         kind: {
-          root: 'Repository', domain: 'Domain', folder: 'Folder', entrypoint: 'Entrypoint', file: 'Source File',
-          claim: 'Causal Claim', evidence: 'Evidence', blocking: 'Guard / Block', 'diff-file': 'Changed File', impact: 'Cross-Impact', directive: 'Directive'
+          root: 'View Root', domain: 'Domain', folder: 'Folder', entrypoint: 'Entrypoint', file: 'Source File',
+          claim: 'Causal Claim', evidence: 'Evidence', blocking: 'Guard / Block', 'diff-file': 'Changed File',
+          impact: 'Cross-Impact', directive: 'Question / Note', 'external-dep': 'External Boundary'
         },
         badge: { verified: '✓ verified', mismatch: '✕ mismatch', stale: '⟳ stale', unverified: 'unverified', unknown: 'unknown' },
         legendHtml:
           '<div><i class="dot" style="background:rgba(140,150,168,0.65);"></i>Orthogonal spine: structural containment</div>' +
           '<div><i class="dot" style="background:#4da6ff;"></i>Blue arc: causal claims &amp; module dependencies</div>' +
           '<div><i class="dot" style="background:var(--amber);"></i>Amber dashed: explicit blocking guard (IF → Outcome)</div>' +
-          '<div><i class="dot" style="background:var(--purple);"></i>Purple dashed: human directive node</div>' +
-          '<div style="border-top:1px solid var(--border);padding-top:5px;margin-top:2px;font-family:var(--mono);font-size:10px;">/ Search · F Fit · 0 100% · D Diff · E/C Expand/Collapse · Enter Open · Esc Back</div>',
+          '<div><i class="dot" style="background:#56b6c2;"></i>Cyan dashed: out-of-scope dependency port</div>' +
+          '<div><i class="dot" style="background:var(--purple);"></i>Purple dashed: anchored question / directive</div>' +
+          '<div style="border-top:1px solid var(--border);padding-top:5px;margin-top:2px;font-family:var(--mono);font-size:10px;">Right-click: Set Root / Ask / Depth · / Search · F Fit · Esc Back</div>',
         emptyBriefingTitle: 'No Briefing Loaded',
         emptyBriefingDesc: 'Click ⚡ Analyze Branch above to generate a verified briefing, or switch to Hybrid view.',
         noGit: 'No Repo',
@@ -1447,17 +1633,18 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         loadingDiff: 'Loading git diff...',
         noDiffForFile: 'No git diff changes for: ',
         notFileNode: 'This node is not bound to a specific file path.',
-        dirHelp: 'Wire a Constraint, Question, or Rework directive to:',
-        dirPathReq: 'File path is required.',
-        dirPlaceholder: 'Required: describe what the Agent must fix, preserve, or verify...',
-        dirWireBtn: '+ Wire to Canvas',
+        dirHelp: 'Ask Agent a question, challenge a claim, or wire a rework directive:',
+        dirPathReq: 'Relative path is required.',
+        dirPlaceholder: 'Type your question, correction, or rework instruction anchored here...',
+        askNowBtn: '🚀 Ask Agent Now',
+        dirWireBtn: '📌 Pin for Batch',
         dirCopyBtn: 'Copy Markdown',
-        delDirBtn: 'Delete Directive Node',
+        delDirBtn: 'Delete Note',
         signalsTitle: 'Verification Signals',
         noSignals: 'No verification signals attached (UNKNOWN).',
         blindSpotsTitle: 'Declared Blind Spots',
         noBlindSpots: 'None declared.',
-        guardrailsTitle: 'Repository Guardrails (.atlas/manifest.json)',
+        guardrailsTitle: 'Repository Guardrails (manifest.json)',
         noGuardrails: 'No guardrails declared.',
         staleText: (t, h) => 'STALE BRIEFING: Target ref (' + t + ') differs from HEAD (' + h + ').'
       }
@@ -1465,13 +1652,16 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
 
     let lang = 'zh';
     let analyzeState = { running: false, label: '', error: '' };
-    let graph = { mode: 'hybrid', nodes: [], edges: [], summary: {}, architecture: null, branchSummary: null };
+    let graph = { mode: 'hybrid', scopeRoot: '', scopeAncestors: [], storageMode: 'git-hidden', nodes: [], edges: [], summary: {}, architecture: null, branchSummary: null };
     let nodeById = new Map();
     let gitCtx = null;
     let baseRef = 'HEAD';
+    let scopeRoot = '';
+    let storageMode = 'git-hidden';
     let availableBriefings = [];
     let activeBriefingPath = '';
     let lastBriefingKey = '';
+    let lastScopeKey = '';
     let viewMode = 'hybrid';
     let deltaOverlay = false;
     let pruneUnchanged = false;
@@ -1484,6 +1674,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     let searchMatches = [];
     let searchMatchIdx = 0;
     let selectedNodeId = null;
+    let prefilledDirLine = null;
     let inspectorTab = 'overview';
     let collapsedIds = new Set();
     let positions = new Map();
@@ -1509,6 +1700,8 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     const nodesLayer = document.getElementById('nodesLayer');
     const inspector = document.getElementById('inspector');
     const summaryDrawer = document.getElementById('summaryDrawer');
+    const depthPopover = document.getElementById('depthPopover');
+    const nodeCtxMenu = document.getElementById('nodeCtxMenu');
 
     function t(key) {
       return (I18N[lang] && I18N[lang][key]) || I18N.zh[key] || key;
@@ -1529,7 +1722,8 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         node.kind === 'diff-file' ||
         node.kind === 'entrypoint' ||
         node.kind === 'evidence' ||
-        node.kind === 'folder'
+        node.kind === 'folder' ||
+        node.kind === 'external-dep'
       );
     }
 
@@ -1542,28 +1736,43 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     function getNodeHeight(id) {
       if (measuredHeights.has(id)) return measuredHeights.get(id);
       const n = nodeById.get(id);
-      return isCompactNode(n) ? 38 : 96;
+      return isCompactNode(n) ? 40 : 96;
+    }
+
+    function nextRecommendedDepth(node) {
+      if (!node) return 'overview';
+      if (node.kind === 'file' || node.kind === 'diff-file' || node.kind === 'entrypoint') {
+        return node.completedDepth === 'flow' ? 'deep' : 'flow';
+      }
+      const cd = node.completedDepth || 'none';
+      if (cd === 'none') return 'overview';
+      if (cd === 'overview') return 'flow';
+      return 'deep';
+    }
+
+    function depthButtonLabel(depth) {
+      if (depth === 'overview') return t('depthBtnOverview');
+      if (depth === 'flow') return t('depthBtnFlow');
+      return t('depthBtnDeep');
     }
 
     function findAncestorDomainPrefix(node) {
       let cur = node && node.parentId ? nodeById.get(node.parentId) : null;
       while (cur) {
         if (cur.kind === 'domain') {
+          if (cur.scopePath) return cur.scopePath.replace(/\\/+$/, '');
           if (cur.defaultDirectivePath && cur.defaultDirectivePath.indexOf('.') === -1) {
             return cur.defaultDirectivePath.replace(/\\/+$/, '');
-          }
-          if (cur.title && cur.title.indexOf(' ') === -1) {
-            return cur.title.replace(/\\/+$/, '');
           }
         }
         cur = cur.parentId ? nodeById.get(cur.parentId) : null;
       }
-      return '';
+      return scopeRoot || '';
     }
 
     function formatCompactSubtitle(node) {
       if (!node) return '';
-      if (node.isSummary) return node.subtitle || '';
+      if (node.isSummary || node.kind === 'external-dep') return node.subtitle || '';
       if (node.kind === 'folder') return '';
       if (!node.path) return node.subtitle || '';
 
@@ -1577,7 +1786,6 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         dirPart = dirPart.slice(domPrefix.length).replace(/^\\/+/, '');
       }
 
-      // Also strip immediate folder title if parent is a folder node
       const parent = node.parentId ? nodeById.get(node.parentId) : null;
       if (parent && parent.kind === 'folder' && parent.title && dirPart === parent.title) {
         dirPart = '';
@@ -1589,7 +1797,6 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           : '';
 
       if (node.title !== baseName) {
-        // Title is a symbol (e.g. pub fn run()), so keep filename + line!
         return (dirPart ? dirPart + '/' : '') + baseName + lineSuffix;
       }
       if (dirPart) return dirPart + lineSuffix;
@@ -1600,6 +1807,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     function isAnalyzableNode(node) {
       if (!node || node.isSummary) return false;
       return (
+        node.kind === 'root' ||
         node.kind === 'domain' ||
         node.kind === 'folder' ||
         node.kind === 'entrypoint' ||
@@ -1608,16 +1816,164 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       );
     }
 
-    function triggerNodeAnalyze(node) {
+    function triggerNodeAnalyze(node, explicitDepth) {
       if (!node || analyzeState.running) return;
+      const depth = explicitDepth || nextRecommendedDepth(node);
+      const targetPath =
+        node.kind === 'root'
+          ? (scopeRoot || '')
+          : (node.scopePath || node.path || node.defaultDirectivePath || '');
       hostApi.postMessage({
         type: 'analyzeTarget',
         scope: 'node',
+        depth,
+        scopeRoot,
         nodeId: node.id,
         title: node.title,
         kind: node.kind,
-        path: node.path || node.defaultDirectivePath || ''
+        path: targetPath
       });
+    }
+
+    function triggerTopAnalyze(explicitDepth) {
+      if (analyzeState.running || !gitCtx) return;
+      if (scopeRoot && !explicitDepth) {
+        const rootNode = nodeById.get('root');
+        triggerNodeAnalyze(rootNode || { id: 'root', kind: 'root', title: scopeRoot, scopePath: scopeRoot }, nextRecommendedDepth(rootNode));
+        return;
+      }
+      const depth = explicitDepth || 'deep';
+      if (depth === 'overview') {
+        hostApi.postMessage({
+          type: 'analyzeTarget',
+          scope: 'node',
+          depth: 'overview',
+          scopeRoot,
+          title: scopeRoot || 'Repository',
+          kind: 'root',
+          path: scopeRoot || ''
+        });
+        return;
+      }
+      hostApi.postMessage({
+        type: 'analyzeTarget',
+        scope: 'branch',
+        depth,
+        scopeRoot,
+        baseRef
+      });
+    }
+
+    function openDepthPopover(anchorEl, targetNodeOrNull) {
+      const rect = anchorEl.getBoundingClientRect();
+      const done = targetNodeOrNull ? (targetNodeOrNull.completedDepth || 'none') : 'none';
+      const items = [
+        { d: 'overview', title: t('depthL1Title'), desc: t('depthL1Desc'), check: done === 'overview' || done === 'flow' || done === 'deep' },
+        { d: 'flow', title: t('depthL2Title'), desc: t('depthL2Desc'), check: done === 'flow' || done === 'deep' },
+        { d: 'deep', title: t('depthL3Title'), desc: t('depthL3Desc'), check: done === 'deep' }
+      ];
+      depthPopover.innerHTML = items.map(it =>
+        '<button data-pick-depth="' + it.d + '">' +
+          '<span class="menu-item-col">' +
+            '<span class="menu-item-top"><strong>' + esc(it.title) + '</strong>' + (it.check ? '<span style="color:var(--green);font-size:10px;">✓</span>' : '') + '</span>' +
+            '<span class="agent-menu-desc">' + esc(it.desc) + '</span>' +
+          '</span>' +
+        '</button>'
+      ).join('');
+      depthPopover.classList.remove('hidden');
+      const left = Math.min(window.innerWidth - 260, Math.max(8, rect.right - 248));
+      const top = Math.min(window.innerHeight - 170, rect.bottom + 5);
+      depthPopover.style.left = left + 'px';
+      depthPopover.style.top = top + 'px';
+
+      depthPopover.querySelectorAll('[data-pick-depth]').forEach(btn => {
+        btn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          depthPopover.classList.add('hidden');
+          const d = btn.dataset.pickDepth;
+          if (targetNodeOrNull) triggerNodeAnalyze(targetNodeOrNull, d);
+          else triggerTopAnalyze(d);
+        });
+      });
+    }
+
+    function openNodeContextMenu(ev, node) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      closePopovers();
+      let html = '';
+
+      if (node.kind === 'external-dep' && node.scopePath) {
+        html += '<button data-ctx="setScope"><strong>' + esc(t('switchScopeToExt')) + '</strong></button>';
+      } else if (node.scopePath && node.scopePath !== scopeRoot && (node.kind === 'domain' || node.kind === 'folder')) {
+        html += '<button data-ctx="setScope"><strong>' + esc(t('setScopeRoot')) + '</strong></button>';
+      }
+      if (scopeRoot) {
+        html += '<button data-ctx="exitScope">' + esc(t('exitScopeRoot')) + '</button>';
+      }
+
+      html += '<button data-ctx="ask">' + esc(t('ctxAskAgent')) + '</button>';
+
+      if (isAnalyzableNode(node) && !document.body.classList.contains('no-analyze-cap')) {
+        html += '<div class="more-sep"></div>';
+        html += '<button data-ctx="d-overview">' + esc(t('depthL1Title')) + '</button>';
+        html += '<button data-ctx="d-flow">' + esc(t('depthL2Title')) + '</button>';
+        html += '<button data-ctx="d-deep">' + esc(t('depthL3Title')) + '</button>';
+      }
+
+      html += '<div class="more-sep"></div>';
+      html += '<button data-ctx="focus">' + esc(t('ctxFocus')) + '</button>';
+      if (node.path) {
+        html += '<button data-ctx="open">' + esc(t('jumpEditor')) + '</button>';
+      }
+
+      nodeCtxMenu.innerHTML = html;
+      nodeCtxMenu.classList.remove('hidden');
+      const left = Math.min(window.innerWidth - 256, Math.max(8, ev.clientX));
+      const top = Math.min(window.innerHeight - 230, Math.max(8, ev.clientY));
+      nodeCtxMenu.style.left = left + 'px';
+      nodeCtxMenu.style.top = top + 'px';
+
+      nodeCtxMenu.querySelectorAll('[data-ctx]').forEach(btn => {
+        btn.addEventListener('click', (ce) => {
+          ce.stopPropagation();
+          nodeCtxMenu.classList.add('hidden');
+          const act = btn.dataset.ctx;
+          if (act === 'setScope' && node.scopePath) {
+            setScopeRootAction(node.scopePath);
+          } else if (act === 'exitScope') {
+            setScopeRootAction('');
+          } else if (act === 'ask') {
+            prefilledDirLine = node.startLine || 1;
+            inspectorTab = 'directive';
+            selectNode(node.id);
+            setTimeout(() => document.getElementById('inspDirNote')?.focus(), 30);
+          } else if (act === 'd-overview') {
+            triggerNodeAnalyze(node, 'overview');
+          } else if (act === 'd-flow') {
+            triggerNodeAnalyze(node, 'flow');
+          } else if (act === 'd-deep') {
+            triggerNodeAnalyze(node, 'deep');
+          } else if (act === 'focus') {
+            selectedNodeId = node.id;
+            focusMode = true;
+            syncFocusButtons();
+            selectNode(node.id);
+            centerOnNode(node.id);
+          } else if (act === 'open' && node.path) {
+            hostApi.postMessage({ type: 'openFile', path: node.path, line: node.startLine || 1 });
+          }
+        });
+      });
+    }
+
+    function setScopeRootAction(nextScope) {
+      positions.clear();
+      manualPositions.clear();
+      collapsedIds.clear();
+      selectedNodeId = null;
+      inspector.classList.add('hidden');
+      hostApi.postMessage({ type: 'setScopeRoot', scopeRoot: nextScope });
     }
 
     function syncAnalyzeUi() {
@@ -1646,17 +2002,42 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       }
 
       const branchBtn = document.getElementById('btnAnalyzeBranch');
-      if (branchBtn) branchBtn.disabled = analyzeState.running || !gitCtx;
+      const branchMenuBtn = document.getElementById('btnAnalyzeBranchMenu');
+      if (branchBtn) {
+        branchBtn.disabled = analyzeState.running || !gitCtx;
+        if (scopeRoot) {
+          const rNode = nodeById.get('root');
+          branchBtn.textContent = depthButtonLabel(nextRecommendedDepth(rNode));
+        } else {
+          branchBtn.textContent = t('analyzeBranchBtn');
+        }
+      }
+      if (branchMenuBtn) branchMenuBtn.disabled = analyzeState.running || !gitCtx;
 
       const quickInspBtn = document.getElementById('btnInspAnalyzeQuick');
+      const quickInspMenu = document.getElementById('btnInspAnalyzeMenu');
       if (quickInspBtn) quickInspBtn.disabled = analyzeState.running;
+      if (quickInspMenu) quickInspMenu.disabled = analyzeState.running;
 
       const inspNodeBtn = document.getElementById('btnAnalyzeNode');
       if (inspNodeBtn) inspNodeBtn.disabled = analyzeState.running;
 
-      nodesLayer.querySelectorAll('[data-analyze-node]').forEach(btn => {
+      nodesLayer.querySelectorAll('[data-analyze-node],[data-analyze-menu]').forEach(btn => {
         btn.disabled = analyzeState.running;
       });
+    }
+
+    function syncStorageMenu() {
+      document.getElementById('lblStorageSec').textContent = t('storageSec');
+      document.getElementById('lblStHidden').textContent = t('stHidden');
+      document.getElementById('descStHidden').textContent = t('stHiddenDesc');
+      document.getElementById('lblStExcluded').textContent = t('stExcluded');
+      document.getElementById('descStExcluded').textContent = t('stExcludedDesc');
+      document.getElementById('lblStTracked').textContent = t('stTracked');
+      document.getElementById('descStTracked').textContent = t('stTrackedDesc');
+      document.getElementById('chkStHidden').textContent = storageMode === 'git-hidden' ? '✓' : '';
+      document.getElementById('chkStExcluded').textContent = storageMode === 'worktree-excluded' ? '✓' : '';
+      document.getElementById('chkStTracked').textContent = storageMode === 'worktree-tracked' ? '✓' : '';
     }
 
     function applyStaticTranslations() {
@@ -1669,8 +2050,14 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       if (wtBtn) wtBtn.textContent = t('loadRepoBtn');
       const wtInput = document.getElementById('worktreeInput');
       if (wtInput) wtInput.placeholder = t('worktreePh');
-      document.getElementById('btnAnalyzeBranch').textContent = t('analyzeBranchBtn');
-      document.getElementById('btnInspAnalyzeQuick').textContent = t('analyzeQuickBtn');
+
+      const openDirs = (graph.summary && graph.summary.openDirectiveCount) || 0;
+      const batchBtn = document.getElementById('btnDispatchBatch');
+      if (batchBtn) {
+        batchBtn.classList.toggle('hidden', openDirs === 0);
+        if (openDirs > 0) batchBtn.textContent = t('batchDispatchFmt')(openDirs);
+      }
+
       const diffCnt = (graph.summary && graph.summary.changedFiles) || 0;
       document.getElementById('btnSummaryToggle').textContent = t('summaryBtn') + (diffCnt > 0 ? ' (' + diffCnt + ')' : '');
       document.getElementById('btnPruneToggle').textContent = t('pruneBtn');
@@ -1707,6 +2094,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       document.getElementById('tabDir').textContent = t('tabDir');
       document.getElementById('tabTrust').textContent = t('tabTrust');
       document.getElementById('btnInspFocus').textContent = t('inspFocus');
+      syncStorageMenu();
       syncAnalyzeUi();
     }
 
@@ -1737,10 +2125,22 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       return map;
     }
 
+    function isExternalNodeRevealed(n) {
+      if (n.kind !== 'external-dep') return true;
+      if (!selectedNodeId) return false;
+      return (
+        selectedNodeId === n.id ||
+        selectedNodeId === n.parentId ||
+        selectedNodeId === 'root'
+      );
+    }
+
     function getVisibleNodeIds() {
       const childrenMap = getChildrenMap();
       const visible = new Set();
       function visit(id) {
+        const node = nodeById.get(id);
+        if (!node || !isExternalNodeRevealed(node)) return;
         visible.add(id);
         if (collapsedIds.has(id)) return;
         for (const cid of childrenMap.get(id) || []) visit(cid);
@@ -1909,7 +2309,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       const list = [];
       let expandedAny = false;
       for (const n of graph.nodes) {
-        const hay = (n.title + ' ' + (n.subtitle || '') + ' ' + (n.body || '') + ' ' + (n.path || '') + ' ' + (n.layer || '')).toLowerCase();
+        const hay = (n.title + ' ' + (n.subtitle || '') + ' ' + (n.body || '') + ' ' + (n.roleSummary || '') + ' ' + (n.path || '') + ' ' + (n.layer || '')).toLowerCase();
         if (hay.includes(q)) {
           matched.add(n.id);
           list.push(n.id);
@@ -1935,6 +2335,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     }
 
     function isNodeDimmed(n, focusedSet, chipSet, matchedIds) {
+      if (n.kind === 'external-dep') return false;
       if (focusedSet && !focusedSet.has(n.id)) return true;
       if (chipSet && !chipSet.has(n.id)) return true;
       if (deltaOverlay && !n.changed && n.kind !== 'root' && n.kind !== 'directive') return true;
@@ -1943,7 +2344,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     }
 
     function isEdgeDimmed(e, focusedSet, chipSet, matchedIds) {
-      if (e.kind === 'dep') return false;
+      if (e.kind === 'dep' || e.kind === 'external') return false;
       const targetNode = nodeById.get(e.to);
       if (focusedSet && (!focusedSet.has(e.from) || !focusedSet.has(e.to))) return true;
       if (chipSet && (!chipSet.has(e.from) || !chipSet.has(e.to))) return true;
@@ -1965,9 +2366,9 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           '<marker id="arr-impact" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M1 1.2 7 4 1 6.8" fill="none" stroke="#39c5cf" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></marker>' +
           '<marker id="arr-dep" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M1 1.2 7 4 1 6.8" fill="none" stroke="#58a6ff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></marker>' +
           '<marker id="arr-directive" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M1 1.2 7 4 1 6.8" fill="none" stroke="#a371f7" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></marker>' +
+          '<marker id="arr-external" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M1 1.2 7 4 1 6.8" fill="none" stroke="#56b6c2" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></marker>' +
         '</defs>';
 
-      // 1. Group structural hierarchy edges by parent to draw a single clean orthogonal bus (zero alpha overlap!)
       const hierarchyByParent = new Map();
       const curvedEdges = [];
 
@@ -2027,20 +2428,17 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           const busX = Math.round(x1 + Math.max(14, Math.min(26, (minX2 - x1) * 0.46)));
           const baseCls = 'edge-bus' + (allDimmed ? ' dimmed' : '');
 
-          // Single parent horizontal stub + single vertical spine (drawn ONCE!)
           svgHtml += '<path class="' + baseCls + '" d="M ' + x1 + ' ' + y1 + ' L ' + busX + ' ' + y1 + '" />';
           if (maxY - minY > 0.5) {
             svgHtml += '<path class="' + baseCls + '" d="M ' + busX + ' ' + minY + ' L ' + busX + ' ' + maxY + '" />';
           }
 
-          // Individual horizontal ticks into each child (zero overlap!)
           for (const item of forward) {
             if (item.focused && !item.dimmed) continue;
             const tickCls = 'edge-bus' + (item.dimmed ? ' dimmed' : '');
             svgHtml += '<path class="' + tickCls + '" d="M ' + busX + ' ' + item.y2 + ' L ' + item.x2 + ' ' + item.y2 + '" />';
           }
 
-          // Highlighted lineage overlay for focused/selected child
           for (const item of forward) {
             if (item.focused && !item.dimmed) {
               const r = Math.min(6, Math.abs(item.y2 - y1) / 2, Math.abs(busX - x1) / 2, Math.abs(item.x2 - busX) / 2);
@@ -2062,7 +2460,6 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         }
       }
 
-      // 2. Render curved semantic & dependency edges
       for (const e of curvedEdges) {
         const p1 = positions.get(e.from);
         const p2 = positions.get(e.to);
@@ -2093,9 +2490,9 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         }
 
         const dimmed = isEdgeDimmed(e, focusedSet, chipSet, matchedIds);
-        const isFocused = e.kind === 'dep' || (focusedSet && focusedSet.has(e.from) && focusedSet.has(e.to));
+        const isFocused = e.kind === 'dep' || e.kind === 'external' || (focusedSet && focusedSet.has(e.from) && focusedSet.has(e.to));
         const markerAttr =
-          e.kind === 'flow' || e.kind === 'blocking' || e.kind === 'impact' || e.kind === 'dep' || e.kind === 'directive'
+          e.kind === 'flow' || e.kind === 'blocking' || e.kind === 'impact' || e.kind === 'dep' || e.kind === 'directive' || e.kind === 'external'
             ? ' marker-end="url(#arr-' + esc(e.kind) + ')"'
             : '';
 
@@ -2202,26 +2599,53 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
 
     function renderSubbar() {
       const bcEl = document.getElementById('breadcrumbs');
-      if (!selectedNodeId || !nodeById.has(selectedNodeId)) {
-        bcEl.innerHTML = '<span>' + esc(t('defaultCrumb')) + '</span>';
-      } else {
+      let bcHtml = '';
+
+      const ancestors = graph.scopeAncestors || [];
+      if (scopeRoot && ancestors.length > 0) {
+        bcHtml += ancestors.map((anc, idx) => {
+          const isLast = idx === ancestors.length - 1;
+          const icon = idx === 0 ? '🏠 ' : (isLast ? '🎯 ' : '');
+          return (idx > 0 ? '<span style="opacity:0.4;">/</span>' : '') +
+            '<span class="crumb' + (isLast ? ' scope-active' : '') + '" data-scope-crumb="' + esc(anc.scopePath) + '">' +
+              icon + esc(anc.label) +
+            '</span>';
+        }).join('');
+        bcHtml += '<button class="scope-exit-btn" id="btnScopeResetCrumb" title="' + esc(t('exitScopeRoot')) + '">✕</button>';
+      }
+
+      if (selectedNodeId && nodeById.has(selectedNodeId) && selectedNodeId !== 'root') {
         const chain = [];
         let cur = nodeById.get(selectedNodeId);
-        while (cur) {
+        while (cur && cur.id !== 'root') {
           chain.unshift(cur);
           cur = cur.parentId ? nodeById.get(cur.parentId) : null;
         }
-        bcEl.innerHTML = chain.map((n, idx) =>
-          (idx > 0 ? '<span style="opacity:0.4;">›</span>' : '') +
-          '<span class="crumb" data-crumb="' + esc(n.id) + '">' + esc(n.title) + '</span>'
-        ).join('');
-        bcEl.querySelectorAll('[data-crumb]').forEach(el => {
-          el.addEventListener('click', () => {
-            selectNode(el.dataset.crumb);
-            centerOnNode(el.dataset.crumb);
-          });
-        });
+        if (chain.length > 0) {
+          if (bcHtml) bcHtml += '<span style="opacity:0.4;margin:0 4px;">·</span>';
+          bcHtml += chain.map((n, idx) =>
+            (idx > 0 ? '<span style="opacity:0.4;">›</span>' : '') +
+            '<span class="crumb" data-crumb="' + esc(n.id) + '">' + esc(n.title) + '</span>'
+          ).join('');
+        }
+      } else if (!scopeRoot) {
+        bcHtml = '<span>' + esc(t('defaultCrumb')) + '</span>';
       }
+
+      bcEl.innerHTML = bcHtml;
+      bcEl.querySelectorAll('[data-scope-crumb]').forEach(el => {
+        el.addEventListener('click', () => setScopeRootAction(el.dataset.scopeCrumb));
+      });
+      const resetCrumb = document.getElementById('btnScopeResetCrumb');
+      if (resetCrumb) {
+        resetCrumb.addEventListener('click', () => setScopeRootAction(''));
+      }
+      bcEl.querySelectorAll('[data-crumb]').forEach(el => {
+        el.addEventListener('click', () => {
+          selectNode(el.dataset.crumb);
+          centerOnNode(el.dataset.crumb);
+        });
+      });
 
       const s = graph.summary || {};
       const chips = [];
@@ -2230,6 +2654,9 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       if (s.stale > 0) chips.push('<span class="chip warn" data-chip="trust">' + (lang === 'zh' ? '⟳ 过期 ' : '⟳ Stale ') + s.stale + '</span>');
       if (s.blockingCount > 0) chips.push('<span class="chip warn' + (activeChipFilter === 'blocking' ? ' active' : '') + '" data-chip="blocking">' + (lang === 'zh' ? '阻断 ' : 'Guards ') + s.blockingCount + '</span>');
       if (s.impactCount > 0) chips.push('<span class="chip' + (activeChipFilter === 'impact' ? ' active' : '') + '" style="color:var(--cyan);background:rgba(57,197,207,0.14);" data-chip="impact">' + (lang === 'zh' ? '影响 ' : 'Impact ') + s.impactCount + '</span>');
+      if (scopeRoot && s.externalBoundaryCount > 0) {
+        chips.push('<span class="chip" data-chip="showRootExt" style="color:#56b6c2;background:rgba(86,182,194,0.14);">' + (lang === 'zh' ? '⇄ 视图外关联 ' : '⇄ External ') + s.externalBoundaryCount + '</span>');
+      }
       if (s.manifestIssues && s.manifestIssues.length > 0) chips.push('<span class="chip err" data-chip="trust">' + (lang === 'zh' ? '骨架漂移 ' : 'Drift ') + s.manifestIssues.length + '</span>');
       if (s.blindSpots && s.blindSpots.length > 0) chips.push('<span class="chip warn" data-chip="trust">' + (lang === 'zh' ? '盲区 ' : 'Blind Spots ') + s.blindSpots.length + '</span>');
       if (s.directiveCount > 0) chips.push('<span class="chip dir' + (activeChipFilter === 'directive' ? ' active' : '') + '" data-chip="directive">' + (lang === 'zh' ? '批注 ' : 'Directives ') + s.directiveCount + '</span>');
@@ -2248,6 +2675,10 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           const kind = el.dataset.chip;
           if (kind === 'toggleSupport') {
             hostApi.postMessage({ type: 'toggleSupportAssets' });
+            return;
+          }
+          if (kind === 'showRootExt') {
+            selectNode('root');
             return;
           }
           if (kind === 'trust') {
@@ -2286,9 +2717,13 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       for (const n of graph.nodes) {
         if (!visible.has(n.id)) continue;
         const p = positions.get(n.id) || { x: 0, y: 0 };
-        const kids = childrenMap.get(n.id) || [];
+        const nonExtKids = (childrenMap.get(n.id) || []).filter(cid => {
+          const cn = nodeById.get(cid);
+          return cn && cn.kind !== 'external-dep';
+        });
         const isCollapsed = collapsedIds.has(n.id);
         const compact = isCompactNode(n);
+        const extCount = (n.externalOutCount || 0) + (n.externalInCount || 0);
 
         const el = document.createElement('div');
         el.className =
@@ -2296,6 +2731,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           (compact ? ' node-compact' : '') +
           (n.isSummary ? ' is-summary' : '') +
           (n.isSupport ? ' is-support' : '') +
+          (n.directiveStatus === 'resolved' ? ' is-resolved' : '') +
           (n.badge === 'mismatch' ? ' has-mismatch' : '');
         el.style.left = p.x + 'px';
         el.style.top = p.y + 'px';
@@ -2307,15 +2743,20 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         const iconHtml = getNodeIconSvg(n, !isCollapsed);
 
         if (compact) {
-          // Compact IDE-Style Row for Files, Entrypoints, Evidence & Subfolders
           const subText = formatCompactSubtitle(n);
           let tagHtml = '';
+          if (n.isRecommendedEntry) {
+            tagHtml += '<span class="micro-tag star-tag">' + esc(t('recStarTag')) + '</span>';
+          }
           if (n.kind === 'entrypoint') {
-            tagHtml = '<span class="micro-tag">' + esc(t('entryTag')) + '</span>';
+            tagHtml += '<span class="micro-tag">' + esc(t('entryTag')) + '</span>';
           } else if (n.badge === 'verified') {
-            tagHtml = '<span class="status-dot" style="background:var(--green);" title="Verified"></span>';
+            tagHtml += '<span class="status-dot" style="background:var(--green);" title="Verified"></span>';
           } else if (n.badge === 'mismatch') {
-            tagHtml = '<span class="status-dot" style="background:var(--red);" title="Mismatch"></span>';
+            tagHtml += '<span class="status-dot" style="background:var(--red);" title="Mismatch"></span>';
+          }
+          if (extCount > 0) {
+            tagHtml += '<span class="ext-badge" title="点击查看视图外依赖边界">' + esc(t('extBadgeFmt')(extCount)) + '</span>';
           }
 
           let rightHtml = '';
@@ -2324,6 +2765,8 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
             rightHtml =
               (n.changed ? '<span class="status-dot" style="background:var(--yellow);" title="Changed"></span>' : '') +
               '<button class="quick-btn" data-toggle-folder="' + esc(n.folderId) + '">' + esc(folderLbl) + '</button>';
+          } else if (n.kind === 'external-dep' && n.scopePath) {
+            rightHtml = '<button class="quick-btn" data-jump-scope="' + esc(n.scopePath) + '" title="' + esc(t('switchScopeToExt')) + '">🎯</button>';
           } else {
             const diffPart =
               n.changed && (n.additions !== undefined || n.deletions !== undefined)
@@ -2344,21 +2787,23 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
                   tagHtml +
                 '</div>' +
                 (subText ? '<div class="leaf-sub">' + esc(subText) + '</div>' : '') +
+                (n.roleSummary ? '<div class="leaf-role">' + esc(n.roleSummary) + '</div>' : '') +
               '</div>' +
               (rightHtml ? '<div class="leaf-right">' + rightHtml + '</div>' : '') +
             '</div>';
         } else {
-          // Structured Container / Causal Card (Root, Domain, Claim, Blocking, Impact, Directive)
           let topRight = '';
+          if (extCount > 0) {
+            topRight += '<span class="ext-badge" title="点击查看视图外依赖边界">' + esc(t('extBadgeFmt')(extCount)) + '</span>';
+          }
           if (n.badge) {
-            topRight = '<span class="badge badge-' + esc(n.badge) + '">' + esc(badgeLabels[n.badge] || n.badge) + '</span>';
+            topRight += '<span class="badge badge-' + esc(n.badge) + '">' + esc(badgeLabels[n.badge] || n.badge) + '</span>';
           } else if (n.layer) {
-            topRight = '<span class="layer-tag" title="' + esc(n.layer) + '">' + esc(n.layer) + '</span>';
+            topRight += '<span class="layer-tag" title="' + esc(n.layer) + '">' + esc(n.layer) + '</span>';
           } else if (n.kind === 'blocking' || n.kind === 'impact' || n.kind === 'directive') {
-            topRight = '<span class="layer-tag">' + esc(kindLabels[n.kind] || n.kind) + '</span>';
+            topRight += '<span class="layer-tag">' + esc(kindLabels[n.kind] || n.kind) + '</span>';
           }
 
-          // Deduplicate subtitle when identical to title or redundant FACT label
           const showSub =
             n.subtitle &&
             n.subtitle !== n.title &&
@@ -2374,6 +2819,9 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           } else if (n.body) {
             middleHtml = '<div class="node-body">' + esc(n.body) + '</div>';
           }
+          if (n.resolutionSummary) {
+            middleHtml += '<div class="resolution-box">✓ ' + esc(n.resolutionSummary) + '</div>';
+          }
 
           let footerLeft = '';
           if (n.changed && (n.additions !== undefined || n.deletions !== undefined)) {
@@ -2384,15 +2832,13 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
             footerLeft = '<span class="node-footer-meta">' + n.fileCount + (lang === 'zh' ? ' 文件' : ' files') + '</span>';
           }
 
-          const cardAnalyzeBtn =
+          const nextD = nextRecommendedDepth(n);
+          const cardAnalyzeSplit =
             n.kind === 'domain' && !n.isSummary
-              ? '<button class="quick-btn quick-analyze analyze-action" data-analyze-node="' +
-                esc(n.id) +
-                '"' +
-                (analyzeState.running ? ' disabled' : '') +
-                '>' +
-                esc(t('analyzeQuickBtn')) +
-                '</button>'
+              ? '<span class="card-split-analyze analyze-action">' +
+                  '<button data-analyze-node="' + esc(n.id) + '"' + (analyzeState.running ? ' disabled' : '') + '>' + esc(depthButtonLabel(nextD)) + '</button>' +
+                  '<button data-analyze-menu="' + esc(n.id) + '"' + (analyzeState.running ? ' disabled' : '') + '>▾</button>' +
+                '</span>'
               : '';
 
           let footerRight = '';
@@ -2402,11 +2848,11 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
               : (t('expandDomainFiles') + ' ▸');
             footerRight =
               '<span class="node-footer-actions">' +
-                cardAnalyzeBtn +
+                cardAnalyzeSplit +
                 '<button class="quick-btn" data-toggle-dom="' + esc(n.domainId) + '">' + esc(lbl) + '</button>' +
               '</span>';
-          } else if (cardAnalyzeBtn) {
-            footerRight = '<span class="node-footer-actions">' + cardAnalyzeBtn + '</span>';
+          } else if (cardAnalyzeSplit) {
+            footerRight = '<span class="node-footer-actions">' + cardAnalyzeSplit + '</span>';
           } else if (n.path) {
             footerRight = '<button class="quick-btn" data-jump-path="' + esc(n.path) + '" data-jump-line="' + esc(n.startLine || 1) + '">' + esc(t('openBtn')) + '</button>';
           }
@@ -2421,7 +2867,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
                 iconHtml +
                 '<span class="node-title">' + esc(n.title) + '</span>' +
               '</div>' +
-              topRight +
+              '<div style="display:inline-flex;align-items:center;gap:4px;flex-shrink:0;">' + topRight + '</div>' +
             '</div>' +
             (showSub ? '<div class="node-sub" title="' + esc(n.subtitle) + '">' + esc(n.subtitle) + '</div>' : '') +
             middleHtml +
@@ -2437,12 +2883,30 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           });
         }
 
+        const jScope = el.querySelector('[data-jump-scope]');
+        if (jScope) {
+          jScope.addEventListener('mousedown', (ev) => ev.stopPropagation());
+          jScope.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            setScopeRootAction(jScope.dataset.jumpScope);
+          });
+        }
+
         const anBtn = el.querySelector('[data-analyze-node]');
         if (anBtn) {
           anBtn.addEventListener('mousedown', (ev) => ev.stopPropagation());
           anBtn.addEventListener('click', (ev) => {
             ev.stopPropagation();
             triggerNodeAnalyze(n);
+          });
+        }
+
+        const anMenuBtn = el.querySelector('[data-analyze-menu]');
+        if (anMenuBtn) {
+          anMenuBtn.addEventListener('mousedown', (ev) => ev.stopPropagation());
+          anMenuBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            openDepthPopover(anMenuBtn, n);
           });
         }
 
@@ -2468,10 +2932,10 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           });
         }
 
-        if (kids.length > 0) {
+        if (nonExtKids.length > 0) {
           const btn = document.createElement('button');
           btn.className = 'collapse-btn' + (isCollapsed ? ' is-collapsed' : '');
-          btn.textContent = isCollapsed ? ('+' + kids.length) : '−';
+          btn.textContent = isCollapsed ? ('+' + nonExtKids.length) : '−';
           btn.title = isCollapsed ? (lang === 'zh' ? '展开子节点' : 'Expand children') : (lang === 'zh' ? '折叠子节点' : 'Collapse children');
           btn.addEventListener('mousedown', (ev) => ev.stopPropagation());
           btn.addEventListener('click', (ev) => {
@@ -2485,6 +2949,8 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           el.appendChild(btn);
         }
 
+        el.addEventListener('contextmenu', (ev) => openNodeContextMenu(ev, n));
+
         el.addEventListener('dblclick', (ev) => {
           ev.stopPropagation();
           selectedNodeId = n.id;
@@ -2497,6 +2963,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         el.addEventListener('mousedown', (ev) => {
           if (ev.button !== 0) return;
           ev.stopPropagation();
+          closePopovers();
           const startMouseX = ev.clientX;
           const startMouseY = ev.clientY;
           const startPos = { ...(positions.get(n.id) || { x: 0, y: 0 }) };
@@ -2563,19 +3030,49 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     }
 
     function selectNode(nodeId) {
+      const prevVisKey = [...getVisibleNodeIds()].join('|');
       selectedNodeId = nodeId;
+      const nextVisKey = [...getVisibleNodeIds()].join('|');
+      if (prevVisKey !== nextVisKey) {
+        // Re-layout cleanly when selecting a node reveals/hides external boundary ghost nodes!
+        computeTidyLayout(true);
+        buildNodeDom(true);
+      }
+
       const node = nodeById.get(nodeId);
+      const inspAnalyzeWrap = document.getElementById('inspAnalyzeWrap');
       const quickInspBtn = document.getElementById('btnInspAnalyzeQuick');
+      const scopeRootBtn = document.getElementById('btnInspScopeRoot');
+
       if (!node) {
-        if (quickInspBtn) quickInspBtn.style.display = 'none';
+        if (inspAnalyzeWrap) inspAnalyzeWrap.style.display = 'none';
+        if (scopeRootBtn) scopeRootBtn.style.display = 'none';
         inspector.classList.add('hidden');
         syncVisualClasses();
         return;
       }
-      if (quickInspBtn) {
-        quickInspBtn.style.display = isAnalyzableNode(node) ? 'inline-flex' : 'none';
+
+      if (inspAnalyzeWrap && quickInspBtn) {
+        const showAn = isAnalyzableNode(node) && !document.body.classList.contains('no-analyze-cap');
+        inspAnalyzeWrap.style.display = showAn ? 'inline-flex' : 'none';
+        quickInspBtn.textContent = depthButtonLabel(nextRecommendedDepth(node));
         quickInspBtn.disabled = analyzeState.running;
       }
+
+      if (scopeRootBtn) {
+        if (node.kind === 'root' && scopeRoot) {
+          scopeRootBtn.style.display = 'inline-flex';
+          scopeRootBtn.textContent = t('exitScopeRoot');
+          scopeRootBtn.onclick = () => setScopeRootAction('');
+        } else if (node.scopePath && node.scopePath !== scopeRoot && (node.kind === 'domain' || node.kind === 'folder' || node.kind === 'external-dep')) {
+          scopeRootBtn.style.display = 'inline-flex';
+          scopeRootBtn.textContent = node.kind === 'external-dep' ? t('switchScopeToExt') : t('setScopeRoot');
+          scopeRootBtn.onclick = () => setScopeRootAction(node.scopePath);
+        } else {
+          scopeRootBtn.style.display = 'none';
+        }
+      }
+
       inspector.classList.remove('hidden');
       document.getElementById('inspIcon').innerHTML = getNodeIconSvg(node, Boolean(node.filesExpanded));
       document.getElementById('inspTitle').textContent = node.title;
@@ -2684,40 +3181,76 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       }
 
       if (inspectorTab === 'directive') {
-        const defaultPath = node.defaultDirectivePath || node.path || '';
+        const defaultPath = node.defaultDirectivePath || node.path || node.scopePath || scopeRoot || '(root)';
+        const defaultLine = prefilledDirLine || node.startLine || 1;
+        prefilledDirLine = null;
+
         el.innerHTML =
           '<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">' + esc(t('dirHelp')) + ' <strong>' + esc(node.title) + '</strong></div>' +
           '<div style="display:flex;gap:6px;margin-bottom:8px;">' +
             '<select id="inspDirKind">' +
-              '<option value="rework">' + (lang === 'zh' ? '返工' : 'Rework') + '</option>' +
-              '<option value="constraint">' + (lang === 'zh' ? '约束红线' : 'Constraint') + '</option>' +
-              '<option value="question">' + (lang === 'zh' ? '疑问' : 'Question') + '</option>' +
+              '<option value="question">' + (lang === 'zh' ? '💬 提问 / 纠偏探讨' : '💬 Question / Challenge') + '</option>' +
+              '<option value="rework">' + (lang === 'zh' ? '🔧 要求代码返工' : '🔧 Code Rework') + '</option>' +
+              '<option value="constraint">' + (lang === 'zh' ? '🛡 架构约束红线' : '🛡 Guardrail') + '</option>' +
             '</select>' +
-            '<input id="inspDirPath" value="' + esc(defaultPath) + '" placeholder="relative/path.ts" style="flex:1;" />' +
-            '<input id="inspDirLine" type="number" min="1" value="' + esc(node.startLine || 1) + '" style="width:68px;" />' +
+            '<input id="inspDirPath" value="' + esc(defaultPath) + '" placeholder="relative/path" style="flex:1;min-width:90px;" />' +
+            '<input id="inspDirLine" type="number" min="1" value="' + esc(defaultLine) + '" style="width:64px;" title="Line" />' +
           '</div>' +
           '<textarea id="inspDirNote" rows="4" style="width:100%;" placeholder="' + esc(t('dirPlaceholder')) + '"></textarea>' +
           '<div id="dirValidation" style="font-size:11px;color:var(--red);margin-top:4px;min-height:15px;"></div>' +
-          '<div style="display:flex;gap:6px;margin-top:6px;">' +
-            '<button id="btnAddCanvasDir" disabled>' + esc(t('dirWireBtn')) + '</button>' +
+          '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">' +
+            '<button class="btn-analyze analyze-action" id="btnAskAgentNow" disabled>' + esc(t('askNowBtn')) + '</button>' +
+            '<button class="secondary" id="btnAddCanvasDir" disabled>' + esc(t('dirWireBtn')) + '</button>' +
             '<button class="secondary vscode-only" id="btnInspCopyDirs">' + esc(t('dirCopyBtn')) + '</button>' +
           '</div>';
 
         const pathInput = document.getElementById('inspDirPath');
         const noteInput = document.getElementById('inspDirNote');
+        const askNowBtn = document.getElementById('btnAskAgentNow');
         const addBtn = document.getElementById('btnAddCanvasDir');
         const valEl = document.getElementById('dirValidation');
 
         function validateForm() {
           const p = pathInput.value.trim();
           const n = noteInput.value.trim();
-          if (!p) { valEl.textContent = t('dirPathReq'); addBtn.disabled = true; }
-          else if (!n) { valEl.textContent = ''; addBtn.disabled = true; }
-          else { valEl.textContent = ''; addBtn.disabled = false; }
+          if (!p) {
+            valEl.textContent = t('dirPathReq');
+            addBtn.disabled = true;
+            if (askNowBtn) askNowBtn.disabled = true;
+          } else if (!n) {
+            valEl.textContent = '';
+            addBtn.disabled = true;
+            if (askNowBtn) askNowBtn.disabled = true;
+          } else {
+            valEl.textContent = '';
+            addBtn.disabled = false;
+            if (askNowBtn) askNowBtn.disabled = analyzeState.running;
+          }
         }
         pathInput.addEventListener('input', validateForm);
         noteInput.addEventListener('input', validateForm);
         validateForm();
+
+        if (askNowBtn) {
+          askNowBtn.addEventListener('click', () => {
+            const note = noteInput.value.trim();
+            const p = pathInput.value.trim();
+            const kind = document.getElementById('inspDirKind').value;
+            const line = parseInt(document.getElementById('inspDirLine').value, 10);
+            if (!note || !p) return;
+            hostApi.postMessage({
+              type: 'askAgentNow',
+              directiveKind: kind,
+              path: p,
+              startLine: Number.isFinite(line) ? line : 1,
+              targetNodeId: node.id,
+              title: node.title,
+              contextBody: node.body || node.roleSummary || '',
+              note
+            });
+            inspectorTab = 'overview';
+          });
+        }
 
         addBtn.addEventListener('click', () => {
           const note = noteInput.value.trim();
@@ -2759,8 +3292,15 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
             '<div class="blocking-if">IF: ' + esc(node.condition) + '</div>' +
             '<div class="blocking-then">→ ' + esc(node.outcome || '') + '</div>' +
           '</div>';
-      } else if (node.body) {
-        html += '<p style="margin:0 0 10px;line-height:1.5;color:var(--fg);">' + esc(node.body) + '</p>';
+      } else if (node.body || node.roleSummary) {
+        html += '<p style="margin:0 0 10px;line-height:1.5;color:var(--fg);">' + esc(node.body || node.roleSummary) + '</p>';
+      }
+
+      if (node.resolutionSummary) {
+        html +=
+          '<div class="resolution-box" style="margin-bottom:10px;">' +
+            '<strong>✓ Agent 解答 / 结项摘要：</strong><div style="margin-top:3px;">' + esc(node.resolutionSummary) + '</div>' +
+          '</div>';
       }
 
       if (node.notes && node.notes.length > 0) {
@@ -2774,28 +3314,20 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       }
 
       const showAnalyzeBtn = isAnalyzableNode(node);
-      const showCopyPromptBtn =
-        node.kind === 'domain' ||
-        node.kind === 'folder' ||
-        node.kind === 'entrypoint' ||
-        node.kind === 'file' ||
-        node.kind === 'diff-file' ||
-        node.kind === 'evidence';
-      if (showAnalyzeBtn || showCopyPromptBtn) {
-        html +=
-          '<div style="display:flex;flex-wrap:wrap;gap:6px;margin:8px 0;">' +
-            (showAnalyzeBtn
-              ? '<button class="btn-analyze analyze-action" id="btnAnalyzeNode"' +
-                (analyzeState.running ? ' disabled' : '') +
-                '>' +
-                esc(t('analyzeNodeBtn')) +
-                '</button>'
-              : '') +
-            (showCopyPromptBtn
-              ? '<button class="secondary vscode-only" id="btnCopyNodePrompt">' + esc(t('copyNodePrompt')) + '</button>'
-              : '') +
-          '</div>';
-      }
+      html +=
+        '<div style="display:flex;flex-wrap:wrap;gap:6px;margin:8px 0;">' +
+          (showAnalyzeBtn
+            ? '<button class="btn-analyze analyze-action" id="btnAnalyzeNode"' +
+              (analyzeState.running ? ' disabled' : '') +
+              '>' +
+              esc(depthButtonLabel(nextRecommendedDepth(node))) +
+              '</button>'
+            : '') +
+          '<button class="secondary" id="btnQuickAskTab">' + esc(t('ctxAskAgent')) + '</button>' +
+          (node.kind === 'external-dep' && node.scopePath
+            ? '<button class="secondary" id="btnSwitchExtScope">' + esc(t('switchScopeToExt')) + '</button>'
+            : '') +
+        '</div>';
 
       if (node.kind === 'domain') {
         const depsOut = graph.edges.filter(e => e.kind === 'dep' && e.from === node.id).map(e => nodeById.get(e.to)).filter(Boolean);
@@ -2835,7 +3367,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           for (const ln of snippet.lines) {
             html +=
               '<div class="code-line' + (ln.highlight ? ' hl' : '') + '">' +
-                '<span class="line-no">' + ln.num + '</span>' +
+                '<span class="line-no" data-ask-line="' + ln.num + '" title="点击锚定第 ' + ln.num + ' 行提问">' + ln.num + '</span>' +
                 '<span>' + esc(ln.text) + '</span>' +
               '</div>';
           }
@@ -2855,20 +3387,19 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       }
       const analyzeNodeBtn = document.getElementById('btnAnalyzeNode');
       if (analyzeNodeBtn) {
-        analyzeNodeBtn.addEventListener('click', () => {
-          triggerNodeAnalyze(node);
+        analyzeNodeBtn.addEventListener('click', () => triggerNodeAnalyze(node));
+      }
+      const askTabBtn = document.getElementById('btnQuickAskTab');
+      if (askTabBtn) {
+        askTabBtn.addEventListener('click', () => {
+          inspectorTab = 'directive';
+          renderInspector(node);
+          setTimeout(() => document.getElementById('inspDirNote')?.focus(), 20);
         });
       }
-      const copyNodeBtn = document.getElementById('btnCopyNodePrompt');
-      if (copyNodeBtn) {
-        copyNodeBtn.addEventListener('click', () => {
-          hostApi.postMessage({
-            type: 'copyNodePrompt',
-            title: node.title,
-            kind: node.kind,
-            path: node.path || node.defaultDirectivePath || ''
-          });
-        });
+      const swExtBtn = document.getElementById('btnSwitchExtScope');
+      if (swExtBtn && node.scopePath) {
+        swExtBtn.addEventListener('click', () => setScopeRootAction(node.scopePath));
       }
       const delBtn = document.getElementById('btnRemoveDir');
       if (delBtn && node.directiveId) {
@@ -2878,6 +3409,14 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           inspector.classList.add('hidden');
         });
       }
+      el.querySelectorAll('[data-ask-line]').forEach(lnEl => {
+        lnEl.addEventListener('click', () => {
+          prefilledDirLine = parseInt(lnEl.dataset.askLine || '1', 10);
+          inspectorTab = 'directive';
+          renderInspector(node);
+          setTimeout(() => document.getElementById('inspDirNote')?.focus(), 20);
+        });
+      });
       el.querySelectorAll('[data-dep-jump]').forEach(chip => {
         chip.addEventListener('click', () => {
           selectNode(chip.dataset.depJump);
@@ -2886,7 +3425,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       });
     }
 
-    // Repo Switcher Popover (MCP App) & Overflow Menu
+    // Popovers & Menus
     const repoToggleBtn = document.getElementById('btnRepoToggle');
     const repoPopover = document.getElementById('repoPopover');
     const wtInputEl = document.getElementById('worktreeInput');
@@ -2895,6 +3434,8 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
 
     function closePopovers() {
       if (moreMenu) moreMenu.classList.add('hidden');
+      if (depthPopover) depthPopover.classList.add('hidden');
+      if (nodeCtxMenu) nodeCtxMenu.classList.add('hidden');
       if (repoPopover && gitCtx) repoPopover.classList.add('hidden');
     }
 
@@ -2902,6 +3443,8 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       repoToggleBtn.addEventListener('click', (ev) => {
         ev.stopPropagation();
         if (moreMenu) moreMenu.classList.add('hidden');
+        depthPopover.classList.add('hidden');
+        nodeCtxMenu.classList.add('hidden');
         repoPopover.classList.toggle('hidden');
         if (!repoPopover.classList.contains('hidden') && wtInputEl) {
           wtInputEl.focus();
@@ -2923,9 +3466,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       inspector.classList.add('hidden');
       hostApi.postMessage({ type: 'setWorktreePath', worktreePath: val });
     }
-    if (wtBtnEl) {
-      wtBtnEl.addEventListener('click', submitWorktreeSwitch);
-    }
+    if (wtBtnEl) wtBtnEl.addEventListener('click', submitWorktreeSwitch);
     if (wtInputEl) {
       wtInputEl.addEventListener('keydown', (ev) => {
         if (ev.key === 'Enter') {
@@ -2937,19 +3478,46 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
 
     document.getElementById('btnMoreMenu').addEventListener('click', (ev) => {
       ev.stopPropagation();
+      depthPopover.classList.add('hidden');
+      nodeCtxMenu.classList.add('hidden');
       if (repoPopover && gitCtx) repoPopover.classList.add('hidden');
       moreMenu.classList.toggle('hidden');
     });
     document.addEventListener('click', closePopovers);
 
+    document.querySelectorAll('[data-storage-mode]').forEach(btn => {
+      btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const m = btn.dataset.storageMode;
+        storageMode = m;
+        syncStorageMenu();
+        moreMenu.classList.add('hidden');
+        hostApi.postMessage({ type: 'setStorageMode', storageMode: m });
+      });
+    });
+
+    document.getElementById('btnDispatchBatch').addEventListener('click', () => {
+      hostApi.postMessage({ type: 'dispatchDirectives' });
+    });
+
     document.getElementById('btnAnalyzeBranch').addEventListener('click', () => {
-      if (analyzeState.running) return;
-      hostApi.postMessage({ type: 'analyzeTarget', scope: 'branch', baseRef });
+      triggerTopAnalyze();
+    });
+    document.getElementById('btnAnalyzeBranchMenu').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      moreMenu.classList.add('hidden');
+      nodeCtxMenu.classList.add('hidden');
+      openDepthPopover(ev.currentTarget, scopeRoot ? nodeById.get('root') : null);
     });
 
     document.getElementById('btnInspAnalyzeQuick').addEventListener('click', () => {
       if (!selectedNodeId || !nodeById.has(selectedNodeId)) return;
       triggerNodeAnalyze(nodeById.get(selectedNodeId));
+    });
+    document.getElementById('btnInspAnalyzeMenu').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      if (!selectedNodeId || !nodeById.has(selectedNodeId)) return;
+      openDepthPopover(ev.currentTarget, nodeById.get(selectedNodeId));
     });
 
     document.getElementById('btnDismissAnalyze').addEventListener('click', () => {
@@ -3032,6 +3600,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
     // Pan & Zoom
     viewport.addEventListener('mousedown', (ev) => {
       if (ev.button !== 0) return;
+      closePopovers();
       viewport.classList.add('panning');
       const startX = ev.clientX - cam.x;
       const startY = ev.clientY - cam.y;
@@ -3051,6 +3620,7 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
 
     viewport.addEventListener('wheel', (ev) => {
       ev.preventDefault();
+      closePopovers();
       const rect = viewport.getBoundingClientRect();
       const mx = ev.clientX - rect.left;
       const my = ev.clientY - rect.top;
@@ -3138,7 +3708,8 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
       focusMode = false;
       syncFocusButtons();
       inspector.classList.add('hidden');
-      syncVisualClasses();
+      computeTidyLayout(true);
+      buildNodeDom(true);
     });
 
     const searchInput = document.getElementById('searchInput');
@@ -3173,7 +3744,10 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         } else if (focusMode) {
           focusMode = false; syncFocusButtons(); syncVisualClasses();
         } else if (selectedNodeId) {
-          selectedNodeId = null; inspector.classList.add('hidden'); syncVisualClasses();
+          selectedNodeId = null;
+          inspector.classList.add('hidden');
+          computeTidyLayout(true);
+          buildNodeDom(true);
         }
         return;
       }
@@ -3208,6 +3782,11 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
         gitCtx = msg.payload.git;
         baseRef = msg.payload.baseRef || 'HEAD';
         graph = msg.payload.graph || { mode: viewMode, nodes: [], edges: [], summary: {} };
+        scopeRoot = msg.payload.scopeRoot ?? graph.scopeRoot ?? '';
+        storageMode = msg.payload.storageMode ?? graph.storageMode ?? 'git-hidden';
+        const scopeChanged = scopeRoot !== lastScopeKey;
+        lastScopeKey = scopeRoot;
+
         viewMode = graph.mode || 'hybrid';
         document.querySelectorAll('#modeControl button').forEach(b => {
           b.classList.toggle('active', b.dataset.mode === viewMode);
@@ -3306,12 +3885,12 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
           ? ((isMcpAppHost ? repoShort : '') + gitCtx.branch + '@' + gitCtx.shortSha)
           : t('noGit');
 
-        const topologyKey = graph.nodes.map(n => n.id + '@' + (n.parentId || '')).join('|');
+        const topologyKey = graph.nodes.map(n => n.id + '@' + (n.parentId || '') + ':' + (n.roleSummary || '')).join('|');
         const topologyChanged = topologyKey !== lastTopologyKey;
         lastTopologyKey = topologyKey;
 
-        const shouldReset = prevCount === 0 || briefingChanged || positions.size === 0;
-        if (briefingChanged) {
+        const shouldReset = prevCount === 0 || briefingChanged || scopeChanged || positions.size === 0;
+        if (briefingChanged || scopeChanged) {
           positions.clear();
           manualPositions.clear();
           collapsedIds.clear();
@@ -3326,9 +3905,9 @@ export function getCanvasHtml(nonce: string, options?: CanvasHtmlOptions): strin
             }
           }
         }
-        if (shouldReset && graph.nodes.length > 28) {
+        if (shouldReset && !scopeRoot && graph.nodes.length > 36) {
           for (const n of graph.nodes) {
-            if (n.kind === 'domain') collapsedIds.add(n.id);
+            if (n.kind === 'domain' && !n.filesExpanded) collapsedIds.add(n.id);
           }
         }
 

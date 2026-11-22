@@ -6,8 +6,17 @@ import {
   listTrackedFiles,
   readFileAtRef,
 } from './git.js';
-import { saveBriefingRecord, StoredBriefingRecord } from './store.js';
 import {
+  ackDirective,
+  saveBriefingRecord,
+  saveOutlineRecord,
+  StoredBriefingRecord,
+  StoredOutlineRecord,
+  verifyOutline,
+} from './store.js';
+import {
+  AnalysisDepth,
+  AnnotationDirective,
   BlockingCondition,
   BriefingClaim,
   BriefingReport,
@@ -15,7 +24,9 @@ import {
   DeclaredImpact,
   DiffFileStat,
   EvidenceAnchor,
+  FileRoleItem,
   GitContext,
+  ModuleOutlineReport,
   VerificationSignal,
 } from './types.js';
 import { verifyBriefing } from './verifier.js';
@@ -34,6 +45,7 @@ export interface AnalyzerConfig {
 export interface AnalyzeRequest {
   repoRoot: string;
   scope: 'branch' | 'node';
+  depth?: AnalysisDepth;
   baseRef: string;
   nodeTitle?: string;
   nodeKind?: string;
@@ -410,6 +422,11 @@ function buildInitialPrompt(req: AnalyzeRequest, ctx: PackedAnalysisContext): st
         : `- No files differ from \`${req.baseRef}\` right now: set \`"expectChanged": false\` on all claims and leave \`"impacts": []\`.`
       : `- Omit \`baseRef\` (or leave unset) and set \`"expectChanged": false\` unless specifically claiming a diff.`;
 
+  const depthGuidance =
+    req.depth === 'flow'
+      ? `- Depth Mode: **L2 Flow & Collaboration ("flow")**. Focus ONLY on 3–5 core call chains / collaboration flows across the module's key files (\`claims[]\`). Keep \`"blockingConditions": []\` and \`"impacts": []\` empty unless critical, avoiding line-by-line edge-case overload.`
+      : `- Depth Mode: **L3 Deep Verification ("deep")**. Include key behavioral \`claims[]\`, explicit guard/edge-case \`blockingConditions[]\`, cross-boundary \`impacts[]\`, and architectural \`blindSpots[]\`.`;
+
   return [
     `You are CodeAtlas's deterministic verification briefing generator.`,
     `Do NOT invoke shell commands, tools, or markdown prose. Output ONLY a single raw JSON object matching \`BriefingReport\` (\`schemaVersion: "0.2"\`).`,
@@ -417,6 +434,7 @@ function buildInitialPrompt(req: AnalyzeRequest, ctx: PackedAnalysisContext): st
     ``,
     `## Target`,
     `- Scope: ${targetDescription}`,
+    depthGuidance,
     `- Repository Root: ${ctx.git.repoRoot}`,
     `- Target Ref: "WORKTREE"`,
     ``,
@@ -747,6 +765,8 @@ export function parseBriefingResponse(raw: string, req: AnalyzeRequest): Briefin
       typeof obj.targetRef === 'string' && obj.targetRef.trim()
         ? obj.targetRef.trim()
         : 'WORKTREE',
+    depth: req.depth === 'flow' ? 'flow' : 'deep',
+    scopePath: req.nodePath ? normalizePosixPath(req.nodePath) : undefined,
     summary: typeof obj.summary === 'string' ? obj.summary : '',
     blockingConditions,
     claims,
@@ -1009,4 +1029,173 @@ export async function runClickToAnalyze(req: AnalyzeRequest): Promise<StoredBrie
 
   req.onProgress?.('saving');
   return saveBriefingRecord(repoRoot, finalBriefing, finalVerification);
+}
+
+// ---------------------------------------------------------------------------
+// L1 Progressive Overview Runner (`runClickToOutline`) & Q&A Consultation
+// ---------------------------------------------------------------------------
+
+export async function runClickToOutline(req: AnalyzeRequest): Promise<StoredOutlineRecord> {
+  req.onProgress?.('context');
+  const git = await getGitContext(req.repoRoot);
+  const repoRoot = git.repoRoot;
+  const scopePath = normalizePosixPath(req.nodePath ?? '');
+  const tracked = (await listTrackedFiles(repoRoot)).map(normalizePosixPath);
+
+  const scopedFiles = scopePath
+    ? tracked.filter((f) => f === scopePath || f.startsWith(`${scopePath}/`))
+    : tracked;
+
+  const nonAssets = scopedFiles.filter((f) => classifyRunnerFile(f) !== 'asset');
+  const ranked = rankNodeCandidateFiles(nonAssets, new Set()).slice(0, 22);
+
+  const headerBlocks: string[] = [];
+  for (const rel of ranked) {
+    const content = await readFileAtRef(repoRoot, rel, 'WORKTREE');
+    if (!content) continue;
+    const headLines = content.split(/\r?\n/).slice(0, 38).join('\n');
+    headerBlocks.push(`=== FILE: ${rel} ===\n${headLines}`);
+  }
+
+  const lang = req.lang ?? 'zh';
+  const langRule =
+    lang === 'en'
+      ? 'Write `title`, `summary`, and each `children[].summary` in concise 1-sentence English.'
+      : '请用精炼的一句话中文编写 `title`、`summary` 以及每个 `children[].summary`（直击文件职责，不要废话）。';
+
+  const prompt = [
+    `You are CodeAtlas's L1 Module Tour generator. Do NOT analyze line-by-line edge cases.`,
+    `Output ONLY a single raw JSON object matching \`ModuleOutlineReport\` (\`schemaVersion: "0.2"\`).`,
+    langRule,
+    ``,
+    `## Target Scope`,
+    `- Scope Path: "${scopePath}"`,
+    `- Candidate Files in Scope (${ranked.length}): ${ranked.join(', ')}`,
+    ``,
+    `## Rules`,
+    `- \`scopePath\` MUST be "${scopePath}".`,
+    `- Every \`children[].path\` MUST be copied verbatim from the Candidate Files list above.`,
+    `- \`recommendedEntry\` (optional) MUST be one of the Candidate Files that a newcomer should read first.`,
+    `- Keep each \`children[].summary\` under 45 characters so it fits cleanly on a compact IDE file card.`,
+    ``,
+    `## Required JSON Schema`,
+    `{`,
+    `  "schemaVersion": "0.2",`,
+    `  "scopePath": ${JSON.stringify(scopePath)},`,
+    `  "targetRef": "WORKTREE",`,
+    `  "title": "string",`,
+    `  "summary": "1-2 sentence overview of what this directory/module owns",`,
+    `  "recommendedEntry": "exact/path/from/list",`,
+    `  "children": [`,
+    `    { "path": "exact/path/from/list", "summary": "concise 1-sentence file role", "role": "entry | core | types | util | test | config" }`,
+    `  ]`,
+    `}`,
+    ``,
+    `## File Headers`,
+    headerBlocks.join('\n\n') || '(no source files)',
+  ].join('\n');
+
+  req.onProgress?.('analyzing');
+  const raw = await runAnalyzerExecutor(prompt, repoRoot, req);
+  const stripped = stripMarkdownJsonFences(raw);
+  const firstBrace = stripped.indexOf('{');
+  const lastBrace = stripped.lastIndexOf('}');
+  const jsonSlice =
+    firstBrace >= 0 && lastBrace > firstBrace ? stripped.slice(firstBrace, lastBrace + 1) : stripped;
+  const parsed = JSON.parse(jsonSlice) as Record<string, unknown>;
+
+  const validSet = new Set(scopedFiles);
+  const rawChildren = Array.isArray(parsed.children) ? parsed.children : [];
+  const children: FileRoleItem[] = rawChildren
+    .filter((c): c is Record<string, unknown> => Boolean(c && typeof c === 'object'))
+    .map((c): FileRoleItem => ({
+      path: normalizePosixPath(String(c.path ?? '')),
+      summary: String(c.summary ?? '').trim(),
+      role:
+        c.role === 'entry' ||
+        c.role === 'core' ||
+        c.role === 'types' ||
+        c.role === 'util' ||
+        c.role === 'test' ||
+        c.role === 'config'
+          ? (c.role as FileRoleItem['role'])
+          : undefined,
+    }))
+    .filter((c) => c.path && c.summary && validSet.has(c.path));
+
+  const rawRec =
+    typeof parsed.recommendedEntry === 'string'
+      ? normalizePosixPath(parsed.recommendedEntry)
+      : undefined;
+
+  const outline: ModuleOutlineReport = {
+    schemaVersion: '0.2',
+    scopePath,
+    targetRef: 'WORKTREE',
+    title:
+      typeof parsed.title === 'string' && parsed.title.trim()
+        ? parsed.title.trim()
+        : req.nodeTitle || scopePath || 'Repository Overview',
+    summary:
+      typeof parsed.summary === 'string' && parsed.summary.trim()
+        ? parsed.summary.trim()
+        : '',
+    recommendedEntry: rawRec && validSet.has(rawRec) ? rawRec : children[0]?.path,
+    children,
+  };
+
+  req.onProgress?.('verifying');
+  const verification = await verifyOutline(repoRoot, outline);
+  req.onProgress?.('saving');
+  return saveOutlineRecord(repoRoot, outline, verification);
+}
+
+export async function runDirectiveQuestion(params: {
+  repoRoot: string;
+  directive: AnnotationDirective;
+  config: AnalyzerConfig;
+  lang?: 'zh' | 'en';
+  executorOverride?: (prompt: string) => Promise<string>;
+}): Promise<string> {
+  const { repoRoot, directive, config, lang = 'zh' } = params;
+  const relPath = normalizePosixPath(directive.path);
+  const content = relPath ? await readFileAtRef(repoRoot, relPath, 'WORKTREE') : undefined;
+  let snippetBlock = '(no source file attached)';
+  if (content !== undefined) {
+    const formatted = formatLineNumberedSnippet(content, 12 * 1024);
+    snippetBlock = `=== FILE: ${relPath} ===\n${formatted.numberedContent}`;
+  }
+
+  const prompt = [
+    `You are CodeAtlas's anchored code Q&A assistant. Do NOT run shell commands.`,
+    lang === 'en'
+      ? `Answer the user's anchored question concisely and accurately (2-5 sentences) citing exact line numbers/symbols.`
+      : `请基于下方真实源码，用简明准确的中文（2-5句话，引用具体符号或行号）直接回答用户在画布节点上提出的疑问。仅输出纯文本解答，不要包裹 JSON。`,
+    ``,
+    `## Anchored Question`,
+    `- Path: ${relPath || '(module)'}${directive.startLine ? `:${directive.startLine}` : ''}`,
+    `- Kind: ${directive.kind}`,
+    `- User Note: ${directive.note}`,
+    ``,
+    `## Source Context`,
+    snippetBlock,
+  ].join('\n');
+
+  const dummyReq: AnalyzeRequest = {
+    repoRoot,
+    scope: 'node',
+    baseRef: 'HEAD',
+    config,
+    executorOverride: params.executorOverride,
+  };
+  const rawAnswer = (await runAnalyzerExecutor(prompt, repoRoot, dummyReq)).trim();
+  if (directive.kind !== 'rework') {
+    await ackDirective(repoRoot, {
+      id: directive.id,
+      expectedRevision: directive.revision || 1,
+      agentId: `codeatlas:${config.provider}`,
+      summary: rawAnswer,
+    });
+  }
+  return rawAnswer;
 }

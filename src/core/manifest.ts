@@ -5,36 +5,23 @@ import {
   ManifestDriftIssue,
   ManifestLoadResult,
   ManifestVerificationResult,
+  StorageMode,
 } from './types.js';
-import { listTrackedFiles } from './git.js';
+import { getGitStateDir, listTrackedFiles, syncLocalGitExclude } from './git.js';
+import { loadRepoConfig, saveRepoConfig, writeAtomicWin32 } from './store.js';
 import { verifyAnchor } from './verifier.js';
 import { RepoArchitecture } from './indexer.js';
 
 const GLOB_RE = /[*?[\]{}]/;
 
-export async function loadAtlasManifestResult(repoRoot: string): Promise<ManifestLoadResult> {
-  const manifestPath = path.join(repoRoot, '.atlas', 'manifest.json');
-  let raw: string;
-  try {
-    raw = await fs.readFile(manifestPath, 'utf-8');
-  } catch (err: unknown) {
-    const code = (err as NodeJS.ErrnoException)?.code;
-    if (code === 'ENOENT') {
-      return { status: 'missing' };
-    }
-    return {
-      status: 'invalid',
-      errors: [`Unable to read .atlas/manifest.json: ${err instanceof Error ? err.message : String(err)}`],
-    };
-  }
-
+function parseAndValidateManifest(raw: string, label: string): ManifestLoadResult {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch (err: unknown) {
     return {
       status: 'invalid',
-      errors: [`Invalid JSON in .atlas/manifest.json: ${err instanceof Error ? err.message : String(err)}`],
+      errors: [`Invalid JSON in ${label}: ${err instanceof Error ? err.message : String(err)}`],
     };
   }
 
@@ -55,6 +42,34 @@ export async function loadAtlasManifestResult(repoRoot: string): Promise<Manifes
     return { status: 'invalid', errors };
   }
   return { status: 'ok', manifest: obj as AtlasManifest };
+}
+
+export async function loadAtlasManifestResult(repoRoot: string): Promise<ManifestLoadResult> {
+  const worktreeManifestPath = path.join(repoRoot, '.atlas', 'manifest.json');
+  try {
+    const raw = await fs.readFile(worktreeManifestPath, 'utf-8');
+    const res = parseAndValidateManifest(raw, '.atlas/manifest.json');
+    return res.status === 'ok' ? { ...res, source: 'worktree' } : res;
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException)?.code;
+    if (code !== 'ENOENT') {
+      return {
+        status: 'invalid',
+        errors: [`Unable to read .atlas/manifest.json: ${err instanceof Error ? err.message : String(err)}`],
+      };
+    }
+  }
+
+  // Fallback to zero-intrusion <git-dir>/codeatlas/manifest.json
+  try {
+    const stateDir = await getGitStateDir(repoRoot);
+    const hiddenPath = path.join(stateDir, 'manifest.json');
+    const raw = await fs.readFile(hiddenPath, 'utf-8');
+    const res = parseAndValidateManifest(raw, '.git/codeatlas/manifest.json');
+    return res.status === 'ok' ? { ...res, source: 'git-hidden' } : res;
+  } catch {
+    return { status: 'missing' };
+  }
 }
 
 export async function loadAtlasManifest(repoRoot: string): Promise<AtlasManifest | undefined> {
@@ -163,15 +178,29 @@ export async function verifyManifest(
 export async function exportManifestDraft(
   repoRoot: string,
   arch: RepoArchitecture,
-  overwrite = false
+  overwrite = false,
+  modeOverride?: StorageMode
 ): Promise<string> {
-  const atlasDir = path.join(repoRoot, '.atlas');
-  const manifestPath = path.join(atlasDir, 'manifest.json');
+  const cfg = await loadRepoConfig(repoRoot);
+  const mode = modeOverride ?? cfg.storageMode;
+
+  let manifestPath: string;
+  if (mode === 'git-hidden') {
+    const stateDir = await getGitStateDir(repoRoot);
+    manifestPath = path.join(stateDir, 'manifest.json');
+  } else {
+    if (mode === 'worktree-excluded') {
+      await syncLocalGitExclude(repoRoot, true);
+    } else {
+      await syncLocalGitExclude(repoRoot, false);
+    }
+    manifestPath = path.join(repoRoot, '.atlas', 'manifest.json');
+  }
 
   if (!overwrite) {
     try {
       await fs.access(manifestPath);
-      throw new Error('.atlas/manifest.json already exists. Refusing to overwrite without explicit confirmation.');
+      throw new Error('manifest.json already exists. Refusing to overwrite without explicit confirmation.');
     } catch (err: unknown) {
       if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
         throw err;
@@ -196,11 +225,40 @@ export async function exportManifestDraft(
               : [],
       })),
     guardrails: [
-      'Keep .atlas/manifest.json focused on stable architectural domains and guardrails.',
+      'Keep manifest.json focused on stable architectural domains and guardrails.',
     ],
   };
 
-  await fs.mkdir(atlasDir, { recursive: true });
-  await fs.writeFile(manifestPath, JSON.stringify(draft, null, 2) + '\n', 'utf-8');
+  await writeAtomicWin32(manifestPath, JSON.stringify(draft, null, 2) + '\n');
   return manifestPath;
+}
+
+export async function switchRepoStorageMode(
+  repoRoot: string,
+  nextMode: StorageMode
+): Promise<StorageMode> {
+  await saveRepoConfig(repoRoot, { storageMode: nextMode });
+  if (nextMode === 'worktree-excluded') {
+    await syncLocalGitExclude(repoRoot, true);
+  } else if (nextMode === 'worktree-tracked') {
+    await syncLocalGitExclude(repoRoot, false);
+  }
+
+  // If promoting from git-hidden to worktree-* and worktree .atlas/manifest.json doesn't exist yet, sync existing hidden manifest
+  if (nextMode !== 'git-hidden') {
+    const wtManifest = path.join(repoRoot, '.atlas', 'manifest.json');
+    try {
+      await fs.access(wtManifest);
+    } catch {
+      try {
+        const stateDir = await getGitStateDir(repoRoot);
+        const hiddenRaw = await fs.readFile(path.join(stateDir, 'manifest.json'), 'utf-8');
+        await writeAtomicWin32(wtManifest, hiddenRaw);
+      } catch {
+        // no hidden manifest yet
+      }
+    }
+  }
+
+  return nextMode;
 }

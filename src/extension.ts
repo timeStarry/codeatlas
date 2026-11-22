@@ -14,10 +14,11 @@ import {
 import {
   exportManifestDraft,
   loadAtlasManifestResult,
+  switchRepoStorageMode,
   verifyManifest,
 } from './core/manifest.js';
 import { analyzeRepositoryArchitecture } from './core/indexer.js';
-import { enrichArchitectureWithWorkspace } from './core/workspace.js';
+import { enrichArchitectureWithWorkspace, scanScopeExternalEdges } from './core/workspace.js';
 import { verifyBriefing } from './core/verifier.js';
 import { formatDirectivesForAgent } from './core/directives.js';
 import {
@@ -33,20 +34,26 @@ import {
   deleteDirective,
   listDirectives,
   listStoredBriefings,
+  loadAllOutlines,
+  loadRepoConfig,
   StoredBriefingRecord,
 } from './core/store.js';
 import {
   AnalyzerConfig,
   AnalyzerProvider,
   runClickToAnalyze,
+  runClickToOutline,
+  runDirectiveQuestion,
 } from './core/runner.js';
 import { analyzeWorkspaceIndirectImpact } from './lsp/impactProvider.js';
 import {
+  AnalysisDepth,
   AnnotationDirective,
   BriefingReport,
   BriefingVerificationResult,
   IndirectImpactReport,
   ManifestDriftIssue,
+  StorageMode,
 } from './core/types.js';
 import { getCockpitHtml } from './webview/html.js';
 import { getCanvasHtml } from './webview/canvasHtml.js';
@@ -64,9 +71,12 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
   private canvasPanel?: vscode.WebviewPanel;
   private lastVerification?: BriefingVerificationResult;
+  private lastBriefingDepth?: 'flow' | 'deep';
+  private lastBriefingScopePath?: string;
   private lastIndirectImpact?: IndirectImpactReport;
   private activeBriefingPath = '';
   private baseRef = '';
+  private scopeRoot = '';
   private viewMode: CanvasViewMode = 'hybrid';
   private didAutoDiscover = false;
   private didMigrate = false;
@@ -130,27 +140,17 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
       const tracked = await listTrackedFiles(git.repoRoot);
       const arch = analyzeRepositoryArchitecture(tracked, undefined, this.lang);
       await enrichArchitectureWithWorkspace(git.repoRoot, arch);
+      const cfg = await loadRepoConfig(git.repoRoot);
 
-      let overwrite = false;
-      const target = path.join(git.repoRoot, '.atlas', 'manifest.json');
-      try {
-        await fs.access(target);
-        const choice = await vscode.window.showWarningMessage(
-          '.atlas/manifest.json 已存在，是否覆盖为自动生成的草稿？',
-          '覆盖',
-          '取消'
-        );
-        if (choice !== '覆盖') return;
-        overwrite = true;
-      } catch {
-        // does not exist
-      }
-
-      const written = await exportManifestDraft(git.repoRoot, arch, overwrite);
+      const written = await exportManifestDraft(git.repoRoot, arch, true, cfg.storageMode);
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(written));
       await vscode.window.showTextDocument(doc);
       await this.pushState();
-      vscode.window.showInformationMessage('CodeAtlas: 已生成 .atlas/manifest.json 草稿。');
+      vscode.window.showInformationMessage(
+        cfg.storageMode === 'git-hidden'
+          ? 'CodeAtlas: 已保存骨架至 .git/codeatlas/manifest.json（零入侵模式）。'
+          : 'CodeAtlas: 已生成 .atlas/manifest.json 草稿。'
+      );
     } catch (err) {
       vscode.window.showErrorMessage(
         `CodeAtlas 生成 manifest 失败: ${err instanceof Error ? err.message : String(err)}`
@@ -343,6 +343,36 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
         case 'copyNodePrompt':
           await this.copyNodePromptToClipboard(msg);
           break;
+        case 'setScopeRoot':
+          this.scopeRoot =
+            typeof msg.scopeRoot === 'string'
+              ? msg.scopeRoot.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+|\/+$/g, '')
+              : '';
+          if (this.scopeRoot === '(root)' || this.scopeRoot === '.') this.scopeRoot = '';
+          this.expandedDomainIds.clear();
+          this.expandedFolderIds.clear();
+          await this.pushState();
+          break;
+        case 'setStorageMode':
+          if (
+            msg.storageMode === 'git-hidden' ||
+            msg.storageMode === 'worktree-excluded' ||
+            msg.storageMode === 'worktree-tracked'
+          ) {
+            const ws = this.getWorkspaceRoot();
+            if (ws) {
+              const gitCtx = await getGitContext(ws);
+              await switchRepoStorageMode(gitCtx.repoRoot, msg.storageMode as StorageMode);
+              await this.pushState();
+            }
+          }
+          break;
+        case 'askAgentNow':
+          await this.handleAskAgentNow(msg);
+          break;
+        case 'dispatchDirectives':
+          await this.handleDispatchDirectives();
+          break;
         case 'analyzeTarget':
           await this.handleAnalyzeTarget(msg);
           break;
@@ -451,6 +481,8 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
       }
       const gitCtx = await getGitContext(workspaceRoot);
       this.lastVerification = await verifyBriefing(gitCtx.repoRoot, briefing, filePath);
+      this.lastBriefingDepth = briefing.depth;
+      this.lastBriefingScopePath = briefing.scopePath;
       this.activeBriefingPath = filePath;
       await this.pushState();
       if (!silent) {
@@ -795,8 +827,102 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
     };
   }
 
+  private async handleAskAgentNow(msg: {
+    directiveKind?: 'constraint' | 'question' | 'rework';
+    path?: string;
+    startLine?: number;
+    targetNodeId?: string;
+    title?: string;
+    contextBody?: string;
+    note?: string;
+  }): Promise<void> {
+    const workspaceRoot = this.getWorkspaceRoot();
+    if (!workspaceRoot || !msg.note?.trim()) return;
+
+    try {
+      const gitCtx = await getGitContext(workspaceRoot);
+      const kind = msg.directiveKind || 'question';
+      const dirPath = (msg.path || this.scopeRoot || '').trim();
+      const created = await createDirective(gitCtx.repoRoot, {
+        ref: gitCtx.headSha || 'WORKTREE',
+        path: dirPath || '(root)',
+        startLine: msg.startLine,
+        targetNodeId: msg.targetNodeId,
+        kind,
+        note: msg.note.trim(),
+      });
+      await this.pushState();
+
+      if (kind === 'question' && !this.isAnalyzing) {
+        this.isAnalyzing = true;
+        this.broadcastAnalyzeStatus({
+          running: true,
+          label: this.lang === 'zh' ? '正在解答锚点提问...' : 'Answering anchored question...',
+        });
+        try {
+          const config = this.readAnalyzerConfig();
+          await runDirectiveQuestion({
+            repoRoot: gitCtx.repoRoot,
+            directive: created,
+            config,
+            lang: this.lang,
+          });
+          this.broadcastAnalyzeStatus({ running: false });
+          await this.pushState();
+          return;
+        } catch {
+          this.broadcastAnalyzeStatus({ running: false });
+          // Fallback to opening IDE Chat / Clipboard if local runner CLI/API is not configured
+        } finally {
+          this.isAnalyzing = false;
+        }
+      }
+
+      const md = formatDirectivesForAgent(gitCtx.repoRoot, gitCtx.headSha || 'WORKTREE', [created]);
+      await vscode.env.clipboard.writeText(md);
+      try {
+        await vscode.commands.executeCommand('workbench.action.chat.open', { query: md });
+      } catch {
+        vscode.window.showInformationMessage(
+          this.lang === 'zh'
+            ? '已保存批注并复制 Agent 指令至剪贴板，可直接粘贴至对话面板。'
+            : 'Saved directive and copied prompt to clipboard.'
+        );
+      }
+    } catch (err) {
+      vscode.window.showErrorMessage(
+        `CodeAtlas 提问派发失败: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
+  private async handleDispatchDirectives(): Promise<void> {
+    const workspaceRoot = this.getWorkspaceRoot();
+    if (!workspaceRoot) return;
+    try {
+      const gitCtx = await getGitContext(workspaceRoot);
+      const openDirs = await listDirectives(gitCtx.repoRoot, false);
+      if (openDirs.length === 0) return;
+      const md = formatDirectivesForAgent(gitCtx.repoRoot, gitCtx.headSha || 'WORKTREE', openDirs);
+      await vscode.env.clipboard.writeText(md);
+      try {
+        await vscode.commands.executeCommand('workbench.action.chat.open', { query: md });
+      } catch {
+        vscode.window.showInformationMessage(
+          this.lang === 'zh'
+            ? `已复制全部 ${openDirs.length} 条待处理批注至剪贴板，请粘贴至 Agent 对话面板。`
+            : `Copied ${openDirs.length} open directives to clipboard.`
+        );
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   private async handleAnalyzeTarget(msg: {
     scope?: 'branch' | 'node';
+    depth?: AnalysisDepth;
+    scopeRoot?: string;
     nodeId?: string;
     title?: string;
     kind?: string;
@@ -819,25 +945,71 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
     try {
       const gitCtx = await getGitContext(workspaceRoot);
       const scope: 'branch' | 'node' = msg.scope === 'node' ? 'node' : 'branch';
+      const depth: AnalysisDepth =
+        msg.depth === 'overview' || msg.depth === 'flow' || msg.depth === 'deep'
+          ? msg.depth
+          : scope === 'node'
+            ? 'overview'
+            : 'deep';
       const effectiveBase =
         typeof msg.baseRef === 'string' && msg.baseRef
           ? msg.baseRef
           : this.baseRef || gitCtx.recentRefs[0] || 'HEAD';
+      const targetPath = msg.path ?? msg.scopeRoot ?? this.scopeRoot;
       const baseLabel =
         scope === 'node'
-          ? msg.title || msg.path || 'Node'
+          ? msg.title || targetPath || 'Node'
           : `branch (${effectiveBase})`;
 
-      this.broadcastAnalyzeStatus({ running: true, label: baseLabel });
+      this.broadcastAnalyzeStatus({ running: true, label: `${baseLabel} [${depth.toUpperCase()}]` });
 
       const config = this.readAnalyzerConfig();
+
+      if (depth === 'overview') {
+        const outlineRec = await runClickToOutline({
+          repoRoot: gitCtx.repoRoot,
+          scope: 'node',
+          depth: 'overview',
+          baseRef: effectiveBase,
+          nodeTitle: msg.title,
+          nodeKind: msg.kind,
+          nodePath: targetPath,
+          lang: this.lang,
+          config,
+        });
+        // Auto-expand matching domain
+        const tracked = await listTrackedFiles(gitCtx.repoRoot);
+        const manifestRes = await loadAtlasManifestResult(gitCtx.repoRoot);
+        const arch = analyzeRepositoryArchitecture(
+          tracked,
+          manifestRes.status === 'ok' ? manifestRes.manifest : undefined,
+          this.lang
+        );
+        const sc = outlineRec.outline.scopePath;
+        for (const d of arch.domains) {
+          const dp = (d.paths[0] ?? '').replace(/\\/g, '/').replace(/\/+$/, '');
+          if (sc && (dp === sc || sc.startsWith(`${dp}/`))) {
+            this.expandedDomainIds.add(d.id);
+          }
+        }
+        this.broadcastAnalyzeStatus({ running: false });
+        await this.pushState();
+        vscode.window.showInformationMessage(
+          this.lang === 'zh'
+            ? `CodeAtlas 已回填「${outlineRec.outline.title}」及 ${outlineRec.outline.children.length} 个文件的职责导览。`
+            : `CodeAtlas hydrated role overview for "${outlineRec.outline.title}".`
+        );
+        return;
+      }
+
       const record = await runClickToAnalyze({
         repoRoot: gitCtx.repoRoot,
         scope,
+        depth,
         baseRef: effectiveBase,
         nodeTitle: msg.title,
         nodeKind: msg.kind,
-        nodePath: msg.path,
+        nodePath: targetPath,
         lang: this.lang,
         config,
         onProgress: (stage) => {
@@ -854,6 +1026,8 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
       });
 
       this.lastVerification = record.verification;
+      this.lastBriefingDepth = record.briefing.depth;
+      this.lastBriefingScopePath = record.briefing.scopePath;
       this.activeBriefingPath = record.filePath;
       this.broadcastAnalyzeStatus({ running: false });
       await this.pushState();
@@ -938,13 +1112,16 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
         return;
       }
 
-      const [diffStats, manifestRes, trackedFiles, commits, directives] = await Promise.all([
-        getDiffStats(git.repoRoot, this.baseRef),
-        loadAtlasManifestResult(git.repoRoot),
-        listTrackedFiles(git.repoRoot),
-        getBranchCommits(git.repoRoot, this.baseRef),
-        listDirectives(git.repoRoot, true),
-      ]);
+      const [diffStats, manifestRes, trackedFiles, commits, directives, repoCfg, outlines] =
+        await Promise.all([
+          getDiffStats(git.repoRoot, this.baseRef),
+          loadAtlasManifestResult(git.repoRoot),
+          listTrackedFiles(git.repoRoot),
+          getBranchCommits(git.repoRoot, this.baseRef),
+          listDirectives(git.repoRoot, true),
+          loadRepoConfig(git.repoRoot),
+          loadAllOutlines(git.repoRoot),
+        ]);
 
       const manifest = manifestRes.status === 'ok' ? manifestRes.manifest : undefined;
       let manifestIssues: ManifestDriftIssue[] = [];
@@ -953,7 +1130,7 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
           severity: 'error',
           domainId: '(manifest)',
           field: 'path',
-          target: '.atlas/manifest.json',
+          target: 'manifest.json',
           message: e,
         }));
       } else if (manifest) {
@@ -977,12 +1154,21 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
       if (this.canvasPanel) {
         const arch = analyzeRepositoryArchitecture(trackedFiles, manifest, this.lang);
         await enrichArchitectureWithWorkspace(git.repoRoot, arch);
+        const scopeBoundaries = this.scopeRoot
+          ? await scanScopeExternalEdges(git.repoRoot, trackedFiles, this.scopeRoot, arch)
+          : [];
         const graph = buildAtlasGraph({
           git,
           manifest,
           manifestIssues,
           archOverride: arch,
           hasManifest: manifestRes.status === 'ok',
+          storageMode: repoCfg.storageMode,
+          scopeRoot: this.scopeRoot,
+          outlines,
+          scopeBoundaries,
+          briefingDepth: this.lastBriefingDepth,
+          briefingScopePath: this.lastBriefingScopePath,
           diffStats,
           trackedFiles,
           commits,
@@ -1002,6 +1188,8 @@ class CodeAtlasCockpitProvider implements vscode.WebviewViewProvider {
           payload: {
             git,
             baseRef: this.baseRef,
+            scopeRoot: this.scopeRoot,
+            storageMode: repoCfg.storageMode,
             graph,
             availableBriefings,
             activeBriefingPath: this.activeBriefingPath,

@@ -13,10 +13,11 @@ import {
 import {
   exportManifestDraft,
   loadAtlasManifestResult,
+  switchRepoStorageMode,
   verifyManifest,
 } from '../core/manifest.js';
 import { analyzeRepositoryArchitecture } from '../core/indexer.js';
-import { enrichArchitectureWithWorkspace } from '../core/workspace.js';
+import { enrichArchitectureWithWorkspace, scanScopeExternalEdges } from '../core/workspace.js';
 import { AtlasGraphData, buildAtlasGraph, CanvasViewMode } from '../core/graph.js';
 import { verifyBriefing } from '../core/verifier.js';
 import {
@@ -27,15 +28,22 @@ import {
   deleteDirective,
   listDirectives,
   listStoredBriefings,
+  loadAllOutlines,
   loadLatestBriefingRecord,
+  loadRepoConfig,
   saveBriefingRecord,
+  saveOutlineRecord,
   StoredBriefingRecord,
+  verifyOutline,
 } from '../core/store.js';
 import {
+  AnnotationDirective,
   BriefingReport,
   BriefingVerificationResult,
   EvidenceAnchor,
   ManifestDriftIssue,
+  ModuleOutlineReport,
+  StorageMode,
 } from '../core/types.js';
 import { getCanvasHtml } from '../webview/canvasHtml.js';
 
@@ -58,6 +66,7 @@ interface DiscoveredBriefing {
 interface RepoUiSession {
   mode: CanvasViewMode;
   baseRef: string;
+  scopeRoot: string;
   expandedDomainIds: Set<string>;
   expandedFolderIds: Set<string>;
   pruneUnchanged: boolean;
@@ -88,6 +97,7 @@ function getSession(repoRoot: string): RepoUiSession {
     session = {
       mode: globalFallbackMode,
       baseRef: '',
+      scopeRoot: '',
       expandedDomainIds: new Set<string>(),
       expandedFolderIds: new Set<string>(),
       pruneUnchanged: false,
@@ -224,20 +234,29 @@ async function discoverBriefings(repoRoot: string): Promise<DiscoveredBriefing[]
   return candidates;
 }
 
-async function loadVerificationForPath(
+async function loadBriefingAndVerification(
   repoRoot: string,
   filePath: string
-): Promise<BriefingVerificationResult | undefined> {
-  if (!filePath) return undefined;
+): Promise<{ briefing?: BriefingReport; verification?: BriefingVerificationResult }> {
+  if (!filePath) return {};
   try {
     const raw = await fs.readFile(filePath, 'utf-8');
     const parsed = JSON.parse(raw) as Partial<BriefingReport & StoredBriefingRecord>;
     const briefing = (parsed.briefing ?? parsed) as BriefingReport;
-    if (!briefing || !Array.isArray(briefing.claims)) return undefined;
-    return await verifyBriefing(repoRoot, briefing, filePath);
+    if (!briefing || !Array.isArray(briefing.claims)) return {};
+    const verification = await verifyBriefing(repoRoot, briefing, filePath);
+    return { briefing, verification };
   } catch {
-    return undefined;
+    return {};
   }
+}
+
+async function loadVerificationForPath(
+  repoRoot: string,
+  filePath: string
+): Promise<BriefingVerificationResult | undefined> {
+  const res = await loadBriefingAndVerification(repoRoot, filePath);
+  return res.verification;
 }
 
 function buildEmptyCanvasPayload(params: {
@@ -318,15 +337,21 @@ async function buildRepoCanvasPayload(repoRoot: string): Promise<{
     }
   }
 
-  const verification = await loadVerificationForPath(git.repoRoot, session.activeBriefingPath);
+  const { briefing: activeBriefing, verification } = await loadBriefingAndVerification(
+    git.repoRoot,
+    session.activeBriefingPath
+  );
 
-  const [diffStats, manifestRes, trackedFiles, commits, directives] = await Promise.all([
-    getDiffStats(git.repoRoot, session.baseRef),
-    loadAtlasManifestResult(git.repoRoot),
-    listTrackedFiles(git.repoRoot),
-    getBranchCommits(git.repoRoot, session.baseRef),
-    listDirectives(git.repoRoot, true),
-  ]);
+  const [diffStats, manifestRes, trackedFiles, commits, directives, repoCfg, outlines] =
+    await Promise.all([
+      getDiffStats(git.repoRoot, session.baseRef),
+      loadAtlasManifestResult(git.repoRoot),
+      listTrackedFiles(git.repoRoot),
+      getBranchCommits(git.repoRoot, session.baseRef),
+      listDirectives(git.repoRoot, true),
+      loadRepoConfig(git.repoRoot),
+      loadAllOutlines(git.repoRoot),
+    ]);
 
   const manifest = manifestRes.status === 'ok' ? manifestRes.manifest : undefined;
   let manifestIssues: ManifestDriftIssue[] = [];
@@ -335,7 +360,7 @@ async function buildRepoCanvasPayload(repoRoot: string): Promise<{
       severity: 'error',
       domainId: '(manifest)',
       field: 'path',
-      target: '.atlas/manifest.json',
+      target: 'manifest.json',
       message: e,
     }));
   } else if (manifest) {
@@ -346,6 +371,10 @@ async function buildRepoCanvasPayload(repoRoot: string): Promise<{
   const arch = analyzeRepositoryArchitecture(trackedFiles, manifest, session.lang);
   await enrichArchitectureWithWorkspace(git.repoRoot, arch);
 
+  const scopeBoundaries = session.scopeRoot
+    ? await scanScopeExternalEdges(git.repoRoot, trackedFiles, session.scopeRoot, arch)
+    : [];
+
   const makeGraph = (expandedDom: string[], expandedFold: string[]): AtlasGraphData =>
     buildAtlasGraph({
       git,
@@ -353,6 +382,12 @@ async function buildRepoCanvasPayload(repoRoot: string): Promise<{
       manifestIssues,
       archOverride: arch,
       hasManifest: manifestRes.status === 'ok',
+      storageMode: repoCfg.storageMode,
+      scopeRoot: session.scopeRoot,
+      outlines,
+      scopeBoundaries,
+      briefingDepth: activeBriefing?.depth,
+      briefingScopePath: activeBriefing?.scopePath,
       diffStats,
       trackedFiles,
       commits,
@@ -372,6 +407,8 @@ async function buildRepoCanvasPayload(repoRoot: string): Promise<{
   const assemblePayload = (g: AtlasGraphData): Record<string, unknown> => ({
     git,
     baseRef: session.baseRef,
+    scopeRoot: session.scopeRoot,
+    storageMode: repoCfg.storageMode,
     graph: g,
     availableBriefings,
     activeBriefingPath: session.activeBriefingPath,
@@ -454,6 +491,11 @@ const TOOLS = [
           enum: ['hybrid', 'atlas', 'briefing'],
           description: 'Optional initial view mode (hybrid, atlas, or briefing).',
         },
+        scopeRoot: {
+          type: 'string',
+          description:
+            'Optional relative directory path (e.g. "src/core" or "crates/aster-app") to focus as the Canvas view root. Pass "" to reset to full repository root.',
+        },
       },
     },
     _meta: {
@@ -499,6 +541,45 @@ const TOOLS = [
         worktreePath: {
           type: 'string',
           description: 'Absolute path to the target Git worktree directory.',
+        },
+      },
+    },
+  },
+  {
+    name: 'atlas_submit_outline',
+    description:
+      'Submit a lightweight L1 Module Tour / Responsibility Outline (schema v0.2) that hydrates a directory/module card and each of its child files/subfolders in-place with concise 1-sentence role descriptions. Every path is deterministically verified against the repository.',
+    inputSchema: {
+      type: 'object',
+      required: ['outline'],
+      properties: {
+        worktreePath: { type: 'string' },
+        outline: {
+          type: 'object',
+          required: ['schemaVersion', 'scopePath', 'title', 'summary', 'children'],
+          properties: {
+            schemaVersion: { type: 'string', enum: ['0.2'] },
+            scopePath: { type: 'string' },
+            targetRef: { type: 'string' },
+            title: { type: 'string' },
+            summary: { type: 'string' },
+            recommendedEntry: { type: 'string' },
+            children: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['path', 'summary'],
+                properties: {
+                  path: { type: 'string' },
+                  summary: { type: 'string' },
+                  role: {
+                    type: 'string',
+                    enum: ['entry', 'core', 'types', 'util', 'test', 'config'],
+                  },
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -578,6 +659,9 @@ async function handleOpenAtlas(args: Record<string, unknown>): Promise<ToolCallR
   const session = getSession(resolved.repoRoot);
   if (requestedMode) {
     session.mode = requestedMode;
+  }
+  if (typeof args.scopeRoot === 'string') {
+    session.scopeRoot = args.scopeRoot.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
   }
 
   const { payload, summaryText } = await buildRepoCanvasPayload(resolved.repoRoot);
@@ -753,10 +837,31 @@ async function handleAtlasAppAction(args: Record<string, unknown>): Promise<Tool
   const repoRoot = resolved.repoRoot;
   const session = getSession(repoRoot);
 
+  let createdDirective: AnnotationDirective | undefined;
+
   switch (action) {
     case 'ready':
     case 'setWorktreePath':
       break;
+
+    case 'setScopeRoot': {
+      const nextScope =
+        typeof payloadObj.scopeRoot === 'string'
+          ? payloadObj.scopeRoot.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+|\/+$/g, '')
+          : '';
+      session.scopeRoot = nextScope === '(root)' || nextScope === '.' ? '' : nextScope;
+      session.expandedDomainIds.clear();
+      session.expandedFolderIds.clear();
+      break;
+    }
+
+    case 'setStorageMode': {
+      const m = payloadObj.storageMode;
+      if (m === 'git-hidden' || m === 'worktree-excluded' || m === 'worktree-tracked') {
+        await switchRepoStorageMode(repoRoot, m as StorageMode);
+      }
+      break;
+    }
 
     case 'refresh': {
       if (typeof payloadObj.baseRef === 'string' && payloadObj.baseRef) {
@@ -876,7 +981,7 @@ async function handleAtlasAppAction(args: Record<string, unknown>): Promise<Tool
           : undefined;
       if (dirPath && note) {
         const gitCtx = await getGitContext(repoRoot);
-        await createDirective(gitCtx.repoRoot, {
+        createdDirective = await createDirective(gitCtx.repoRoot, {
           ref: gitCtx.headSha || 'WORKTREE',
           path: dirPath,
           startLine,
@@ -917,6 +1022,9 @@ async function handleAtlasAppAction(args: Record<string, unknown>): Promise<Tool
   }
 
   const { payload, summaryText } = await buildRepoCanvasPayload(repoRoot);
+  if (createdDirective) {
+    payload.createdDirective = createdDirective;
+  }
   return {
     content: [{ type: 'text', text: summaryText }],
     structuredContent: payload,
@@ -968,6 +1076,55 @@ async function handleToolCall(
                   }
                 : null,
               openDirectives,
+            },
+            null,
+            2
+          ),
+        },
+      ],
+    };
+  }
+
+  if (name === 'atlas_submit_outline') {
+    const outline = args.outline as ModuleOutlineReport;
+    if (!outline || typeof outline !== 'object' || !Array.isArray(outline.children)) {
+      return {
+        isError: true,
+        content: [{ type: 'text', text: 'Invalid outline payload: missing children array.' }],
+      };
+    }
+    const verification = await verifyOutline(repoRoot, outline);
+    const stored = await saveOutlineRecord(repoRoot, outline, verification);
+
+    // Auto-expand matching domain/folder in session so user sees hydrated files right away!
+    const session = getSession(repoRoot);
+    const scopeClean = stored.outline.scopePath;
+    if (scopeClean) {
+      const tracked = await listTrackedFiles(repoRoot);
+      const manifestRes = await loadAtlasManifestResult(repoRoot);
+      const arch = analyzeRepositoryArchitecture(
+        tracked,
+        manifestRes.status === 'ok' ? manifestRes.manifest : undefined,
+        session.lang
+      );
+      for (const d of arch.domains) {
+        const dp = (d.paths[0] ?? '').replace(/\\/g, '/').replace(/\/+$/, '');
+        if (dp === scopeClean || scopeClean.startsWith(`${dp}/`)) {
+          session.expandedDomainIds.add(d.id);
+        }
+      }
+    }
+
+    return {
+      isError: verification.overallBadge === 'mismatch',
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(
+            {
+              storedId: stored.id,
+              storedPath: stored.filePath,
+              verification,
             },
             null,
             2

@@ -7,6 +7,7 @@ import {
   GitContext,
   IndirectImpactReport,
   ManifestDriftIssue,
+  StorageMode,
   VerificationBadge,
   VerificationSignal,
 } from './types.js';
@@ -19,6 +20,8 @@ import {
   RepoArchitecture,
 } from './indexer.js';
 import { BranchCommitInfo } from './git.js';
+import { StoredOutlineRecord } from './store.js';
+import { ScopeBoundaryItem } from './workspace.js';
 
 export type CanvasViewMode = 'hybrid' | 'atlas' | 'briefing';
 
@@ -33,9 +36,19 @@ export type CanvasNodeKind =
   | 'diff-file'
   | 'file'
   | 'impact'
-  | 'directive';
+  | 'directive'
+  | 'external-dep';
 
-export type CanvasEdgeKind = 'hierarchy' | 'flow' | 'blocking' | 'impact' | 'directive' | 'dep';
+export type CanvasEdgeKind =
+  | 'hierarchy'
+  | 'flow'
+  | 'blocking'
+  | 'impact'
+  | 'directive'
+  | 'dep'
+  | 'external';
+
+export type CompletedDepth = 'none' | 'overview' | 'flow' | 'deep';
 
 export interface AtlasGraphNode {
   id: string;
@@ -48,6 +61,17 @@ export interface AtlasGraphNode {
   layer?: string;
   domainId?: string;
   folderId?: string;
+  /** Canonical directory path if this node can be set as Scope Root */
+  scopePath?: string;
+  /** L1 in-place 1-sentence responsibility hydrated onto compact file/folder rows */
+  roleSummary?: string;
+  /** Highlighted by L1 outline as the recommended entry file */
+  isRecommendedEntry?: boolean;
+  /** Highest progressive analysis depth completed for this node/scope */
+  completedDepth?: CompletedDepth;
+  externalOutCount?: number;
+  externalInCount?: number;
+  externalDirection?: 'outbound' | 'inbound';
   fileCount?: number;
   canExpandFiles?: boolean;
   filesExpanded?: boolean;
@@ -58,6 +82,8 @@ export interface AtlasGraphNode {
   outcome?: string;
   directiveId?: string;
   directiveKind?: 'constraint' | 'question' | 'rework';
+  directiveStatus?: 'open' | 'claimed' | 'resolved' | 'dismissed';
+  resolutionSummary?: string;
   path?: string;
   defaultDirectivePath?: string;
   startLine?: number;
@@ -98,8 +124,16 @@ export interface BranchSummary {
   claimItems: Array<{ id: string; nodeId: string; title: string; badge: VerificationBadge }>;
 }
 
+export interface ScopeAncestorCrumb {
+  label: string;
+  scopePath: string;
+}
+
 export interface AtlasGraphData {
   mode: CanvasViewMode;
+  scopeRoot: string;
+  scopeAncestors: ScopeAncestorCrumb[];
+  storageMode: StorageMode;
   nodes: AtlasGraphNode[];
   edges: AtlasGraphEdge[];
   architecture: {
@@ -122,6 +156,7 @@ export interface AtlasGraphData {
     blockingMismatch: number;
     changedFiles: number;
     directiveCount: number;
+    openDirectiveCount: number;
     isStale: boolean;
     targetRefClaimed?: string;
     baseRef: string;
@@ -131,12 +166,20 @@ export interface AtlasGraphData {
     hasBriefing: boolean;
     prunedCount: number;
     impactCount: number;
+    externalBoundaryCount: number;
     impactStatus?: IndirectImpactReport['status'];
     impactReason?: string;
     manifestIssues: ManifestDriftIssue[];
     hiddenSupportDomains: number;
     hiddenSupportFiles: number;
   };
+}
+
+function normalizeCleanPath(raw?: string): string {
+  return String(raw ?? '')
+    .replace(/\\/g, '/')
+    .replace(/^\.\//, '')
+    .replace(/^\/+|\/+$/g, '');
 }
 
 /**
@@ -152,7 +195,6 @@ function groupFilesBySubdirectory(
     rel: cleanPrefix && f.startsWith(cleanPrefix) ? f.slice(cleanPrefix.length) : f,
   }));
 
-  // Single-child prefix compression (e.g. unwrap `src/` when all files sit under `src/`)
   let compressedPrefix = '';
   for (let depth = 0; depth < 3; depth++) {
     const firstSegs = new Set<string>();
@@ -223,12 +265,118 @@ function sortFilesByImportance(
   });
 }
 
+function synthesizeScopedSubdomains(
+  scopedFiles: string[],
+  scopeRoot: string,
+  lang: 'zh' | 'en'
+): { subdomains: IndexedDomain[]; directRootFiles: string[] } {
+  const prefix = `${scopeRoot}/`;
+  const byFirstSeg = new Map<string, string[]>();
+  const directRootFiles: string[] = [];
+
+  for (const f of scopedFiles) {
+    const rel = f.startsWith(prefix) ? f.slice(prefix.length) : f;
+    const slash = rel.indexOf('/');
+    if (slash < 0) {
+      directRootFiles.push(f);
+    } else {
+      const seg = rel.slice(0, slash);
+      const list = byFirstSeg.get(seg) ?? [];
+      list.push(f);
+      byFirstSeg.set(seg, list);
+    }
+  }
+
+  // If there is only 1 subdirectory (e.g. `crates/aster-app/src/*`), unwrap one level so `src/` files fan out cleanly!
+  if (byFirstSeg.size === 1) {
+    const [onlySubdir, subFiles] = [...byFirstSeg.entries()][0];
+    const nestedPrefix = `${scopeRoot}/${onlySubdir}/`;
+    const nestedMap = new Map<string, string[]>();
+    const nestedDirect: string[] = [...directRootFiles];
+
+    for (const f of subFiles) {
+      const rel = f.startsWith(nestedPrefix) ? f.slice(nestedPrefix.length) : f;
+      const slash = rel.indexOf('/');
+      if (slash < 0) {
+        nestedDirect.push(f);
+      } else {
+        const seg = rel.slice(0, slash);
+        const list = nestedMap.get(seg) ?? [];
+        list.push(f);
+        nestedMap.set(seg, list);
+      }
+    }
+
+    if (nestedMap.size === 0) {
+      return { subdomains: [], directRootFiles: scopedFiles };
+    }
+
+    const nestedDomains: IndexedDomain[] = [...nestedMap.entries()]
+      .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
+      .map(([seg, files]) => {
+        const subPath = `${scopeRoot}/${onlySubdir}/${seg}`;
+        return {
+          id: `scoped:${subPath}`,
+          name: `${onlySubdir}/${seg}`,
+          layerRank: 50,
+          description: `${files.length} ${lang === 'zh' ? '个文件' : 'files'}`,
+          paths: [subPath],
+          files,
+          fileCount: files.length,
+          entrypoints: [],
+          fromManifest: false,
+          isSupport: files.every((x) => {
+            const k = classifyFileArtifact(x);
+            return k === 'asset' || k === 'docs';
+          }),
+          artifactCounts: { code: files.length, test: 0, config: 0, ci: 0, docs: 0, asset: 0 },
+        };
+      });
+    return { subdomains: nestedDomains, directRootFiles: nestedDirect };
+  }
+
+  if (byFirstSeg.size === 0) {
+    return { subdomains: [], directRootFiles: scopedFiles };
+  }
+
+  const subdomains: IndexedDomain[] = [...byFirstSeg.entries()]
+    .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
+    .map(([seg, files]) => {
+      const subPath = `${scopeRoot}/${seg}`;
+      const nonCodeOnly = files.every((x) => {
+        const k = classifyFileArtifact(x);
+        return k === 'asset' || k === 'docs';
+      });
+      return {
+        id: `scoped:${subPath}`,
+        name: seg,
+        layerRank: 50,
+        description: `${subPath} · ${files.length} ${lang === 'zh' ? '个文件' : 'files'}`,
+        paths: [subPath],
+        files,
+        fileCount: files.length,
+        entrypoints: [],
+        fromManifest: false,
+        isSupport: nonCodeOnly,
+        artifactCounts: { code: files.length, test: 0, config: 0, ci: 0, docs: 0, asset: 0 },
+      };
+    });
+
+  return { subdomains, directRootFiles };
+}
+
 export function buildAtlasGraph(params: {
   git: GitContext;
   manifest?: AtlasManifest;
   manifestIssues?: ManifestDriftIssue[];
   archOverride?: RepoArchitecture;
   hasManifest?: boolean;
+  storageMode?: StorageMode;
+  scopeRoot?: string;
+  outlines?: StoredOutlineRecord[];
+  scopeBoundaries?: ScopeBoundaryItem[];
+  briefingDepth?: 'flow' | 'deep';
+  briefingScopePath?: string;
   diffStats: DiffFileStat[];
   trackedFiles?: string[];
   commits?: BranchCommitInfo[];
@@ -253,37 +401,100 @@ export function buildAtlasGraph(params: {
     verification,
     indirectImpact,
     directives,
+    outlines = [],
+    scopeBoundaries = [],
   } = params;
   const mode: CanvasViewMode = params.mode ?? 'hybrid';
   const baseRef = params.baseRef ?? 'HEAD';
   const lang = params.lang ?? 'zh';
+  const storageMode: StorageMode = params.storageMode ?? 'git-hidden';
+  const scopeRoot = normalizeCleanPath(params.scopeRoot);
   const expandedDomains = new Set(params.expandedDomainIds ?? []);
   const expandedFolders = new Set(params.expandedFolderIds ?? []);
   const pruneUnchanged = Boolean(params.pruneUnchanged);
   const showSupportAssets = Boolean(params.showSupportAssets);
   const hasManifest = params.hasManifest ?? Boolean(manifest);
 
-  const arch =
+  const fullArch =
     params.archOverride ?? analyzeRepositoryArchitecture(trackedFiles, manifest, lang);
 
-  const diffMap = new Map<string, DiffFileStat>();
-  for (const d of diffStats) {
-    diffMap.set(d.path.replace(/\\/g, '/'), d);
+  const isInScope = (p?: string): boolean => {
+    if (!scopeRoot) return true;
+    const norm = normalizeCleanPath(p);
+    return norm === scopeRoot || norm.startsWith(`${scopeRoot}/`);
+  };
+
+  const normTracked = trackedFiles.map((f) => normalizeCleanPath(f));
+  const activeTracked = scopeRoot ? normTracked.filter(isInScope) : normTracked;
+  const activeDiffStats = scopeRoot
+    ? diffStats.filter((d) => isInScope(d.path))
+    : diffStats;
+  const activeDirectives = scopeRoot
+    ? directives.filter((d) => isInScope(d.path))
+    : directives;
+
+  // Build scope ancestors breadcrumb list (`[{ label: repoName, scopePath: '' }, ...]`)
+  const repoName = git.repoRoot.split(/[\\/]/).filter(Boolean).pop() || 'Repository';
+  const scopeAncestors: ScopeAncestorCrumb[] = [{ label: repoName, scopePath: '' }];
+  if (scopeRoot) {
+    const segs = scopeRoot.split('/');
+    for (let i = 0; i < segs.length; i++) {
+      scopeAncestors.push({
+        label: segs[i],
+        scopePath: segs.slice(0, i + 1).join('/'),
+      });
+    }
   }
 
-  // Compute auto-promoted support domains (any support domain with diff, briefing, or directives MUST remain visible!)
+  // Determine effective domains for either full repo or scoped subtree
+  let effectiveDomains: IndexedDomain[] = fullArch.domains;
+  let scopedDirectRootFiles: string[] = [];
+
+  if (scopeRoot) {
+    const childArchDomains = fullArch.domains.filter((d) => {
+      const dp = normalizeCleanPath(d.paths[0]);
+      return dp.startsWith(`${scopeRoot}/`);
+    });
+    if (childArchDomains.length >= 2) {
+      effectiveDomains = childArchDomains;
+      const covered = new Set(childArchDomains.flatMap((d) => d.files.map(normalizeCleanPath)));
+      scopedDirectRootFiles = activeTracked.filter((f) => !covered.has(f));
+    } else {
+      const synth = synthesizeScopedSubdomains(activeTracked, scopeRoot, lang);
+      effectiveDomains = synth.subdomains;
+      scopedDirectRootFiles = synth.directRootFiles;
+    }
+  }
+
+  const diffMap = new Map<string, DiffFileStat>();
+  for (const d of activeDiffStats) {
+    diffMap.set(normalizeCleanPath(d.path), d);
+  }
+
   const domainByName = new Map<string, IndexedDomain>();
   const domainById = new Map<string, IndexedDomain>();
-  for (const d of arch.domains) {
+  for (const d of effectiveDomains) {
     domainByName.set(d.name, d);
     domainById.set(d.id, d);
   }
 
   const resolveDomainForPath = (normPath: string): { name: string; indexed?: IndexedDomain } => {
-    for (const d of arch.domains) {
+    for (const d of effectiveDomains) {
       if (d.files.includes(normPath)) {
         return { name: d.name, indexed: d };
       }
+      const p0 = normalizeCleanPath(d.paths[0]);
+      if (p0 && (normPath === p0 || normPath.startsWith(`${p0}/`))) {
+        return { name: d.name, indexed: d };
+      }
+    }
+    if (scopeRoot) {
+      const rel = normPath.startsWith(`${scopeRoot}/`)
+        ? normPath.slice(scopeRoot.length + 1)
+        : normPath;
+      const slash = rel.indexOf('/');
+      const seg = slash >= 0 ? rel.slice(0, slash) : '(root)';
+      return { name: seg, indexed: domainByName.get(seg) };
     }
     const fallbackName = matchDomainForPath(normPath, manifest);
     return { name: fallbackName, indexed: domainByName.get(fallbackName) };
@@ -291,12 +502,12 @@ export function buildAtlasGraph(params: {
 
   const promotedSupportIds = new Set<string>();
   const markPathPromoted = (p?: string) => {
-    if (!p) return;
-    const res = resolveDomainForPath(p.replace(/\\/g, '/'));
+    if (!p || !isInScope(p)) return;
+    const res = resolveDomainForPath(normalizeCleanPath(p));
     if (res.indexed?.isSupport) promotedSupportIds.add(res.indexed.id);
   };
-  for (const d of diffStats) markPathPromoted(d.path);
-  for (const dir of directives) markPathPromoted(dir.path);
+  for (const d of activeDiffStats) markPathPromoted(d.path);
+  for (const dir of activeDirectives) markPathPromoted(dir.path);
   if (verification) {
     for (const c of verification.claims) {
       for (const a of c.claim.anchors) markPathPromoted(a.path);
@@ -310,7 +521,7 @@ export function buildAtlasGraph(params: {
 
   let hiddenSupportDomains = 0;
   let hiddenSupportFiles = 0;
-  for (const d of arch.domains) {
+  for (const d of effectiveDomains) {
     if (d.isSupport && !showSupportAssets && !promotedSupportIds.has(d.id)) {
       hiddenSupportDomains += 1;
       hiddenSupportFiles += d.fileCount;
@@ -321,32 +532,42 @@ export function buildAtlasGraph(params: {
   const edges: AtlasGraphEdge[] = [];
 
   const rootId = 'root';
-  const repoName = git.repoRoot.split(/[\\/]/).filter(Boolean).pop() || 'Repository';
-  const patternLabel = lang === 'zh' ? arch.patternLabelZh : arch.patternLabelEn;
+  const patternLabel = lang === 'zh' ? fullArch.patternLabelZh : fullArch.patternLabelEn;
   const scaleLabel =
     lang === 'zh'
-      ? arch.scale === 'small'
+      ? fullArch.scale === 'small'
         ? '小项目'
-        : arch.scale === 'medium'
+        : fullArch.scale === 'medium'
           ? '中型项目'
           : '大型项目'
-      : arch.scale === 'small'
+      : fullArch.scale === 'small'
         ? 'Small'
-        : arch.scale === 'medium'
+        : fullArch.scale === 'medium'
           ? 'Medium'
           : 'Large';
 
-  const visibleDomainCount = arch.domains.length - hiddenSupportDomains;
+  const visibleDomainCount = effectiveDomains.length - hiddenSupportDomains;
+  const exactArchDomain = scopeRoot
+    ? fullArch.domains.find((d) => normalizeCleanPath(d.paths[0]) === scopeRoot || d.name === scopeRoot)
+    : undefined;
+
   nodes.push({
     id: rootId,
     kind: 'root',
-    title: repoName,
+    title: scopeRoot ? `🎯 ${scopeRoot}` : repoName,
+    scopePath: scopeRoot,
+    defaultDirectivePath: scopeRoot || activeTracked[0] || '',
     subtitle: `${git.branch} @ ${git.shortSha}${git.dirtyCount > 0 ? ` · ${git.dirtyCount} dirty` : ' · clean'}`,
-    layer: `${patternLabel} · ${scaleLabel} (${arch.totalFiles})`,
-    body: verification
-      ? `${lang === 'zh' ? '当前简报' : 'Briefing'}: ${verification.briefingTitle}`
-      : `${visibleDomainCount} ${lang === 'zh' ? '个核心架构域' : 'code domains'}${hiddenSupportFiles > 0 ? ` · ${lang === 'zh' ? '已折叠' : 'folded'} ${hiddenSupportFiles} ${lang === 'zh' ? '个非源码资源' : 'support/assets'}` : ''}`,
-    badge: verification?.overallBadge,
+    layer: scopeRoot
+      ? `${lang === 'zh' ? '局部视图根' : 'Scoped Root'} · ${activeTracked.length} ${lang === 'zh' ? '文件' : 'files'}`
+      : `${patternLabel} · ${scaleLabel} (${fullArch.totalFiles})`,
+    body: scopeRoot
+      ? exactArchDomain?.description ||
+        `${lang === 'zh' ? '已聚焦子目录' : 'Scoped to'} ${scopeRoot}（${activeTracked.length} ${lang === 'zh' ? '个文件' : 'files'}）`
+      : verification
+        ? `${lang === 'zh' ? '当前简报' : 'Briefing'}: ${verification.briefingTitle}`
+        : `${visibleDomainCount} ${lang === 'zh' ? '个核心架构域' : 'code domains'}${hiddenSupportFiles > 0 ? ` · ${lang === 'zh' ? '已折叠' : 'folded'} ${hiddenSupportFiles} ${lang === 'zh' ? '个非源码资源' : 'support/assets'}` : ''}`,
+    badge: !scopeRoot ? verification?.overallBadge : undefined,
   });
 
   const domainNodeIds = new Map<string, string>();
@@ -358,12 +579,14 @@ export function buildAtlasGraph(params: {
     domainNodeIds.set(name, id);
     const isExpanded = expandedDomains.has(domIdKey);
     const fileCount = indexed?.fileCount ?? 0;
+    const canonicalScope = normalizeCleanPath(indexed?.paths[0] ?? (scopeRoot && name !== '(root)' ? `${scopeRoot}/${name}` : name));
 
     nodes.push({
       id,
       parentId: rootId,
       kind: 'domain',
       domainId: domIdKey,
+      scopePath: canonicalScope && canonicalScope !== '(root)' ? canonicalScope : undefined,
       title: name,
       layer: indexed?.layer,
       isSupport: indexed?.isSupport,
@@ -378,7 +601,7 @@ export function buildAtlasGraph(params: {
       fileCount,
       canExpandFiles: fileCount > 0,
       filesExpanded: isExpanded,
-      defaultDirectivePath: indexed?.paths[0] ?? indexed?.files[0],
+      defaultDirectivePath: canonicalScope || indexed?.files[0],
     });
     edges.push({
       id: `e:${rootId}->${id}`,
@@ -444,18 +667,18 @@ export function buildAtlasGraph(params: {
     }
   };
 
-  // 1. Domains, Entrypoints, and 2-Level Lazy Folder/File Expansion
+  // 1. Domains, Entrypoints, Scoped Direct Files, and 2-Level Lazy Folder/File Expansion
   if (mode !== 'briefing') {
-    for (const d of arch.domains) {
+    for (const d of effectiveDomains) {
       if (d.isSupport && !showSupportAssets && !promotedSupportIds.has(d.id)) {
         continue;
       }
       const domId = ensureDomain(d.name, d);
+      const domPrefix = normalizeCleanPath(d.paths[0] ?? '');
 
-      // Show key entrypoints when domain is not yet expanded into folders/files (or always for manifest entrypoints)
       for (const ep of d.entrypoints) {
         const epId = `ep:${d.id}:${ep.path}:${ep.symbol ?? ep.startLine ?? 1}`;
-        const normPath = ep.path.replace(/\\/g, '/');
+        const normPath = normalizeCleanPath(ep.path);
         const diff = diffMap.get(normPath);
         nodes.push({
           id: epId,
@@ -483,10 +706,10 @@ export function buildAtlasGraph(params: {
       }
 
       if (expandedDomains.has(d.id)) {
-        // Partition binary/media assets so 99 .png files NEVER explode into 99 cards!
         const nonAssets: string[] = [];
         const assetFiles: string[] = [];
-        for (const f of d.files) {
+        for (const rawF of d.files) {
+          const f = normalizeCleanPath(rawF);
           if (classifyFileArtifact(f) === 'asset' && !diffMap.has(f)) {
             assetFiles.push(f);
           } else {
@@ -494,7 +717,7 @@ export function buildAtlasGraph(params: {
           }
         }
 
-        const groups = groupFilesBySubdirectory(nonAssets, d.paths[0] ?? '');
+        const groups = groupFilesBySubdirectory(nonAssets, domPrefix);
         const useFolders = nonAssets.length > 8 && groups.length >= 2;
 
         if (useFolders) {
@@ -502,19 +725,26 @@ export function buildAtlasGraph(params: {
             const folderId = `folder:${d.id}:${g.groupKey}`;
             const isFolderExp = expandedFolders.has(folderId);
             const changedInFolder = g.files.filter((f) => diffMap.has(f)).length;
+            const folderScope =
+              g.groupKey === '(root)'
+                ? domPrefix
+                : domPrefix
+                  ? `${domPrefix}/${g.groupKey}`
+                  : g.groupKey;
             nodes.push({
               id: folderId,
               parentId: domId,
               kind: 'folder',
               domainId: d.id,
               folderId,
+              scopePath: folderScope || undefined,
               title: g.label,
               subtitle: `${g.files.length} ${lang === 'zh' ? '个文件' : 'files'}${changedInFolder > 0 ? ` · ${changedInFolder} ${lang === 'zh' ? '处变更' : 'changed'}` : ''}`,
               fileCount: g.files.length,
               canExpandFiles: true,
               filesExpanded: isFolderExp,
               changed: changedInFolder > 0,
-              defaultDirectivePath: g.files[0],
+              defaultDirectivePath: folderScope || g.files[0],
             });
             edges.push({
               id: `e:${domId}->${folderId}`,
@@ -560,8 +790,16 @@ export function buildAtlasGraph(params: {
       }
     }
 
+    // Emit direct files when zoomed into a leaf directory (e.g. `src/core`)
+    if (scopeRoot && scopedDirectRootFiles.length > 0) {
+      const nonAssets = scopedDirectRootFiles.filter(
+        (f) => classifyFileArtifact(f) !== 'asset' || diffMap.has(f)
+      );
+      emitFileListUnderParent(rootId, nonAssets, 35);
+    }
+
     // Internal workspace dependency edges (`dep`, rendered on-inspect in Canvas!)
-    for (const d of arch.domains) {
+    for (const d of effectiveDomains) {
       if (!d.workspaceDeps || d.workspaceDeps.length === 0) continue;
       const fromNodeId = domainNodeIds.get(d.name);
       if (!fromNodeId) continue;
@@ -581,7 +819,7 @@ export function buildAtlasGraph(params: {
     }
   }
 
-  // 2. Claims & Evidence Anchors
+  // 2. Claims & Evidence Anchors (filtered to scopeRoot when scoped)
   const claimSummaryItems: Array<{
     id: string;
     nodeId: string;
@@ -591,19 +829,24 @@ export function buildAtlasGraph(params: {
 
   if (mode !== 'atlas' && verification) {
     for (const c of verification.claims) {
-      const primaryPath = c.claim.anchors[0]?.path?.replace(/\\/g, '/');
+      const inScopeAnchors = c.claim.anchors.filter((a) => isInScope(a.path));
+      if (scopeRoot && inScopeAnchors.length === 0) continue;
+
+      const primaryPath = normalizeCleanPath((inScopeAnchors[0] ?? c.claim.anchors[0])?.path);
       let parentForClaim = rootId;
       if (mode !== 'briefing') {
-        if (primaryPath) {
+        if (primaryPath && effectiveDomains.length > 0) {
           const resolved = resolveDomainForPath(primaryPath);
-          parentForClaim = ensureDomain(resolved.name, resolved.indexed);
-        } else {
+          if (resolved.indexed || !scopeRoot) {
+            parentForClaim = ensureDomain(resolved.name, resolved.indexed);
+          }
+        } else if (!scopeRoot) {
           parentForClaim = ensureDomain(lang === 'zh' ? '简报声明' : 'Briefing Claims');
         }
       }
 
       const claimId = `claim:${c.claim.id}`;
-      const anyChanged = c.claim.anchors.some((a) => diffMap.has(a.path.replace(/\\/g, '/')));
+      const anyChanged = c.claim.anchors.some((a) => diffMap.has(normalizeCleanPath(a.path)));
 
       nodes.push({
         id: claimId,
@@ -635,8 +878,9 @@ export function buildAtlasGraph(params: {
 
       for (let i = 0; i < c.anchors.length; i++) {
         const a = c.anchors[i];
+        const normPath = normalizeCleanPath(a.anchor.path);
+        if (scopeRoot && !isInScope(normPath)) continue;
         const evId = `ev:${c.claim.id}:${i}`;
-        const normPath = a.anchor.path.replace(/\\/g, '/');
         const diff = diffMap.get(normPath);
         nodes.push({
           id: evId,
@@ -668,13 +912,17 @@ export function buildAtlasGraph(params: {
 
     // 3. Explicit Blocking Conditions
     for (const b of verification.blockingConditions) {
-      const bPath = b.item.anchor?.path?.replace(/\\/g, '/');
+      const bPath = normalizeCleanPath(b.item.anchor?.path);
+      if (scopeRoot && bPath && !isInScope(bPath)) continue;
+
       let parentId = rootId;
       if (bPath && pathToNodeId.has(bPath)) {
         parentId = pathToNodeId.get(bPath)!;
-      } else if (mode !== 'briefing' && bPath) {
+      } else if (mode !== 'briefing' && bPath && effectiveDomains.length > 0) {
         const resolved = resolveDomainForPath(bPath);
-        parentId = ensureDomain(resolved.name, resolved.indexed);
+        if (resolved.indexed || !scopeRoot) {
+          parentId = ensureDomain(resolved.name, resolved.indexed);
+        }
       }
       const blockId = `block:${b.item.id}`;
       nodes.push({
@@ -691,8 +939,8 @@ export function buildAtlasGraph(params: {
         outcome: b.item.outcome,
         body: `IF ${b.item.condition} → ${b.item.outcome}`,
         badge: b.badge,
-        path: bPath,
-        defaultDirectivePath: bPath,
+        path: bPath || undefined,
+        defaultDirectivePath: bPath || undefined,
         startLine: b.item.anchor?.startLine,
         endLine: b.item.anchor?.endLine,
         symbol: b.item.anchor?.symbol,
@@ -709,16 +957,19 @@ export function buildAtlasGraph(params: {
     }
   }
 
-  // 4. Changed files from Git Diff (attaching to folder node if parent domain is expanded into folders!)
+  // 4. Changed files from Git Diff
   if (mode !== 'briefing') {
     const MAX_DIFF_NODES = 30;
-    const shownDiffs = diffStats.slice(0, MAX_DIFF_NODES);
+    const shownDiffs = activeDiffStats.slice(0, MAX_DIFF_NODES);
     for (const d of shownDiffs) {
-      const normPath = d.path.replace(/\\/g, '/');
+      const normPath = normalizeCleanPath(d.path);
       if (pathToNodeId.has(normPath)) continue;
-      const resolved = resolveDomainForPath(normPath);
-      const domId = ensureDomain(resolved.name, resolved.indexed);
-      const parentId = folderNodeByPathPrefix.get(normPath) || domId;
+      let parentId = rootId;
+      if (effectiveDomains.length > 0) {
+        const resolved = resolveDomainForPath(normPath);
+        const domId = resolved.indexed || !scopeRoot ? ensureDomain(resolved.name, resolved.indexed) : rootId;
+        parentId = folderNodeByPathPrefix.get(normPath) || domId;
+      }
       const diffId = `diff:${normPath}`;
       nodes.push({
         id: diffId,
@@ -741,16 +992,16 @@ export function buildAtlasGraph(params: {
       });
       pathToNodeId.set(normPath, diffId);
     }
-    if (diffStats.length > MAX_DIFF_NODES) {
+    if (activeDiffStats.length > MAX_DIFF_NODES) {
       const overflowId = 'diff:overflow';
-      const extra = diffStats.length - MAX_DIFF_NODES;
+      const extra = activeDiffStats.length - MAX_DIFF_NODES;
       nodes.push({
         id: overflowId,
         parentId: rootId,
         kind: 'diff-file',
         isSummary: true,
         title: lang === 'zh' ? `+${extra} 个更多变更文件` : `+${extra} more changed files`,
-        subtitle: `${diffStats.length} ${lang === 'zh' ? '个变更文件总计' : 'changed files total'}`,
+        subtitle: `${activeDiffStats.length} ${lang === 'zh' ? '个变更文件总计' : 'changed files total'}`,
         changed: true,
       });
       edges.push({
@@ -768,9 +1019,15 @@ export function buildAtlasGraph(params: {
   if (indirectImpact && indirectImpact.status === 'ok') {
     for (let i = 0; i < indirectImpact.lspReferences.length; i++) {
       const refImp = indirectImpact.lspReferences[i];
+      if (!isInScope(refImp.sourcePath)) continue;
       const srcNodeId =
-        pathToNodeId.get(refImp.sourcePath) ||
-        ensureDomain(resolveDomainForPath(refImp.sourcePath).name, resolveDomainForPath(refImp.sourcePath).indexed);
+        pathToNodeId.get(normalizeCleanPath(refImp.sourcePath)) ||
+        (effectiveDomains.length > 0
+          ? ensureDomain(
+              resolveDomainForPath(normalizeCleanPath(refImp.sourcePath)).name,
+              resolveDomainForPath(normalizeCleanPath(refImp.sourcePath)).indexed
+            )
+          : rootId);
 
       if (refImp.truncated) {
         const impId = `impact:lsp-fanout:${i}`;
@@ -832,9 +1089,12 @@ export function buildAtlasGraph(params: {
 
     for (let i = 0; i < Math.min(10, indirectImpact.lspDiagnostics.length); i++) {
       const diag = indirectImpact.lspDiagnostics[i];
-      const domRes = resolveDomainForPath(diag.path);
+      if (!isInScope(diag.path)) continue;
+      const domRes = resolveDomainForPath(normalizeCleanPath(diag.path));
       const parentId =
-        mode === 'briefing' ? rootId : ensureDomain(domRes.name, domRes.indexed);
+        mode === 'briefing' || effectiveDomains.length === 0
+          ? rootId
+          : ensureDomain(domRes.name, domRes.indexed);
       const impId = `impact:diag:${i}`;
       impactCount += 1;
       nodes.push({
@@ -861,8 +1121,9 @@ export function buildAtlasGraph(params: {
 
   if (mode !== 'atlas' && verification && verification.impacts && verification.impacts.length > 0) {
     for (const dimp of verification.impacts) {
-      const srcPath = dimp.item.sourceAnchor.path.replace(/\\/g, '/');
-      const tgtPath = dimp.item.targetAnchor.path.replace(/\\/g, '/');
+      const srcPath = normalizeCleanPath(dimp.item.sourceAnchor.path);
+      const tgtPath = normalizeCleanPath(dimp.item.targetAnchor.path);
+      if (scopeRoot && !isInScope(srcPath) && !isInScope(tgtPath)) continue;
       const parentId = pathToNodeId.get(srcPath) || rootId;
       const impId = `impact:declared:${dimp.item.id}`;
       impactCount += 1;
@@ -870,6 +1131,7 @@ export function buildAtlasGraph(params: {
         id: impId,
         parentId,
         kind: 'impact',
+        scopePath: !isInScope(tgtPath) ? tgtPath.split('/').slice(0, -1).join('/') : undefined,
         title: `[${dimp.item.relation.toUpperCase()}] ${tgtPath.split('/').pop() || tgtPath}`,
         subtitle: `${tgtPath}${dimp.item.targetAnchor.startLine ? `:${dimp.item.targetAnchor.startLine}` : ''}`,
         body: dimp.item.description,
@@ -891,20 +1153,23 @@ export function buildAtlasGraph(params: {
     }
   }
 
-  // 6. Directives / Canvas Notes
+  // 6. Directives / Canvas Q&A & Notes
   const existingNodeIds = new Set(nodes.map((n) => n.id));
-  for (const dir of directives) {
-    const normPath = dir.path.replace(/\\/g, '/');
+  for (const dir of activeDirectives) {
+    const normPath = normalizeCleanPath(dir.path);
     let parentId =
       dir.targetNodeId && existingNodeIds.has(dir.targetNodeId)
         ? dir.targetNodeId
         : pathToNodeId.get(normPath);
     if (!parentId) {
-      if (mode === 'briefing') {
+      if (mode === 'briefing' || effectiveDomains.length === 0) {
         parentId = rootId;
       } else {
         const resolved = resolveDomainForPath(normPath);
-        parentId = ensureDomain(resolved.name, resolved.indexed);
+        parentId =
+          resolved.indexed || !scopeRoot
+            ? ensureDomain(resolved.name, resolved.indexed)
+            : rootId;
       }
     }
     const dirId = `dir:${dir.id}`;
@@ -915,8 +1180,10 @@ export function buildAtlasGraph(params: {
       kind: 'directive',
       directiveId: dir.id,
       directiveKind: dir.kind,
+      directiveStatus: dir.status,
+      resolutionSummary: dir.resolution?.summary,
       title: `${dir.kind.toUpperCase()} · ${normPath.split('/').pop() || normPath}${dir.startLine ? `:${dir.startLine}` : ''}`,
-      subtitle: `ref: ${dir.ref}${statusTag}${dir.isStale ? ' (stale)' : ''}`,
+      subtitle: `ref: ${dir.ref.slice(0, 8)}${statusTag}${dir.isStale ? ' (stale)' : ''}`,
       body: dir.note,
       badge: dir.status === 'resolved' ? 'verified' : dir.isStale ? 'stale' : undefined,
       path: normPath,
@@ -933,8 +1200,194 @@ export function buildAtlasGraph(params: {
     });
   }
 
-  // Propagate changed status up to ancestor folders/domains
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
+
+  // 7. Scoped External Boundary Ghost Nodes (`external-dep`, revealed when owner node is selected!)
+  let externalBoundaryCount = 0;
+  if (scopeRoot && scopeBoundaries.length > 0 && mode !== 'briefing') {
+    const findOwnerNodeId = (inScopePath: string): string => {
+      const clean = normalizeCleanPath(inScopePath);
+      if (pathToNodeId.has(clean)) return pathToNodeId.get(clean)!;
+      if (folderNodeByPathPrefix.has(clean)) return folderNodeByPathPrefix.get(clean)!;
+      // Match child domain whose scopePath prefixes clean
+      for (const n of nodes) {
+        if (n.kind === 'domain' && n.scopePath && (clean === n.scopePath || clean.startsWith(`${n.scopePath}/`))) {
+          return n.id;
+        }
+      }
+      return rootId;
+    };
+
+    // Deduplicate per `(ownerId, direction, externalScope)` so collapsed domains aggregate cleanly!
+    const mergedBoundary = new Map<
+      string,
+      {
+        ownerId: string;
+        direction: 'outbound' | 'inbound';
+        externalScope: string;
+        externalTitle: string;
+        samplePath: string;
+        files: Set<string>;
+      }
+    >();
+
+    for (const item of scopeBoundaries) {
+      const ownerId = findOwnerNodeId(item.inScopePath);
+      const key = `${ownerId}|${item.direction}|${item.externalScope || item.externalTitle}`;
+      let cur = mergedBoundary.get(key);
+      if (!cur) {
+        cur = {
+          ownerId,
+          direction: item.direction,
+          externalScope: item.externalScope,
+          externalTitle: item.externalTitle,
+          samplePath: item.samplePath,
+          files: new Set<string>(),
+        };
+        mergedBoundary.set(key, cur);
+      }
+      for (const rf of item.relatedFiles) {
+        if (cur.files.size < 5) cur.files.add(rf);
+      }
+    }
+
+    for (const entry of mergedBoundary.values()) {
+      externalBoundaryCount += 1;
+      const owner = nodeById.get(entry.ownerId);
+      if (owner) {
+        if (entry.direction === 'outbound') {
+          owner.externalOutCount = (owner.externalOutCount ?? 0) + 1;
+        } else {
+          owner.externalInCount = (owner.externalInCount ?? 0) + 1;
+        }
+      }
+      const extId = `ext:${entry.direction}:${entry.ownerId}:${entry.externalScope || entry.externalTitle}`;
+      const prefixArrow = entry.direction === 'outbound' ? '↗ ' : '↖ ';
+      const fileHint = [...entry.files].slice(0, 3).join(', ');
+      const newNode: AtlasGraphNode = {
+        id: extId,
+        parentId: entry.ownerId,
+        kind: 'external-dep',
+        externalDirection: entry.direction,
+        scopePath: entry.externalScope || undefined,
+        path: entry.samplePath || undefined,
+        defaultDirectivePath: entry.samplePath || entry.externalScope,
+        title: `${prefixArrow}${entry.externalTitle}`,
+        subtitle: fileHint,
+        body:
+          entry.direction === 'outbound'
+            ? lang === 'zh'
+              ? `当前视图外依赖模块（点击可预览源码或切换视图根至 ${entry.externalScope || entry.externalTitle}）`
+              : `Out-of-scope dependency (${entry.externalScope || entry.externalTitle})`
+            : lang === 'zh'
+              ? `视图外调用方（引用了当前节点，可切换视图根至 ${entry.externalScope || entry.externalTitle}）`
+              : `External caller outside current scope (${entry.externalScope || entry.externalTitle})`,
+      };
+      nodes.push(newNode);
+      nodeById.set(extId, newNode);
+      edges.push({
+        id: `e:${entry.ownerId}->${extId}`,
+        from: entry.ownerId,
+        to: extId,
+        kind: 'external',
+        label:
+          entry.direction === 'outbound'
+            ? lang === 'zh'
+              ? '外部依赖'
+              : 'ext dep'
+            : lang === 'zh'
+              ? '外部调用'
+              : 'ext caller',
+      });
+    }
+  }
+
+  // 8. In-Place L1 Outline Hydration & Progressive Depth State (`completedDepth`)
+  const outlineByScope = new Map<string, StoredOutlineRecord>();
+  const roleByPath = new Map<
+    string,
+    { summary: string; role?: string; isRecommended: boolean }
+  >();
+
+  for (const rec of outlines) {
+    if (rec.verification.overallBadge === 'mismatch') continue;
+    const sc = normalizeCleanPath(rec.outline.scopePath);
+    outlineByScope.set(sc, rec);
+    const recEntry = normalizeCleanPath(rec.outline.recommendedEntry);
+    for (const ch of rec.outline.children ?? []) {
+      const cp = normalizeCleanPath(ch.path);
+      if (!cp) continue;
+      roleByPath.set(cp, {
+        summary: ch.summary,
+        role: ch.role,
+        isRecommended: Boolean(recEntry && cp === recEntry),
+      });
+    }
+  }
+
+  const briefingCoveredPaths = new Set<string>();
+  if (verification) {
+    for (const c of verification.claims) {
+      for (const a of c.claim.anchors) {
+        briefingCoveredPaths.add(normalizeCleanPath(a.path));
+      }
+    }
+  }
+  const hasDeepBriefingGuards = Boolean(
+    verification &&
+      ((verification.blockingConditions && verification.blockingConditions.length > 0) ||
+        params.briefingDepth === 'deep')
+  );
+  const briefingTargetScope = normalizeCleanPath(params.briefingScopePath);
+
+  for (const n of nodes) {
+    if (n.kind === 'claim' || n.kind === 'blocking' || n.kind === 'impact' || n.kind === 'directive' || n.kind === 'external-dep') {
+      continue;
+    }
+
+    const keyPath = normalizeCleanPath(n.scopePath ?? n.path ?? '');
+    let depth: CompletedDepth = 'none';
+
+    if (n.kind === 'root') {
+      const rootOutline = outlineByScope.get(scopeRoot);
+      if (rootOutline) {
+        n.body = rootOutline.outline.summary;
+        depth = 'overview';
+      }
+      if (verification && (!scopeRoot || briefingTargetScope === scopeRoot || [...briefingCoveredPaths].some((p) => isInScope(p)))) {
+        depth = hasDeepBriefingGuards ? 'deep' : 'flow';
+      }
+      n.completedDepth = depth;
+      continue;
+    }
+
+    if (keyPath && outlineByScope.has(keyPath)) {
+      const rec = outlineByScope.get(keyPath)!;
+      n.body = rec.outline.summary;
+      depth = 'overview';
+    }
+    if (keyPath && roleByPath.has(keyPath)) {
+      const info = roleByPath.get(keyPath)!;
+      n.roleSummary = info.summary;
+      if (info.isRecommended) n.isRecommendedEntry = true;
+      if ((n.kind === 'domain' || n.kind === 'folder') && depth === 'none') {
+        n.body = info.summary;
+      }
+    }
+
+    if (keyPath && verification) {
+      const hasClaimInScope =
+        briefingTargetScope === keyPath ||
+        [...briefingCoveredPaths].some((p) => p === keyPath || p.startsWith(`${keyPath}/`));
+      if (hasClaimInScope) {
+        depth = hasDeepBriefingGuards ? 'deep' : 'flow';
+      }
+    }
+
+    n.completedDepth = depth;
+  }
+
+  // Propagate changed status up to ancestor folders/domains
   for (const n of nodes) {
     if (n.changed) {
       let cur = n.parentId ? nodeById.get(n.parentId) : undefined;
@@ -947,8 +1400,8 @@ export function buildAtlasGraph(params: {
 
   // Branch Summary
   const impactedMap = new Map<string, ImpactedDomainSummary>();
-  for (const d of diffStats) {
-    const normPath = d.path.replace(/\\/g, '/');
+  for (const d of activeDiffStats) {
+    const normPath = normalizeCleanPath(d.path);
     const resolved = resolveDomainForPath(normPath);
     const domNodeId = domainNodeIds.get(resolved.name) || rootId;
     const key = resolved.indexed?.id ?? resolved.name;
@@ -999,18 +1452,24 @@ export function buildAtlasGraph(params: {
 
   const blockingMismatch =
     verification?.blockingConditions.filter((b) => b.badge === 'mismatch').length ?? 0;
+  const openDirectiveCount = activeDirectives.filter(
+    (d) => d.status === 'open' || d.status === 'claimed'
+  ).length;
 
   return {
     mode,
+    scopeRoot,
+    scopeAncestors,
+    storageMode,
     nodes: finalNodes,
     edges: finalEdges,
     architecture: {
-      scale: arch.scale,
-      totalFiles: arch.totalFiles,
-      patternId: arch.patternId,
-      patternLabelZh: arch.patternLabelZh,
-      patternLabelEn: arch.patternLabelEn,
-      domainCount: arch.domains.length,
+      scale: fullArch.scale,
+      totalFiles: scopeRoot ? activeTracked.length : fullArch.totalFiles,
+      patternId: fullArch.patternId,
+      patternLabelZh: fullArch.patternLabelZh,
+      patternLabelEn: fullArch.patternLabelEn,
+      domainCount: effectiveDomains.length,
       hasManifest,
     },
     branchSummary: {
@@ -1032,8 +1491,9 @@ export function buildAtlasGraph(params: {
       unknown: verification?.summaryCounts.unknown ?? 0,
       blockingCount: verification?.blockingConditions.length ?? 0,
       blockingMismatch,
-      changedFiles: diffStats.length,
-      directiveCount: directives.length,
+      changedFiles: activeDiffStats.length,
+      directiveCount: activeDirectives.length,
+      openDirectiveCount,
       isStale: verification?.isStale ?? false,
       targetRefClaimed: verification?.targetRefClaimed,
       baseRef,
@@ -1043,6 +1503,7 @@ export function buildAtlasGraph(params: {
       hasBriefing: Boolean(verification),
       prunedCount,
       impactCount,
+      externalBoundaryCount,
       impactStatus: indirectImpact?.status,
       impactReason: indirectImpact?.reason,
       manifestIssues,

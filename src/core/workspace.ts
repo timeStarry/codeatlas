@@ -1,6 +1,6 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { IndexedDomain, RepoArchitecture } from './indexer.js';
+import { classifyFileArtifact, IndexedDomain, RepoArchitecture } from './indexer.js';
 import { EvidenceAnchor } from './types.js';
 
 interface ParsedPackageInfo {
@@ -190,4 +190,231 @@ export async function enrichArchitectureWithWorkspace(
       domain.workspaceDeps = [...resolved];
     }
   }
+}
+
+export interface ScopeBoundaryItem {
+  direction: 'outbound' | 'inbound';
+  /** In-scope file or directory path that owns this external link */
+  inScopePath: string;
+  /** Logical directory/domain path outside current scopeRoot (can be switched to as new scopeRoot!) */
+  externalScope: string;
+  externalTitle: string;
+  samplePath: string;
+  relatedFiles: string[];
+}
+
+const REL_IMPORT_RE =
+  /(?:import\s+(?:[^'"]*?\s+from\s+)?|export\s+[^'"]*?\s+from\s+|require\s*\()\s*['"](\.\.?\/[^'"]+)['"]/g;
+
+function resolveRelativeImportTarget(
+  importerPosix: string,
+  specifier: string,
+  trackedSet: Set<string>
+): string | undefined {
+  const cleanSpec = specifier.split('?')[0].split('#')[0];
+  const importerDir = path.posix.dirname(importerPosix);
+  const joined = path.posix.normalize(path.posix.join(importerDir, cleanSpec));
+  if (joined.startsWith('..')) return undefined;
+
+  const candidates = [joined];
+  // TypeScript NodeNext `.js` -> `.ts` / `.tsx` resolution
+  if (joined.endsWith('.js')) {
+    const stem = joined.slice(0, -3);
+    candidates.push(`${stem}.ts`, `${stem}.tsx`, `${stem}.d.ts`);
+  } else if (joined.endsWith('.jsx')) {
+    candidates.push(`${joined.slice(0, -4)}.tsx`);
+  } else {
+    candidates.push(
+      `${joined}.ts`,
+      `${joined}.tsx`,
+      `${joined}.js`,
+      `${joined}.jsx`,
+      `${joined}.rs`,
+      `${joined}.py`,
+      `${joined}/index.ts`,
+      `${joined}/index.tsx`,
+      `${joined}/index.js`,
+      `${joined}/mod.rs`
+    );
+  }
+
+  for (const c of candidates) {
+    if (trackedSet.has(c)) return c;
+  }
+  return undefined;
+}
+
+function inferExternalGroup(targetPath: string, arch: RepoArchitecture): { scope: string; title: string } {
+  for (const d of arch.domains) {
+    const p = d.paths[0]?.replace(/\/+$/, '');
+    if (p && (targetPath === p || targetPath.startsWith(`${p}/`))) {
+      return { scope: p, title: d.name };
+    }
+  }
+  const segs = targetPath.split('/');
+  if (segs.length >= 3 && (segs[0] === 'src' || segs[0] === 'crates' || segs[0] === 'packages' || segs[0] === 'apps')) {
+    const sc = `${segs[0]}/${segs[1]}`;
+    return { scope: sc, title: sc };
+  }
+  if (segs.length >= 2) {
+    return { scope: segs[0], title: segs[0] };
+  }
+  return { scope: '', title: targetPath };
+}
+
+/**
+ * Deterministically detects outbound dependencies (in-scope -> outside scopeRoot)
+ * and inbound references (outside scopeRoot -> in-scope) using workspace manifests
+ * and bounded relative-import resolution.
+ */
+export async function scanScopeExternalEdges(
+  repoRoot: string,
+  trackedFiles: string[],
+  scopeRoot: string,
+  arch: RepoArchitecture
+): Promise<ScopeBoundaryItem[]> {
+  const cleanScope = scopeRoot.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  if (!cleanScope) return [];
+
+  const isInScope = (p: string): boolean => p === cleanScope || p.startsWith(`${cleanScope}/`);
+  const normFiles = trackedFiles.map((f) => f.replace(/\\/g, '/'));
+  const trackedSet = new Set(normFiles);
+
+  // Key: `${direction}|${inScopeOwner}|${externalScope}`
+  const grouped = new Map<string, ScopeBoundaryItem>();
+
+  const recordEdge = (params: {
+    direction: 'outbound' | 'inbound';
+    inScopePath: string;
+    externalScope: string;
+    externalTitle: string;
+    samplePath: string;
+    detailFile: string;
+  }) => {
+    const key = `${params.direction}|${params.inScopePath}|${params.externalScope || params.externalTitle}`;
+    const existing = grouped.get(key);
+    if (existing) {
+      if (!existing.relatedFiles.includes(params.detailFile) && existing.relatedFiles.length < 6) {
+        existing.relatedFiles.push(params.detailFile);
+      }
+      return;
+    }
+    grouped.set(key, {
+      direction: params.direction,
+      inScopePath: params.inScopePath,
+      externalScope: params.externalScope,
+      externalTitle: params.externalTitle,
+      samplePath: params.samplePath,
+      relatedFiles: [params.detailFile],
+    });
+  };
+
+  // 1. Workspace manifest dependencies (Cargo.toml / package.json)
+  const domainById = new Map(arch.domains.map((d) => [d.id, d]));
+  for (const d of arch.domains) {
+    const dPrefix = d.paths[0]?.replace(/\/+$/, '') ?? '';
+    if (!dPrefix || !d.workspaceDeps) continue;
+    const dInside = isInScope(dPrefix);
+
+    for (const depId of d.workspaceDeps) {
+      const target = domainById.get(depId);
+      if (!target) continue;
+      const tPrefix = target.paths[0]?.replace(/\/+$/, '') ?? '';
+      if (!tPrefix) continue;
+      const tInside = isInScope(tPrefix);
+
+      if (dInside && !tInside) {
+        recordEdge({
+          direction: 'outbound',
+          inScopePath: dPrefix,
+          externalScope: tPrefix,
+          externalTitle: target.name,
+          samplePath: target.entrypoints[0]?.path ?? target.files[0] ?? tPrefix,
+          detailFile: target.name,
+        });
+      } else if (!dInside && tInside) {
+        recordEdge({
+          direction: 'inbound',
+          inScopePath: tPrefix,
+          externalScope: dPrefix,
+          externalTitle: d.name,
+          samplePath: d.entrypoints[0]?.path ?? d.files[0] ?? dPrefix,
+          detailFile: d.name,
+        });
+      }
+    }
+  }
+
+  // 2. Bounded relative import scan across code/test files
+  const inScopeCode: string[] = [];
+  const outScopeCode: string[] = [];
+  for (const f of normFiles) {
+    const kind = classifyFileArtifact(f);
+    if (kind !== 'code' && kind !== 'test') continue;
+    if (isInScope(f)) {
+      if (inScopeCode.length < 120) inScopeCode.push(f);
+    } else if (outScopeCode.length < 160) {
+      outScopeCode.push(f);
+    }
+  }
+
+  const readHead = async (rel: string): Promise<string> => {
+    try {
+      const handle = await fs.open(path.join(repoRoot, rel), 'r');
+      try {
+        const buf = Buffer.alloc(16384);
+        const { bytesRead } = await handle.read(buf, 0, 16384, 0);
+        return buf.subarray(0, bytesRead).toString('utf-8');
+      } finally {
+        await handle.close();
+      }
+    } catch {
+      return '';
+    }
+  };
+
+  await Promise.all([
+    ...inScopeCode.map(async (srcFile) => {
+      const head = await readHead(srcFile);
+      if (!head) return;
+      REL_IMPORT_RE.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = REL_IMPORT_RE.exec(head)) !== null) {
+        const resolved = resolveRelativeImportTarget(srcFile, m[1], trackedSet);
+        if (resolved && !isInScope(resolved)) {
+          const ext = inferExternalGroup(resolved, arch);
+          recordEdge({
+            direction: 'outbound',
+            inScopePath: srcFile,
+            externalScope: ext.scope,
+            externalTitle: ext.title,
+            samplePath: resolved,
+            detailFile: resolved.split('/').pop() || resolved,
+          });
+        }
+      }
+    }),
+    ...outScopeCode.map(async (callerFile) => {
+      const head = await readHead(callerFile);
+      if (!head) return;
+      REL_IMPORT_RE.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = REL_IMPORT_RE.exec(head)) !== null) {
+        const resolved = resolveRelativeImportTarget(callerFile, m[1], trackedSet);
+        if (resolved && isInScope(resolved)) {
+          const ext = inferExternalGroup(callerFile, arch);
+          recordEdge({
+            direction: 'inbound',
+            inScopePath: resolved,
+            externalScope: ext.scope,
+            externalTitle: ext.title,
+            samplePath: callerFile,
+            detailFile: callerFile.split('/').pop() || callerFile,
+          });
+        }
+      }
+    }),
+  ]);
+
+  return [...grouped.values()];
 }
